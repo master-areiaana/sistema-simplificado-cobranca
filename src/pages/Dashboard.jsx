@@ -23,6 +23,9 @@ import PrevisaoFluxo from "@/components/cobranca/PrevisaoFluxo";
 import AnalyticsDashboard from "@/components/cobranca/AnalyticsDashboard";
 import PainelMetas from "@/components/cobranca/PainelMetas";
 import ModalEnviarPDF from "@/components/cobranca/ModalEnviarPDF";
+import TabelaCobrados from "@/components/cobranca/TabelaCobrados";
+import TabelaVerificacao from "@/components/cobranca/TabelaVerificacao";
+import TabelaProtesto from "@/components/cobranca/TabelaProtesto";
 
 const LOCAL_THEME = "sc_theme";
 const LOCAL_TAB = "sc_tab";
@@ -245,9 +248,9 @@ export default function Dashboard() {
     if (kpiFilter === "pendProt") return sortedCartBase.filter(g => g.encaminharConsolidado === "protesto");
     return sortedCartBase;
   }, [sortedCartBase, kpiFilter, hojeISO]);
-  const cobrados = useMemo(() => applyExcelFilter(groupedFiltrado.filter(g => g.foiCobrado), fCob), [groupedFiltrado, fCob]);
-  const verifLista = useMemo(() => applyExcelFilter(groupedFiltrado.filter(g => g.encaminharConsolidado === "verificacao"), fVerif), [groupedFiltrado, fVerif]);
-  const protestoLista = useMemo(() => applyExcelFilter(groupedFiltrado.filter(g => g.encaminharConsolidado === "protesto"), fProt), [groupedFiltrado, fProt]);
+  const cobrados = useMemo(() => groupedFiltrado.filter(g => g.foiCobrado), [groupedFiltrado]);
+  const verifLista = useMemo(() => groupedFiltrado.filter(g => g.encaminharConsolidado === "verificacao"), [groupedFiltrado]);
+  const protestoLista = useMemo(() => groupedFiltrado.filter(g => g.encaminharConsolidado === "protesto"), [groupedFiltrado]);
   const selGroups = useMemo(() => sortedCart.filter(g => selected.has(g.clientKey)), [sortedCart, selected]);
 
   // KPIs dinâmicos baseados na aba ativa e nos dados filtrados
@@ -710,39 +713,7 @@ export default function Dashboard() {
             </div>
 
             {subTabCobr === "historico" && (
-              <>
-                <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <Btn t={t} ghost sm onClick={() => dlCsv("cobrados.csv", [["Nº","Cliente","Qtd.","Total","Status","Contato","Promessa","Obs"], ...cobrados.map(g => [g.nrCli,g.nomeCli,g.qtdTitulos,Number(g.valorTotalDebito).toFixed(2).replace(".",","),g.statusConsolidado,fmtD(g.ultimoContato),fmtD(g.dataPromessa),g.obsConsolidada||"—"])])}>⬇️ CSV</Btn>
-                  <span style={{ fontSize: 11, color: t.muted, marginLeft: "auto" }}><b style={{ color: t.txt }}>{cobrados.length}</b> clientes</span>
-                </div>
-                <div style={{ overflowX: "auto", borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr>
-                        {["Nº","CLIENTE","QTD.","TOTAL","STATUS","ENCAMINHAR","CONTATO","PROMESSA","CLASSIF.","OBSERVAÇÃO","HIST."].map(h => <th key={h} style={thS}>{h}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {cobrados.length === 0 && <tr><td colSpan={11} style={{ textAlign: "center", padding: 44, color: t.muted }}>Nenhum cliente cobrado.</td></tr>}
-                      {cobrados.map((g, i) => (
-                        <tr key={g.clientKey} style={{ background: i % 2 === 0 ? t.surf : t.alt, borderLeft: `4px solid ${prioCor(g.prioridadeCliente)}` }}>
-                          <td style={{ ...tdS(), color: t.muted }}>{g.nrCli}</td>
-                          <td style={tdS()}><b>{g.nomeCli}</b></td>
-                          <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>
-                          <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(g.valorTotalDebito)}</td>
-                          <td style={tdS()}>{g.statusConsolidado}</td>
-                          <td style={tdS()}>{encBadge(g.encaminharConsolidado)}</td>
-                          <td style={{ ...tdS(), color: t.muted }}>{fmtD(g.ultimoContato)}</td>
-                          <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>
-                          <td style={tdS()}><PromessaClassifBadge qtd={g.qtdTotal} /></td>
-                          <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>
-                          <td style={tdS()}><Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
+              <TabelaCobrados data={cobrados} t={t} setHistModal={setHistModal} dlCsv={dlCsv} />
             )}
 
             {subTabCobr === "promessas" && (
@@ -753,74 +724,12 @@ export default function Dashboard() {
 
         {/* ═══ VERIFICAÇÃO ═══ */}
         {activeTab === "verificacao" && (
-          <>
-            <div style={{ marginBottom: 10, padding: "10px 14px", background: "rgba(59,130,246,.07)", border: "2px solid #3b82f6", borderRadius: 8, fontSize: 12, color: "#3b82f6", fontWeight: 600 }}>
-              🔍 Clientes encaminhados para verificação de pagamento.
-            </div>
-            <div style={{ overflowX: "auto", borderRadius: 10, border: "2px solid #3b82f6", maxHeight: "65vh", overflowY: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr>{["Nº","CLIENTE","QTD.","TOTAL","ATRASO","STATUS","CONTATO","OBSERVAÇÃO","RESPOSTA","AÇÃO"].map(h => <th key={h} style={thS}>{h}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {verifLista.length === 0 && <tr><td colSpan={10} style={{ textAlign: "center", padding: 44, color: t.muted }}>Nenhum cliente aguardando verificação.</td></tr>}
-                  {verifLista.map((g, i) => {
-                    const lastResp = g.historicoCliente.find(h => h.subtype?.startsWith("RESP_VERIF"));
-                    return (
-                      <tr key={g.clientKey} style={{ background: i % 2 === 0 ? t.surf : t.alt, borderLeft: "4px solid #3b82f6" }}>
-                        <td style={{ ...tdS(), color: t.muted }}>{g.nrCli}</td>
-                        <td style={tdS()}><b>{g.nomeCli}</b></td>
-                        <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>
-                        <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(g.valorTotalDebito)}</td>
-                        <td style={{ ...tdS(), color: "#ef4444", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>
-                        <td style={tdS()}>{g.statusConsolidado}</td>
-                        <td style={{ ...tdS(), color: t.muted }}>{fmtD(g.ultimoContato)}</td>
-                        <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>
-                        <td style={tdS()}>{lastResp ? <Badge label={lastResp.motivo} color={lastResp.motivo === "Confirmado" ? "#10b981" : "#64748b"} /> : <span style={{ color: "#f59e0b", fontWeight: 700 }}>⏳ Aguardando</span>}</td>
-                        <td style={tdS()}><Btn t={t} sm onClick={() => { setRespModal({ tipo: "verificacao", grupo: g }); setRespForm({ responsavel: "", resposta: "", obs: "" }); }} style={{ background: "#3b82f6", color: "#fff" }}>🔍 Responder</Btn></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
+          <TabelaVerificacao data={verifLista} t={t} setRespModal={setRespModal} setRespForm={setRespForm} />
         )}
 
         {/* ═══ PROTESTO ═══ */}
         {activeTab === "protesto" && (
-          <>
-            <div style={{ marginBottom: 10, padding: "10px 14px", background: "rgba(239,68,68,.07)", border: "2px solid #ef4444", borderRadius: 8, fontSize: 12, color: "#ef4444", fontWeight: 600 }}>
-              ⚖️ Solicitações de protesto pendentes de aprovação.
-            </div>
-            <div style={{ overflowX: "auto", borderRadius: 10, border: "2px solid #ef4444", maxHeight: "65vh", overflowY: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr>{["Nº","CLIENTE","QTD.","TOTAL","ATRASO","STATUS","SOLICITADO POR","OBSERVAÇÃO","DECISÃO","AÇÃO"].map(h => <th key={h} style={thS}>{h}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {protestoLista.length === 0 && <tr><td colSpan={10} style={{ textAlign: "center", padding: 44, color: t.muted }}>Nenhuma solicitação de protesto.</td></tr>}
-                  {protestoLista.map((g, i) => {
-                    const lastResp = g.historicoCliente.find(h => h.subtype?.startsWith("RESP_PROT"));
-                    return (
-                      <tr key={g.clientKey} style={{ background: i % 2 === 0 ? t.surf : t.alt, borderLeft: "4px solid #ef4444" }}>
-                        <td style={{ ...tdS(), color: t.muted }}>{g.nrCli}</td>
-                        <td style={tdS()}><b>{g.nomeCli}</b></td>
-                        <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>
-                        <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(g.valorTotalDebito)}</td>
-                        <td style={{ ...tdS(), color: "#ef4444", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>
-                        <td style={tdS()}>{g.statusConsolidado}</td>
-                        <td style={{ ...tdS(), color: "#ef4444", fontWeight: 600 }}>{g.solicitanteProtestoConsolidado || "—"}</td>
-                        <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>
-                        <td style={tdS()}>{lastResp ? <Badge label={lastResp.motivo} color={lastResp.motivo === "Aprovado" ? "#10b981" : "#64748b"} /> : <Badge label="Pendente" color="#f59e0b" dot />}</td>
-                        <td style={tdS()}><Btn t={t} sm onClick={() => { setRespModal({ tipo: "protesto", grupo: g }); setRespForm({ responsavel: "", resposta: "", obs: "" }); }} style={{ background: "#ef4444", color: "#fff" }}>⚖️ Decidir</Btn></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
+          <TabelaProtesto data={protestoLista} t={t} setRespModal={setRespModal} setRespForm={setRespForm} />
         )}
 
 

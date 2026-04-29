@@ -1,0 +1,28 @@
+{
+  "name": "ImportLog",
+  "type": "object",
+  "properties": {
+    "file_name": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "total_read": {
+      "type": "number"
+    },
+    "inserted_count": {
+      "type": "number"
+    },
+    "updated_count": {
+      "type": "number"
+    },
+    "deactivated_count": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "file_name",
+    "source"
+  ]
+}

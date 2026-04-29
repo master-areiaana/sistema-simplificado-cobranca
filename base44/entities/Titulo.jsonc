@@ -1,0 +1,99 @@
+{
+  "name": "Titulo",
+  "type": "object",
+  "properties": {
+    "source": {
+      "type": "string",
+      "enum": [
+        "FINR1253",
+        "RPT_7007_CONS_CAR_EB"
+      ],
+      "description": "Origem do t\u00edtulo"
+    },
+    "client_code": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "doc_type": {
+      "type": "string"
+    },
+    "serie": {
+      "type": "string"
+    },
+    "title_number": {
+      "type": "string"
+    },
+    "seq": {
+      "type": "string"
+    },
+    "nf_servico": {
+      "type": "string"
+    },
+    "issue_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "original_value": {
+      "type": "number"
+    },
+    "portador": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "import_file": {
+      "type": "string"
+    },
+    "import_batch_id": {
+      "type": "string"
+    },
+    "current_status": {
+      "type": "string",
+      "default": "N\u00e3o Contatado"
+    },
+    "current_motive": {
+      "type": "string"
+    },
+    "current_contact_type": {
+      "type": "string"
+    },
+    "promise_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "last_contact_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "last_note": {
+      "type": "string"
+    },
+    "contact_count": {
+      "type": "number",
+      "default": 0
+    },
+    "protest_requested_by": {
+      "type": "string"
+    },
+    "workflow_status": {
+      "type": "string",
+      "default": "normal"
+    },
+    "updated_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "client_name",
+    "title_number"
+  ]
+}

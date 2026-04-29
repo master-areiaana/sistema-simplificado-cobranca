@@ -1,0 +1,52 @@
+{
+  "name": "ChargeEvent",
+  "type": "object",
+  "properties": {
+    "titulo_id": {
+      "type": "string"
+    },
+    "client_code": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "event_type": {
+      "type": "string"
+    },
+    "event_subtype": {
+      "type": "string"
+    },
+    "event_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string"
+    },
+    "motive": {
+      "type": "string"
+    },
+    "contact_type": {
+      "type": "string"
+    },
+    "promise_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "note": {
+      "type": "string"
+    },
+    "protest_requested_by": {
+      "type": "string"
+    },
+    "event_user": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "client_name",
+    "event_date",
+    "status"
+  ]
+}

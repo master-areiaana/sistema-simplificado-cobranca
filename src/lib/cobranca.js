@@ -180,25 +180,32 @@ function rowTxt(row, max = 50) {
   return row.slice(0, max).map(v => String(v ?? "").trim()).filter(Boolean).join(" ").trim();
 }
 function getHMap(row) {
-  // normText já remove acentos, pontos e normaliza espaços → "NÚMERO" vira "NUMERO", "NF SERVIÇO" vira "NF SERVICO"
+  // normText já remove acentos, pontos e normaliza espaços
+  // "NÚMERO" → "NUMERO", "NF Serviço" → "NF SERVICO", "NF de Serviço" → "NF DE SERVICO"
   const h = (row || []).map(c => normText(c));
-  const fi = al => h.findIndex(x => al.some(a => x === a || x.replace(/\s/g, "") === a.replace(/\s/g, "")));
+  // fi: acha o índice da primeira coluna cujo nome (com ou sem espaços) bate em algum alias
+  const fi = al => h.findIndex(x => {
+    const xSem = x.replace(/\s/g, "");
+    return al.some(a => x === a || xSem === a.replace(/\s/g, ""));
+  });
   return {
-    tp:       fi(["TP", "TIPO", "TPDOC", "TP DOC"]),
-    ser:      fi(["SER", "SERIE", "SER"]),
-    numero:   fi(["NUMERO", "NUM", "NR", "NDOC", "N DOC", "NUMERODOC"]),
-    seq:      fi(["SEQ", "SEQUENCIA", "SEQ"]),
-    nfServico:fi(["NF SERVICO", "NFSERVICO", "NF", "NFSERV", "NFDESERVICO"]),
-    vencto:   fi(["VENCTO", "VENCIMENTO", "DT VENC", "DTVENC", "DTVENCIMENTO"]),
-    recebPrc: fi(["RECEB PRC", "RECEBPRC", "VLRECEB", "VL RECEB", "VALOR", "VL", "RECEBERPRC"]),
-    portador: fi(["PORTADOR", "BANCO", "PORT"])
+    tp:       fi(["TP", "TIPO", "TPDOC", "TP DOC", "TIPO DOC", "TIPO DOCUMENTO"]),
+    ser:      fi(["SER", "SERIE", "SERIE DOC"]),
+    numero:   fi(["NUMERO", "NUM", "NR", "NDOC", "N DOC", "NUMERODOC", "NUMERO DOC", "NUMERODOCUMENTO", "NUMERO DOCUMENTO"]),
+    seq:      fi(["SEQ", "SEQUENCIA", "SEQ DOC", "SEQUENCIA DOC"]),
+    nfServico:fi(["NF SERVICO", "NFSERVICO", "NF DE SERVICO", "NFDESERVICO", "NFSERV", "NF SERV", "NF"]),
+    vencto:   fi(["VENCTO", "VENCIMENTO", "DT VENC", "DTVENC", "DTVENCIMENTO", "DATA VENC", "DATA VENCIMENTO", "DT VENCIMENTO"]),
+    recebPrc: fi(["RECEB PRC", "RECEBPRC", "VLRECEB", "VL RECEB", "VALOR", "VL", "RECEBERPRC", "RECEBER PRC", "VALOR TITULO", "VL TITULO", "SALDO"]),
+    portador: fi(["PORTADOR", "BANCO", "PORT", "PORTADOR COBR", "BANCO COBR"])
   };
 }
 function isH1253(row) {
   const m = getHMap(row);
-  // Exige número e vencimento; SEQ e RECEB PRC podem ter nomes variados — validar pelo menos 3 dos 4
-  const found = [m.numero >= 0, m.seq >= 0, m.vencto >= 0, m.recebPrc >= 0].filter(Boolean).length;
-  return m.numero >= 0 && m.vencto >= 0 && found >= 3;
+  // Exige número e vencimento como mínimo obrigatório
+  // Mais: precisa de pelo menos 1 dos outros campos financeiros/sequência
+  if (m.numero < 0 || m.vencto < 0) return false;
+  const extras = [m.seq >= 0, m.recebPrc >= 0, m.tp >= 0, m.ser >= 0].filter(Boolean).length;
+  return extras >= 1;
 }
 function findCL(row) {
   for (const c of row || []) { const s = String(c ?? "").trim(); if (s.toUpperCase().includes("CLIENTE:")) return s; }

@@ -373,10 +373,9 @@ export default function Dashboard() {
     const allTitulos = await base44.entities.Titulo.list("client_name", 5000);
     const byKey = new Map();
     for (const r of (allTitulos || [])) {
-      const key = buildId({
-        origem: r.source, nrCli: r.client_code, tp: r.doc_type,
-        ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
-      });
+      // CRÍTICO: usar dbToItem para garantir a MESMA normalização que a importação usa
+      const asItem = dbToItem(r);
+      const key = asItem.id;
       if (!byKey.has(key)) byKey.set(key, []);
       byKey.get(key).push(r);
     }

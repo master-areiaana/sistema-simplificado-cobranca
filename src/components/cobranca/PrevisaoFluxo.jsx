@@ -41,27 +41,19 @@ export default function PrevisaoFluxo({ grouped, t }) {
   return (
     <div>
       {/* KPI Cards */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderLeft: "4px solid #10b981", borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 6 }}>Projeção Total (90d)</div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#10b981" }}>{fmtM(totalProjetado)}</div>
-          <div style={{ fontSize: 11, color: t.muted, marginTop: 3 }}>{perc.toFixed(1)}% da carteira total</div>
-        </div>
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderLeft: "4px solid #ef4444", borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 6 }}>Carteira Total</div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#ef4444" }}>{fmtM(totalCarteira)}</div>
-          <div style={{ fontSize: 11, color: t.muted, marginTop: 3 }}>com multa e juros</div>
-        </div>
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderLeft: "4px solid #f59e0b", borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 6 }}>Promessas Ativas</div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#f59e0b" }}>{promessasValidas.length}</div>
-          <div style={{ fontSize: 11, color: t.muted, marginTop: 3 }}>clientes com promessa</div>
-        </div>
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderLeft: "4px solid #6366f1", borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 6 }}>Gap não projetado</div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#6366f1" }}>{fmtM(totalCarteira - totalProjetado)}</div>
-          <div style={{ fontSize: 11, color: t.muted, marginTop: 3 }}>sem promessa nos 90 dias</div>
-        </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", justifyContent: "center" }}>
+        {[
+          { label: "Projeção Total (90d)", value: fmtM(totalProjetado), sub: `${perc.toFixed(1)}% da carteira total`, color: "#10b981" },
+          { label: "Carteira Total", value: fmtM(totalCarteira), sub: "com multa e juros", color: "#ef4444" },
+          { label: "Promessas Ativas", value: promessasValidas.length, sub: "clientes com promessa", color: "#f59e0b" },
+          { label: "Gap não projetado", value: fmtM(totalCarteira - totalProjetado), sub: "sem promessa nos 90 dias", color: "#6366f1" },
+        ].map(k => (
+          <div key={k.label} style={{ background: t.card, border: `1px solid ${t.bor}`, borderLeft: `4px solid ${k.color}`, borderRadius: 10, padding: "12px 16px", flex: "1 1 130px", minWidth: 120, maxWidth: 190, boxShadow: t.shad, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 3 }}>
+            <div style={{ fontSize: 9, color: t.muted, textTransform: "uppercase", letterSpacing: .7, fontWeight: 700 }}>{k.label}</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: k.color, lineHeight: 1.2 }}>{k.value}</div>
+            <div style={{ fontSize: 9, color: t.muted }}>{k.sub}</div>
+          </div>
+        ))}
       </div>
 
       {/* Barra de progresso */}

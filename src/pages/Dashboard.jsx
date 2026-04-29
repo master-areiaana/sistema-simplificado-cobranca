@@ -583,7 +583,7 @@ export default function Dashboard() {
         {/* DASHBOARD KPIs — só exibe na aba Carteira */}
         {activeTab === "carteira" && (
           <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 10 }}>Indicadores — Carteira Geral</div>
+
             {kpiFilter && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 11, color: t.p }}>
                 <span>🔍 Filtrando por indicador</span>
@@ -713,7 +713,7 @@ export default function Dashboard() {
 
             {/* 2. KPIs da aba */}
             <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }}>
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 10 }}>Indicadores — Histórico & Promessas</div>
+
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
                 <KPI t={t} label="Total Cobrados" color="#10b981" value={cobrados.length} sub="clientes contactados" />
                 <KPI t={t} label="Valor Cobrado" color="#10b981" value={fmtM(cobrados.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total em aberto" />

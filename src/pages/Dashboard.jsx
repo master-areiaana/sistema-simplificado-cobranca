@@ -106,12 +106,31 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const [titulos, evts] = await Promise.all([
-      base44.entities.Titulo.filter({ active: true }, "client_name", 2000),
-      base44.entities.ChargeEvent.list("-created_date", 2000)]
-      );
-      setRecords((titulos || []).map(dbToItem));
+        base44.entities.Titulo.filter({ active: true }, "client_name", 2000),
+        base44.entities.ChargeEvent.list("-created_date", 2000)
+      ]);
+
+      // ── DEDUPLICAÇÃO DEFENSIVA ──
+      // Se por qualquer razão existirem registros duplicados no banco com a mesma
+      // chave de cobrança (buildId), manter apenas o registro mais recente (updated_date).
+      // Isso garante que os KPIs nunca somem o mesmo título duas vezes.
+      const seenKeys = new Map();
+      for (const r of (titulos || [])) {
+        const key = buildId({
+          origem: r.source, nrCli: r.client_code, tp: r.doc_type,
+          ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
+        });
+        const existing = seenKeys.get(key);
+        if (!existing || (r.updated_date || r.created_date) > (existing.updated_date || existing.created_date)) {
+          seenKeys.set(key, r);
+        }
+      }
+      const titulosUnicos = Array.from(seenKeys.values());
+
+      setRecords(titulosUnicos.map(dbToItem));
       setEvents(evts || []);
-      setSyncMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${(titulos || []).length} títulos carregados`);
+      const dupCount = (titulos || []).length - titulosUnicos.length;
+      setSyncMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${titulosUnicos.length} títulos carregados${dupCount > 0 ? ` (${dupCount} duplicatas ignoradas)` : ""}`);
     } catch (err) {
       setSyncMsg(`❌ ${err.message}`);
     } finally {
@@ -353,29 +372,43 @@ export default function Dashboard() {
   async function syncImport(source, imported, fileName) {
     const existingAll = await base44.entities.Titulo.filter({ source }, "client_name", 2000);
 
-    // Mapear por CHAVE DE COBRANÇA (buildId), não pelo ID interno do banco
+    // ── Mapear por CHAVE DE COBRANÇA (buildId) ──
+    // Se houver duplicatas no banco com a mesma chave, manter o mais recente (pelo updated_date)
+    // para garantir que o upsert não cria novos registros quando já existe um.
     const existMap = new Map();
     for (const r of existingAll || []) {
       const cobrancaKey = buildId({
         origem: r.source, nrCli: r.client_code, tp: r.doc_type,
         ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
       });
-      existMap.set(cobrancaKey, r);
+      const prev = existMap.get(cobrancaKey);
+      // Manter o mais recente; se não há anterior, inserir
+      if (!prev || (r.updated_date || r.created_date) >= (prev.updated_date || prev.created_date)) {
+        existMap.set(cobrancaKey, r);
+      }
     }
 
-    // Chaves presentes na nova importação
+    // ── Chaves presentes na nova importação ──
     const importKeys = new Set(imported.map((i) => i.id)); // i.id já é buildId(...)
+
+    // ── Proteção contra baixa indevida por planilha parcial ──
+    // Só executar baixa automática se a importação trouxe pelo menos 50% do que havia
+    // OU se não há nenhum registro existente ainda (primeira importação).
+    const existCount = existMap.size;
+    const importCount = imported.length;
+    const isCarteirCompleta = existCount === 0 || (importCount >= existCount * 0.5);
+
     let ins = 0, upd = 0, deact = 0, baixados = 0;
     let valorBaixado = 0;
 
     const BATCH_UPSERT = 3;
-    const BATCH_BAIXA = 2; // baixa faz 2 chamadas por título (update + create event)
+    const BATCH_BAIXA = 2;
     const DELAY = 600;
 
-    // 1. Upsert: criar novos ou atualizar existentes
+    // 1. Upsert: criar novos ou atualizar existentes (preservando histórico)
     for (let i = 0; i < imported.length; i++) {
       const item = imported[i];
-      const old = existMap.get(item.id); // comparação por chave de cobrança
+      const old = existMap.get(item.id);
       const payload = {
         source: item.origem, client_code: item.nrCli, client_name: item.nomeCli,
         doc_type: item.tp || null, serie: item.ser || null, title_number: item.titulo,
@@ -384,7 +417,7 @@ export default function Dashboard() {
         original_value: Number(item.valorOriginal || 0),
         portador: item.portador || null, active: true,
         import_file: fileName,
-        // Preservar histórico de cobrança existente
+        // ── Preservar 100% do histórico de cobrança ──
         current_status: old?.current_status || "Não Contatado",
         current_motive: old?.current_motive || null,
         current_contact_type: old?.current_contact_type || null,
@@ -406,46 +439,46 @@ export default function Dashboard() {
       if ((i + 1) % BATCH_UPSERT === 0) await sleep(DELAY);
     }
 
-    // 2. Baixar títulos que saíram da nova importação (estavam ativos, não vieram mais)
+    // 2. Baixa automática — SOMENTE se a importação é uma carteira completa (≥ 50% do volume atual)
     let deactIdx = 0;
-    for (const r of existingAll || []) {
-      const cobrancaKey = buildId({
-        origem: r.source, nrCli: r.client_code, tp: r.doc_type,
-        ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
-      });
-      const jaFoiBaixado = ["Baixado", "Recebido", "Pago", "Encerrado"].includes(r.current_status);
-      if (!importKeys.has(cobrancaKey) && r.active && !jaFoiBaixado) {
-        const valorTit = Number(r.original_value || 0);
-        valorBaixado += valorTit;
-
-        // Marcar como baixado/recebido
-        await base44.entities.Titulo.update(r.id, {
-          active: false,
-          current_status: "Baixado",
-          current_motive: "Saiu da carteira em aberto — baixa automática por importação",
-          last_contact_date: hojeISO,
-          workflow_status: "baixado",
-          updated_by: "Importação"
+    if (isCarteirCompleta) {
+      for (const r of existingAll || []) {
+        const cobrancaKey = buildId({
+          origem: r.source, nrCli: r.client_code, tp: r.doc_type,
+          ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
         });
+        const jaFoiBaixado = ["Baixado", "Recebido", "Pago", "Encerrado"].includes(r.current_status);
+        if (!importKeys.has(cobrancaKey) && r.active && !jaFoiBaixado) {
+          const valorTit = Number(r.original_value || 0);
+          valorBaixado += valorTit;
 
-        // Registrar evento de baixa no histórico
-        await base44.entities.ChargeEvent.create({
-          titulo_id: r.id,
-          client_code: r.client_code,
-          client_name: r.client_name,
-          event_type: "BAIXA",
-          event_subtype: "SAIU_IMPORTACAO",
-          event_date: hojeISO,
-          status: "Baixado",
-          motive: "Título não presente na nova importação — presumido como recebido/baixado",
-          note: `Arquivo importado: ${fileName}. Valor original: R$ ${valorTit.toFixed(2).replace(".", ",")}`,
-          event_user: "Importação Automática"
-        });
+          await base44.entities.Titulo.update(r.id, {
+            active: false,
+            current_status: "Baixado",
+            current_motive: "Saiu da carteira em aberto — baixa automática por importação",
+            last_contact_date: hojeISO,
+            workflow_status: "baixado",
+            updated_by: "Importação"
+          });
 
-        deact++;
-        baixados++;
-        deactIdx++;
-        if (deactIdx % BATCH_BAIXA === 0) await sleep(DELAY);
+          await base44.entities.ChargeEvent.create({
+            titulo_id: r.id,
+            client_code: r.client_code,
+            client_name: r.client_name,
+            event_type: "BAIXA",
+            event_subtype: "SAIU_IMPORTACAO",
+            event_date: hojeISO,
+            status: "Baixado",
+            motive: "Título não presente na nova importação — presumido como recebido/baixado",
+            note: `Arquivo importado: ${fileName}. Valor original: R$ ${valorTit.toFixed(2).replace(".", ",")}`,
+            event_user: "Importação Automática"
+          });
+
+          deact++;
+          baixados++;
+          deactIdx++;
+          if (deactIdx % BATCH_BAIXA === 0) await sleep(DELAY);
+        }
       }
     }
 
@@ -453,7 +486,8 @@ export default function Dashboard() {
       file_name: fileName, source, total_read: imported.length,
       inserted_count: ins, updated_count: upd, deactivated_count: deact
     });
-    return { ins, upd, deact, baixados, valorBaixado };
+
+    return { ins, upd, deact, baixados, valorBaixado, isCarteirCompleta };
   }
 
   async function importarArquivo(e) {
@@ -590,7 +624,8 @@ export default function Dashboard() {
       }
       const r = await syncImport(source, imported, file.name);
       const baixaMsg = r?.baixados > 0 ? ` | ${r.baixados} baixados (${fmtM(r.valorBaixado)} lançado no Impacto no Caixa)` : "";
-      setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${r?.ins || 0} novos, ${r?.upd || 0} atualizados${baixaMsg}.` });
+      const parcialMsg = r?.isCarteirCompleta === false ? " ⚠️ Planilha parcial detectada — baixa automática não aplicada." : "";
+      setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${r?.ins || 0} novos, ${r?.upd || 0} atualizados${baixaMsg}${parcialMsg}` });
     }
     e.target.value = "";
     // CORREÇÃO: recarregar dados após importação para atualizar cards e tabela

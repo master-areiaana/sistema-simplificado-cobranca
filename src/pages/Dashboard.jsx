@@ -112,15 +112,12 @@ export default function Dashboard() {
       ]);
 
       // ── DEDUPLICAÇÃO DEFENSIVA ──
-      // Se por qualquer razão existirem registros duplicados no banco com a mesma
-      // chave de cobrança (buildId), manter apenas o registro mais recente (updated_date).
-      // Isso garante que os KPIs nunca somem o mesmo título duas vezes.
+      // Usar dbToItem para garantir que a chave seja gerada com os mesmos critérios de
+      // normalização (maiúsculas, sem zeros à esquerda, sem pontos, sem espaços).
       const seenKeys = new Map();
       for (const r of (titulos || [])) {
-        const key = buildId({
-          origem: r.source, nrCli: r.client_code, tp: r.doc_type,
-          ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
-        });
+        const asItem = dbToItem(r);
+        const key = asItem.id; // buildId já normalizado via dbToItem → buildItem → buildId
         const existing = seenKeys.get(key);
         if (!existing || (r.updated_date || r.created_date) > (existing.updated_date || existing.created_date)) {
           seenKeys.set(key, r);
@@ -416,10 +413,9 @@ export default function Dashboard() {
     // para garantir que o upsert não cria novos registros quando já existe um.
     const existMap = new Map();
     for (const r of existingAll || []) {
-      const cobrancaKey = buildId({
-        origem: r.source, nrCli: r.client_code, tp: r.doc_type,
-        ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
-      });
+      // Usar dbToItem para garantir que a chave seja gerada com os mesmos critérios de normalização
+      const asItem = dbToItem(r);
+      const cobrancaKey = asItem.id;
       const prev = existMap.get(cobrancaKey);
       // Manter o mais recente; se não há anterior, inserir
       if (!prev || (r.updated_date || r.created_date) >= (prev.updated_date || prev.created_date)) {
@@ -482,10 +478,8 @@ export default function Dashboard() {
     let deactIdx = 0;
     if (isCarteirCompleta) {
       for (const r of existingAll || []) {
-        const cobrancaKey = buildId({
-          origem: r.source, nrCli: r.client_code, tp: r.doc_type,
-          ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
-        });
+        const asItem2 = dbToItem(r);
+        const cobrancaKey = asItem2.id;
         const jaFoiBaixado = ["Baixado", "Recebido", "Pago", "Encerrado"].includes(r.current_status);
         if (!importKeys.has(cobrancaKey) && r.active && !jaFoiBaixado) {
           const valorTit = Number(r.original_value || 0);

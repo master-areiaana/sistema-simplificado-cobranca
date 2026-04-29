@@ -117,22 +117,44 @@ export function calcFin(valor, venc) {
   return { valorOriginal: orig, valorMulta: multa, valorJuros: juros, valorTotalDebito: orig + multa + juros, diasAtraso: dias };
 }
 
+// Normaliza um campo de chave: maiúsculas, sem espaços, sem pontos, sem zeros à esquerda numéricos
+function normKey(v) {
+  const s = String(v ?? "").trim().toUpperCase().replace(/\s+/g, "").replace(/\./g, "");
+  // Remove zeros à esquerda de campos que são puramente numéricos (ex: "001234" → "1234")
+  return s.replace(/^0+(\d+)$/, "$1");
+}
+
 export function buildId(b) {
-  return [b.origem || "", b.nrCli || "", b.tp || "", b.ser || "", b.titulo || "", b.seq || "", b.nfServico || ""].join("|").toUpperCase().replace(/\s+/g, "");
+  return [
+    normKey(b.origem),
+    normKey(b.nrCli),
+    normKey(b.tp),
+    normKey(b.ser),
+    normKey(b.titulo),
+    normKey(b.seq),
+    normKey(b.nfServico),
+  ].join("|");
 }
 
 export function buildItem(base) {
   const venc = dateISO(base.vencimento), fin = calcFin(base.valor, venc);
+  // Normalizar campos da chave da mesma forma que buildId para garantir consistência no banco
+  const nrCliNorm = String(base.nrCli || "").replace(/\./g, "").trim().replace(/^0+(\d+)$/, "$1");
+  const tituloNorm = String(base.titulo || "").trim().toUpperCase().replace(/^0+(\d+)$/, "$1");
+  const seqNorm = String(base.seq || "").trim().toUpperCase().replace(/^0+(\d+)$/, "$1");
+  const nfServicoNorm = String(base.nfServico || "").trim().toUpperCase().replace(/^0+(\d+)$/, "$1");
+  const tpNorm = String(base.tp || "").trim().toUpperCase();
+  const serNorm = String(base.ser || "").trim().toUpperCase();
   return {
-    id: buildId(base),
+    id: buildId({ ...base, nrCli: nrCliNorm, titulo: tituloNorm, seq: seqNorm, nfServico: nfServicoNorm, tp: tpNorm, ser: serNorm }),
     origem: base.origem || "FINR1253",
-    nrCli: String(base.nrCli || "").replace(/\./g, "").trim(),
+    nrCli: nrCliNorm,
     nomeCli: String(base.nomeCli || "").trim(),
-    titulo: String(base.titulo || "").trim(),
-    seq: String(base.seq || "").trim(),
-    nfServico: String(base.nfServico || "").trim(),
-    tp: String(base.tp || "").trim(),
-    ser: String(base.ser || "").trim(),
+    titulo: tituloNorm,
+    seq: seqNorm,
+    nfServico: nfServicoNorm,
+    tp: tpNorm,
+    ser: serNorm,
     emissao: dateISO(base.emissao),
     vencimento: venc,
     ...fin,
@@ -158,13 +180,25 @@ function rowTxt(row, max = 50) {
   return row.slice(0, max).map(v => String(v ?? "").trim()).filter(Boolean).join(" ").trim();
 }
 function getHMap(row) {
+  // normText já remove acentos, pontos e normaliza espaços → "NÚMERO" vira "NUMERO", "NF SERVIÇO" vira "NF SERVICO"
   const h = (row || []).map(c => normText(c));
-  const fi = al => h.findIndex(x => al.includes(x));
-  return { tp: fi(["TP"]), ser: fi(["SER"]), numero: fi(["NUMERO"]), seq: fi(["SEQ"]), nfServico: fi(["NF SERVICO"]), vencto: fi(["VENCTO"]), recebPrc: fi(["RECEB PRC", "RECEBPRC"]), portador: fi(["PORTADOR"]) };
+  const fi = al => h.findIndex(x => al.some(a => x === a || x.replace(/\s/g, "") === a.replace(/\s/g, "")));
+  return {
+    tp:       fi(["TP", "TIPO", "TPDOC", "TP DOC"]),
+    ser:      fi(["SER", "SERIE", "SER"]),
+    numero:   fi(["NUMERO", "NUM", "NR", "NDOC", "N DOC", "NUMERODOC"]),
+    seq:      fi(["SEQ", "SEQUENCIA", "SEQ"]),
+    nfServico:fi(["NF SERVICO", "NFSERVICO", "NF", "NFSERV", "NFDESERVICO"]),
+    vencto:   fi(["VENCTO", "VENCIMENTO", "DT VENC", "DTVENC", "DTVENCIMENTO"]),
+    recebPrc: fi(["RECEB PRC", "RECEBPRC", "VLRECEB", "VL RECEB", "VALOR", "VL", "RECEBERPRC"]),
+    portador: fi(["PORTADOR", "BANCO", "PORT"])
+  };
 }
 function isH1253(row) {
   const m = getHMap(row);
-  return m.numero >= 0 && m.seq >= 0 && m.vencto >= 0 && m.recebPrc >= 0;
+  // Exige número e vencimento; SEQ e RECEB PRC podem ter nomes variados — validar pelo menos 3 dos 4
+  const found = [m.numero >= 0, m.seq >= 0, m.vencto >= 0, m.recebPrc >= 0].filter(Boolean).length;
+  return m.numero >= 0 && m.vencto >= 0 && found >= 3;
 }
 function findCL(row) {
   for (const c of row || []) { const s = String(c ?? "").trim(); if (s.toUpperCase().includes("CLIENTE:")) return s; }

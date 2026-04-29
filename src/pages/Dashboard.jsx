@@ -348,13 +348,17 @@ export default function Dashboard() {
   }
 
   // ── IMPORTAÇÃO (corrigida: chama loadData após sync) ──
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
   async function syncImport(source, imported, fileName) {
     const existingAll = await base44.entities.Titulo.filter({ source }, "client_name", 2000);
     const existMap = new Map((existingAll || []).map((r) => [r.id || buildId({ origem: r.source, nrCli: r.client_code, tp: r.doc_type, ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico }), r]));
     const importIds = new Set(imported.map((i) => i.id));
     let ins = 0,upd = 0,deact = 0;
 
-    for (const item of imported) {
+    const BATCH = 5;
+    for (let i = 0; i < imported.length; i++) {
+      const item = imported[i];
       const old = existMap.get(item.id);
       const payload = {
         source: item.origem, client_code: item.nrCli, client_name: item.nomeCli,
@@ -382,14 +386,18 @@ export default function Dashboard() {
         await base44.entities.Titulo.create(payload);
         ins++;
       }
+      if ((i + 1) % BATCH === 0) await sleep(300);
     }
 
     // Desativar títulos removidos
+    let deactIdx = 0;
     for (const r of existingAll || []) {
       const rId = r.id || "";
       if (!importIds.has(rId) && r.active) {
         await base44.entities.Titulo.update(r.id, { active: false, updated_by: "Importação" });
         deact++;
+        deactIdx++;
+        if (deactIdx % BATCH === 0) await sleep(300);
       }
     }
 
@@ -421,7 +429,7 @@ export default function Dashboard() {
 
     if (isCobrCsv(cleanRows)) {
       // CSV de clientes cobrados: atualiza status dos títulos existentes
-      let atualizados = 0,naoEncontrados = 0;
+      let atualizados = 0,naoEncontrados = 0, csvIdx = 0;
       for (const row of cleanRows) {
         const nrCli = String(row["Nº"] || row["Nr"] || row["N"] || "").trim();
         const nomeCli = String(row["Cliente"] || "").trim();
@@ -464,6 +472,8 @@ export default function Dashboard() {
           }
           atualizados++;
         }
+        csvIdx++;
+        if (csvIdx % 5 === 0) await sleep(300);
       }
       setImportStatus({ ok: true, msg: `✅ CSV Cobrados importado — ${atualizados} títulos atualizados${naoEncontrados > 0 ? `, ${naoEncontrados} clientes não encontrados na carteira` : ""}.` });
       e.target.value = "";
@@ -475,7 +485,7 @@ export default function Dashboard() {
       // Cobrança do dia — atualiza eventos + status dos títulos
       const sourceRows = cleanRows.length ? cleanRows : rows;
       const uniq = uniqCobr(sourceRows);
-      let evtCount = 0,updCount = 0,naoEnc = 0;
+      let evtCount = 0,updCount = 0,naoEnc = 0,diaIdx = 0;
       for (const row of uniq) {
         const nomeN = normText(pick(row, ["Cliente"]) || "");
         const nrCliRow = String(pick(row, ["N", "Nº", "Nr", "N°"]) || "").replace(/\./g, "").trim();
@@ -514,6 +524,8 @@ export default function Dashboard() {
             updCount++;
           }
         }
+        diaIdx++;
+        if (diaIdx % 5 === 0) await sleep(300);
       }
       setImportStatus({ ok: true, msg: `✅ Cobrança do dia — ${uniq.length} clientes processados, ${evtCount} eventos, ${updCount} títulos atualizados${naoEnc > 0 ? `, ${naoEnc} não encontrados` : ""}.` });
     } else {

@@ -436,13 +436,15 @@ export default function Dashboard() {
     let ins = 0, upd = 0, deact = 0, baixados = 0;
     let valorBaixado = 0;
 
-    const BATCH_UPSERT = 3;
+    const DELAY = 1000;       // 1s entre batches de updates
+    const BATCH_UPDATE = 3;   // updates individuais: 3 por vez
+    const BULK_SIZE = 20;     // novos registros: bulkCreate de 20 por vez
     const BATCH_BAIXA = 2;
-    const DELAY = 600;
 
-    // 1. Upsert: criar novos ou atualizar existentes (preservando histórico)
-    for (let i = 0; i < imported.length; i++) {
-      const item = imported[i];
+    // Separar novos de existentes
+    const toCreate = [];
+    const toUpdate = [];
+    for (const item of imported) {
       const old = existMap.get(item.id);
       const payload = {
         source: item.origem, client_code: item.nrCli, client_name: item.nomeCli,
@@ -452,7 +454,6 @@ export default function Dashboard() {
         original_value: Number(item.valorOriginal || 0),
         portador: item.portador || null, active: true,
         import_file: fileName,
-        // ── Preservar 100% do histórico de cobrança ──
         current_status: old?.current_status || "Não Contatado",
         current_motive: old?.current_motive || null,
         current_contact_type: old?.current_contact_type || null,
@@ -464,14 +465,23 @@ export default function Dashboard() {
         workflow_status: old?.workflow_status || "normal",
         updated_by: "Importação"
       };
-      if (old) {
-        await base44.entities.Titulo.update(old.id, payload);
-        upd++;
-      } else {
-        await base44.entities.Titulo.create(payload);
-        ins++;
-      }
-      if ((i + 1) % BATCH_UPSERT === 0) await sleep(DELAY);
+      if (old) toUpdate.push({ dbId: old.id, payload });
+      else toCreate.push(payload);
+    }
+
+    // 1a. Novos registros: bulkCreate em lotes de BULK_SIZE (muito mais eficiente)
+    for (let i = 0; i < toCreate.length; i += BULK_SIZE) {
+      const chunk = toCreate.slice(i, i + BULK_SIZE);
+      await base44.entities.Titulo.bulkCreate(chunk);
+      ins += chunk.length;
+      if (i + BULK_SIZE < toCreate.length) await sleep(DELAY);
+    }
+
+    // 1b. Updates existentes: sequencial com throttle
+    for (let i = 0; i < toUpdate.length; i++) {
+      await base44.entities.Titulo.update(toUpdate[i].dbId, toUpdate[i].payload);
+      upd++;
+      if ((i + 1) % BATCH_UPDATE === 0) await sleep(DELAY);
     }
 
     // 2. Baixa automática — SOMENTE se a importação é uma carteira completa (≥ 50% do volume atual)
@@ -510,7 +520,7 @@ export default function Dashboard() {
           deact++;
           baixados++;
           deactIdx++;
-          if (deactIdx % BATCH_BAIXA === 0) await sleep(DELAY);
+          if (deactIdx % BATCH_BAIXA === 0) await sleep(1200);
         }
       }
     }

@@ -115,7 +115,13 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                 if (c.key === "qtd") return <th key="qtd" style={thS(t)}>QTD.</th>;
                 if (c.key === "multa") return <th key="multa" style={thS(t)}>MULTA</th>;
                 if (c.key === "juros") return <th key="juros" style={thS(t)}>JUROS</th>;
-                if (c.key === "sugest") return <th key="sugest" style={thS(t)}>SUGESTÃO</th>;
+                if (c.key === "sugest") {
+                  const sugestData = baseCart.map(g => {
+                    const s = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
+                    return { sugestaoLabel: s ? s.label : "(Sem sugestão)" };
+                  });
+                  return <CH key="sugest" label="SUGESTÃO" field="sugestaoLabel" data={sugestData} filters={fCart} setFilters={setFCart} />;
+                }
                 const fieldMap = { nrCli:"nrCli", nomeCli:"nomeCli", venc:"vencimento", atraso:"atrasoLabel", vOrig:"valorOriginal", total:"valorTotalDebito", status:"statusConsolidado", enc:"encaminharConsolidado", origem:"origem", contato:"ultimoContato", prom:"dataPromessa", obs:"obsConsolidada" };
                 const sortMap = { nrCli:"numero", nomeCli:"cliente", atraso:"atraso", vOrig:"valorOriginal", total:"valorTotalDebito" };
                 const field = fieldMap[c.key];

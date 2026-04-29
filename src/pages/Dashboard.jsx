@@ -195,6 +195,7 @@ export default function Dashboard() {
       case "origem": return [...new Set(g.titulos?.map(ti => ti.origem))].map(o => o === "FINR1253" ? "Topcon" : "EB").join(", ") || "(Vazio)";
       case "valorOriginal": return fmtM(g.valorOriginal);
       case "valorTotalDebito": return fmtM(g.valorTotalDebito);
+      case "sugestaoLabel": { const s = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito); return s ? s.label : "(Sem sugestão)"; }
       default: return "";
     }
   }
@@ -553,6 +554,7 @@ export default function Dashboard() {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button onClick={() => setIsDark(x => !x)} style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{isDark ? "☀️" : "🌙"}</button>
           <Btn t={t} sm onClick={() => setEmailModal(true)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📧 Enviar PDF</Btn>
+          <Btn t={t} sm onClick={() => exportarPDFExecutivo({ grouped, filteredCart: sortedCart, dash, faixaAtraso, filtroOrigem, hojeISO })} style={{ background: "#0369a1", border: "none", color: "#fff" }}>📊 Baixar Relatório</Btn>
           <Btn t={t} sm onClick={() => fileRef.current?.click()} style={{ background: t.p, border: "none", color: "#fff" }}>⬆️ Importar</Btn>
         </div>
       </header>

@@ -1,28 +1,15 @@
 import { FAIXAS_ATRASO } from "@/lib/cobranca";
 
 export default function FaixaFilter({ faixaAtual, setFaixa, t }) {
+  const inp = { background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" };
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-      <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, marginRight: 4 }}>Atraso:</span>
-      {FAIXAS_ATRASO.map(f => (
-        <button
-          key={f.value}
-          onClick={() => setFaixa(f.value)}
-          style={{
-            background: faixaAtual === f.value ? t.p : t.surf2,
-            color: faixaAtual === f.value ? "#fff" : t.muted,
-            border: `1px solid ${faixaAtual === f.value ? t.p : t.bor}`,
-            borderRadius: 20,
-            padding: "3px 12px",
-            fontSize: 11,
-            fontWeight: 700,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {f.label}
-        </button>
-      ))}
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Atraso:</span>
+      <select value={faixaAtual} onChange={e => setFaixa(Number(e.target.value))} style={inp}>
+        {FAIXAS_ATRASO.map(f => (
+          <option key={f.value} value={f.value}>{f.label}</option>
+        ))}
+      </select>
     </div>
   );
 }

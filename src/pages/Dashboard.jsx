@@ -18,11 +18,11 @@ import MonitorPromessas from "@/components/cobranca/MonitorPromessas";
 import exportarPDFExecutivo from "@/components/cobranca/ExportPDF";
 import PainelProdutividade from "@/components/cobranca/PainelProdutividade";
 import ModalNegociacao from "@/components/cobranca/ModalNegociacao";
-import PainelGitHub from "@/components/cobranca/PainelGitHub";
 import PainelNotificacoes from "@/components/cobranca/PainelNotificacoes";
 import PrevisaoFluxo from "@/components/cobranca/PrevisaoFluxo";
-import PainelSupabase from "@/components/cobranca/PainelSupabase";
 import AnalyticsDashboard from "@/components/cobranca/AnalyticsDashboard";
+import PainelMetas from "@/components/cobranca/PainelMetas";
+import ModalEnviarPDF from "@/components/cobranca/ModalEnviarPDF";
 
 const LOCAL_THEME = "sc_theme";
 const LOCAL_TAB = "sc_tab";
@@ -73,6 +73,7 @@ export default function Dashboard() {
   const [respModal, setRespModal] = useState(null);
   const [respForm, setRespForm] = useState({ responsavel: "", resposta: "", obs: "" });
   const [negModal, setNegModal] = useState(null);
+  const [emailModal, setEmailModal] = useState(false);
 
   const emptyForm = () => ({ status: "", encaminhar: "", tipo: "", solicitante: "", dataPromessa: "", obs: "" });
   const [form, setForm] = useState(emptyForm());
@@ -510,7 +511,7 @@ export default function Dashboard() {
         <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 4, color: t.txt }}>SISTEMA DE COBRANÇA</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button onClick={() => setIsDark(x => !x)} style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{isDark ? "☀️" : "🌙"}</button>
-          <Btn t={t} sm onClick={() => exportarPDFExecutivo({ grouped, filteredCart: sortedCart, dash, faixaAtraso, filtroOrigem, hojeISO })} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📄 PDF</Btn>
+          <Btn t={t} sm onClick={() => setEmailModal(true)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📧 Enviar PDF</Btn>
           <Btn t={t} sm onClick={() => fileRef.current?.click()} style={{ background: t.p, border: "none", color: "#fff" }}>⬆️ Importar</Btn>
         </div>
       </header>
@@ -532,13 +533,10 @@ export default function Dashboard() {
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Cobrados</TabBtn>
           <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Verificar Pagamento</TabBtn>
           <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Protesto</TabBtn>
-          <TabBtn t={t} active={activeTab === "promessas"} onClick={() => setActiveTab("promessas")}>📅 Promessas</TabBtn>
-          <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade</TabBtn>
-          <TabBtn t={t} active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")}>📊 Analytics</TabBtn>
-          <TabBtn t={t} active={activeTab === "notificacoes"} onClick={() => setActiveTab("notificacoes")} badge={notifCount} badgeColor="#ef4444">🔔 Notificações</TabBtn>
+          <TabBtn t={t} active={activeTab === "promessas"} onClick={() => setActiveTab("promessas")} badge={notifCount} badgeColor="#ef4444">📅 Promessas & Alertas</TabBtn>
+          <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade & Analytics</TabBtn>
+          <TabBtn t={t} active={activeTab === "metas"} onClick={() => setActiveTab("metas")}>🎯 Metas</TabBtn>
           <TabBtn t={t} active={activeTab === "fluxo"} onClick={() => setActiveTab("fluxo")}>📈 Fluxo de Caixa</TabBtn>
-          <TabBtn t={t} active={activeTab === "github"} onClick={() => setActiveTab("github")}>🐙 GitHub Issues</TabBtn>
-          <TabBtn t={t} active={activeTab === "supabase"} onClick={() => setActiveTab("supabase")}>🗄️ Supabase</TabBtn>
         </div>
 
         {/* DASHBOARD KPIs */}
@@ -562,11 +560,16 @@ export default function Dashboard() {
         {/* FILTROS GLOBAIS */}
         <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
           <FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} />
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span>
-            {[{ label: "Todos", value: "" }, { label: "Topcon (FINR1253)", value: "FINR1253" }, { label: "EB (RPT_7007)", value: "RPT_7007_CONS_CAR_EB" }].map(op => (
-              <button key={op.value} onClick={() => setFiltroOrigem(op.value)} style={{ background: filtroOrigem === op.value ? t.p : t.surf2, color: filtroOrigem === op.value ? "#fff" : t.muted, border: `1px solid ${filtroOrigem === op.value ? t.p : t.bor}`, borderRadius: 20, padding: "3px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{op.label}</button>
-            ))}
+            <select value={filtroOrigem} onChange={e => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}>
+              <option value="">Todos</option>
+              <option value="FINR1253">Topcon (FINR1253)</option>
+              <option value="RPT_7007_CONS_CAR_EB">EB (RPT_7007)</option>
+            </select>
+          </div>
+          <div style={{ marginLeft: "auto", fontSize: 11, color: t.muted }}>
+            <b style={{ color: t.txt }}>{sortedCart.length}</b> clientes na visão atual
           </div>
         </div>
 
@@ -705,30 +708,31 @@ export default function Dashboard() {
             </div>
           </>
         )}
-        {/* ═══ PROMESSAS ═══ */}
+        {/* ═══ PROMESSAS & ALERTAS ═══ */}
         {activeTab === "promessas" && (
-          <MonitorPromessas grouped={grouped} t={t} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <MonitorPromessas grouped={grouped} t={t} />
+            <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>🔔 Central de Notificações</div>
+              <PainelNotificacoes grouped={grouped} events={events} t={t} />
+            </div>
+          </div>
         )}
 
-        {/* ═══ PRODUTIVIDADE ═══ */}
+        {/* ═══ PRODUTIVIDADE & ANALYTICS ═══ */}
         {activeTab === "produtividade" && (
-          <PainelProdutividade events={events} t={t} />
-        )}
-
-        {/* ═══ ANALYTICS ═══ */}
-        {activeTab === "analytics" && (
-          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📊 Analytics & Exportação</div>
-            <AnalyticsDashboard grouped={grouped} events={events} t={t} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <PainelProdutividade events={events} t={t} />
+            <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📊 Analytics & Exportação</div>
+              <AnalyticsDashboard grouped={grouped} events={events} t={t} />
+            </div>
           </div>
         )}
 
-        {/* ═══ NOTIFICAÇÕES ═══ */}
-        {activeTab === "notificacoes" && (
-          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>🔔 Central de Notificações</div>
-            <PainelNotificacoes grouped={grouped} events={events} t={t} />
-          </div>
+        {/* ═══ METAS ═══ */}
+        {activeTab === "metas" && (
+          <PainelMetas grouped={grouped} events={events} t={t} />
         )}
 
         {/* ═══ FLUXO DE CAIXA ═══ */}
@@ -736,20 +740,6 @@ export default function Dashboard() {
           <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📈 Previsão de Fluxo de Caixa</div>
             <PrevisaoFluxo grouped={grouped} t={t} />
-          </div>
-        )}
-
-        {/* ═══ GITHUB ISSUES ═══ */}
-        {activeTab === "github" && (
-          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
-            <PainelGitHub t={t} />
-          </div>
-        )}
-
-        {/* ═══ SUPABASE ═══ */}
-        {activeTab === "supabase" && (
-          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
-            <PainelSupabase t={t} />
           </div>
         )}
       </main>
@@ -774,6 +764,13 @@ export default function Dashboard() {
       <ModalResposta respModal={respModal} respForm={respForm} setRespForm={setRespForm} onSave={salvarResposta} onClose={() => setRespModal(null)} t={t} isDark={isDark} />
       <ModalHistorico histModal={histModal} onClose={() => setHistModal(null)} t={t} />
       {negModal && <ModalNegociacao grupo={negModal} onClose={() => setNegModal(null)} t={t} isDark={isDark} />}
+      {emailModal && (
+        <ModalEnviarPDF
+          grouped={grouped} filteredCart={sortedCart} dash={dash}
+          faixaAtraso={faixaAtraso} filtroOrigem={filtroOrigem} hojeISO={hojeISO}
+          t={t} onClose={() => setEmailModal(false)}
+        />
+      )}
     </div>
   );
 }

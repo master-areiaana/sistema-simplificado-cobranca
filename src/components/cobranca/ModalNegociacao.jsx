@@ -1,6 +1,9 @@
 import { useState, useMemo } from "react";
 import { fmtM, fmtD, hojeISO } from "@/lib/cobranca";
 import { Btn, Inp, Sl, Lbl } from "./UI";
+import ModalAprovacaoDesconto from "./ModalAprovacaoDesconto";
+
+const LIMITE_DESCONTO_APROVACAO = 15; // % acima disso requer aprovação do gestor
 
 const TAXA_JUROS_MENSAL = 0.01; // 1% ao mês
 const TAXA_MULTA = 0.02;        // 2%
@@ -124,6 +127,7 @@ export default function ModalNegociacao({ grupo, onClose, t, isDark }) {
   const [jurosAd, setJurosAd] = useState(0);
   const [responsavel, setResponsavel] = useState("");
   const [obs, setObs] = useState("");
+  const [aprovacaoModal, setAprovacaoModal] = useState(null);
 
   const totalOriginal = grupo.valorTotalDebito;
   const descontoVal = totalOriginal * (Number(desconto) / 100);
@@ -259,21 +263,46 @@ export default function ModalNegociacao({ grupo, onClose, t, isDark }) {
             </div>
           </div>
 
+          {/* Aviso de aprovação */}
+          {desconto >= LIMITE_DESCONTO_APROVACAO && (
+            <div style={{ background: "#fef3c7", border: "2px solid #f59e0b", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 11, color: "#92400e", display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 16 }}>⚠️</span>
+              <span>Desconto de <b>{desconto}%</b> está acima do limite de <b>{LIMITE_DESCONTO_APROVACAO}%</b>. Ao gerar o termo, será solicitada a <b>aprovação do gestor</b>.</span>
+            </div>
+          )}
+
           {/* Ações */}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
             <Btn t={t} ghost onClick={onClose}>Cancelar</Btn>
             <button
               onClick={() => {
                 if (!responsavel.trim()) { alert("Informe o responsável pela negociação."); return; }
-                gerarTermoPDF({ grupo, parcelas, entrada: entradaVal, desconto, responsavel, obs });
+                if (desconto >= LIMITE_DESCONTO_APROVACAO) {
+                  setAprovacaoModal({ grupo, desconto, valorOriginal: totalOriginal, valorComDesconto: totalFinal, parcelas: numParcelas, solicitante: responsavel });
+                } else {
+                  gerarTermoPDF({ grupo, parcelas, entrada: entradaVal, desconto, responsavel, obs });
+                }
               }}
               style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}
             >
-              📄 Gerar Termo de Acordo (PDF)
+              {desconto >= LIMITE_DESCONTO_APROVACAO ? "⚠️ Solicitar Aprovação" : "📄 Gerar Termo de Acordo (PDF)"}
             </button>
           </div>
         </div>
       </div>
+
+      {aprovacaoModal && (
+        <ModalAprovacaoDesconto
+          solicitacao={aprovacaoModal}
+          onClose={() => setAprovacaoModal(null)}
+          onAprovado={(gestor) => {
+            setAprovacaoModal(null);
+            gerarTermoPDF({ grupo, parcelas, entrada: entradaVal, desconto, responsavel: `${responsavel} (Aprovado por: ${gestor})`, obs });
+          }}
+          onReprovado={() => setAprovacaoModal(null)}
+          t={t} isDark={isDark}
+        />
+      )}
     </div>
   );
 }

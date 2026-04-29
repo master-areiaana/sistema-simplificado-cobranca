@@ -52,10 +52,6 @@ export default function TabelaCobrados({ data, t, setHistModal, dlCsv }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <Btn t={t} ghost sm onClick={() => dlCsv("cobrados.csv", [
-            ["Nº","Cliente","Qtd.","Total","Status","Encaminhar","Contato","Promessa","Observação"],
-            ...filtered.map(g => [g.nrCli,g.nomeCli,g.qtdTitulos,Number(g.valorTotalDebito).toFixed(2).replace(".",","),g.statusConsolidado,g.encaminharConsolidado||"—",fmtD(g.ultimoContato),fmtD(g.dataPromessa),g.obsConsolidada||"—"])
-          ])}>⬇️ CSV</Btn>
           {hasFilter && (
             <button onClick={() => setFilters({})} style={{ background: "none", border: `1px solid #ef4444`, color: "#ef4444", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕ Limpar filtros</button>
           )}

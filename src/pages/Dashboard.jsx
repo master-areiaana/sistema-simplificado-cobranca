@@ -590,7 +590,7 @@ export default function Dashboard() {
                 <button onClick={() => setKpiFilter(null)} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
               </div>
             )}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
               <KPI t={t} label="Total em Aberto" color={t.p} value={fmtM(dash.vTot)} sub="com multa/juros" />
               <KPI t={t} label="A Cobrar" color="#ef4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => setKpiFilter(p => p === "aCobrar" ? null : "aCobrar")} active={kpiFilter === "aCobrar"} />
               <KPI t={t} label="Cobrado" color="#10b981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => setKpiFilter(p => p === "cobrado" ? null : "cobrado")} active={kpiFilter === "cobrado"} />
@@ -714,7 +714,7 @@ export default function Dashboard() {
             {/* 2. KPIs da aba */}
             <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }}>
               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 10 }}>Indicadores — Histórico & Promessas</div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
                 <KPI t={t} label="Total Cobrados" color="#10b981" value={cobrados.length} sub="clientes contactados" />
                 <KPI t={t} label="Valor Cobrado" color="#10b981" value={fmtM(cobrados.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total em aberto" />
                 <KPI t={t} label="Com Promessa" color="#f59e0b" value={cobrados.filter(g => g.dataPromessa).length} sub="clientes com data" />

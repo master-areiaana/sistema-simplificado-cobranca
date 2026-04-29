@@ -25,31 +25,31 @@ export function Lbl({ children, t }) {
 }
 
 export function KPI({ label, value, sub, color, t, onClick, active }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        background: active ? color + "18" : t.card,
-        borderRadius: 10,
-        padding: "16px 20px",
-        border: `1px solid ${active ? color : t.bor}`,
-        borderLeft: `4px solid ${color}`,
-        flex: "1 1 160px",
-        minWidth: 150,
-        maxWidth: 230,
-        boxShadow: active ? `0 0 0 2px ${color}44` : t.shad,
-        boxSizing: "border-box",
-        cursor: onClick ? "pointer" : "default",
-        transition: "all .15s",
-        display: "flex",
-        flexDirection: "column",
-        gap: 5
-      }} className=" hidden hidden hidden hidden">
-      
-      <div style={{ fontSize: 10, color: t.muted, textTransform: "uppercase", letterSpacing: .7, fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: active ? color : t.txt, lineHeight: 1.2, wordBreak: "break-word" }}>{value}</div>
-      {sub && <div style={{ fontSize: 10, color: t.muted }}>{sub}</div>}
-    </div>);
+  return null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 }
 

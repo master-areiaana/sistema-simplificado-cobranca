@@ -71,6 +71,7 @@ export default function Dashboard() {
   const [syncMsg, setSyncMsg] = useState("");
   const [importStatus, setImportStatus] = useState(null);
   const [activeTab, setActiveTab] = useState(() => loadL(LOCAL_TAB, "carteira"));
+  const [subTabProd, setSubTabProd] = useState("produtividade");
 
   const [modal, setModal] = useState(null);
   const [histModal, setHistModal] = useState(null);
@@ -573,34 +574,34 @@ export default function Dashboard() {
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico / Promessas</TabBtn>
           <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Conferência de Pagamento</TabBtn>
           <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Aprovação do Gestor</TabBtn>
-          <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade da Cobrança</TabBtn>
-          <TabBtn t={t} active={activeTab === "metas"} onClick={() => setActiveTab("metas")}>🎯 Metas de Cobrança</TabBtn>
+          <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade / Metas</TabBtn>
           <TabBtn t={t} active={activeTab === "fluxo"} onClick={() => setActiveTab("fluxo")}>📈 Impacto no Caixa</TabBtn>
         </div>
 
-        {/* DASHBOARD KPIs */}
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 10 }}>Indicadores</div>
-          {kpiFilter && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 11, color: t.p }}>
-              <span>🔍 Filtrando por indicador</span>
-              <button onClick={() => setKpiFilter(null)} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
+        {/* DASHBOARD KPIs — só exibe na aba Carteira */}
+        {activeTab === "carteira" && (
+          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 10 }}>Indicadores — Carteira Geral</div>
+            {kpiFilter && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 11, color: t.p }}>
+                <span>🔍 Filtrando por indicador</span>
+                <button onClick={() => setKpiFilter(null)} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <KPI t={t} label="Total em Aberto" color={t.p} value={fmtM(dash.vTot)} sub="com multa/juros" />
+              <KPI t={t} label="A Cobrar" color="#ef4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => setKpiFilter(p => p === "aCobrar" ? null : "aCobrar")} active={kpiFilter === "aCobrar"} />
+              <KPI t={t} label="Cobrado" color="#10b981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => setKpiFilter(p => p === "cobrado" ? null : "cobrado")} active={kpiFilter === "cobrado"} />
+              <KPI t={t} label="Cobrados Hoje" color="#f59e0b" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} onClick={() => setKpiFilter(p => p === "cobHoje" ? null : "cobHoje")} active={kpiFilter === "cobHoje"} />
+              <KPI t={t} label="Faltam Cobrar" color="#ef4444" value={dash.faltando} sub="sem contato hoje" onClick={() => setKpiFilter(p => p === "faltando" ? null : "faltando")} active={kpiFilter === "faltando"} />
+              <KPI t={t} label="Nº Clientes" color="#555" value={dash.numCli} sub="ativos" />
+              <KPI t={t} label="Nº Títulos" color="#888" value={dash.numTit} sub="ativos" />
+              <KPI t={t} label="Val. Original" color="#10b981" value={fmtM(dash.vOrig)} sub="sem multa/juros" />
+              <KPI t={t} label="Verif. Pendentes" color="#3b82f6" value={dash.pendVerif} sub="aguard. resposta" onClick={() => setKpiFilter(p => p === "pendVerif" ? null : "pendVerif")} active={kpiFilter === "pendVerif"} />
+              <KPI t={t} label="Protesto Pendentes" color="#ef4444" value={dash.pendProt} sub="aguard. aprovação" onClick={() => setKpiFilter(p => p === "pendProt" ? null : "pendProt")} active={kpiFilter === "pendProt"} />
             </div>
-          )}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <KPI t={t} label="Total em Aberto" color={t.p} value={fmtM(dash.vTot)} sub="com multa/juros" />
-            <KPI t={t} label="A Cobrar" color="#ef4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "aCobrar" ? null : "aCobrar"); }} active={kpiFilter === "aCobrar"} />
-            <KPI t={t} label="Cobrado" color="#10b981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "cobrado" ? null : "cobrado"); }} active={kpiFilter === "cobrado"} />
-            <KPI t={t} label="Recuperado no Mês" color="#7c3aed" value={fmtM(dash.recuperadoMes)} sub={hojeISO.slice(0, 7)} />
-            <KPI t={t} label="Cobrados hoje" color="#f59e0b" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "cobHoje" ? null : "cobHoje"); }} active={kpiFilter === "cobHoje"} />
-            <KPI t={t} label="Faltam cobrar" color="#ef4444" value={dash.faltando} sub="sem contato hoje" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "faltando" ? null : "faltando"); }} active={kpiFilter === "faltando"} />
-            <KPI t={t} label="Nº Clientes" color="#555" value={dash.numCli} sub="ativos" />
-            <KPI t={t} label="Nº Títulos" color="#888" value={dash.numTit} sub="ativos" />
-            <KPI t={t} label="Val. Original" color="#10b981" value={fmtM(dash.vOrig)} sub="sem multa/juros" />
-            <KPI t={t} label="Verif. Pendentes" color="#3b82f6" value={dash.pendVerif} sub="aguard. resposta" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "pendVerif" ? null : "pendVerif"); }} active={kpiFilter === "pendVerif"} />
-            <KPI t={t} label="Protesto Pendentes" color="#ef4444" value={dash.pendProt} sub="aguard. aprovação" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "pendProt" ? null : "pendProt"); }} active={kpiFilter === "pendProt"} />
           </div>
-        </div>
+        )}
 
         {/* FILTROS GLOBAIS */}
         <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
@@ -747,20 +748,27 @@ export default function Dashboard() {
         )}
 
 
-        {/* ═══ PRODUTIVIDADE & ANALYTICS ═══ */}
+        {/* ═══ PRODUTIVIDADE / METAS (unificada) ═══ */}
         {activeTab === "produtividade" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <PainelProdutividade events={events} t={t} />
-            <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📊 Analytics & Exportação</div>
-              <AnalyticsDashboard grouped={grouped} events={events} t={t} />
+            {/* Sub-abas internas */}
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => setSubTabProd("produtividade")} style={{ background: subTabProd === "produtividade" ? t.p : t.surf2, color: subTabProd === "produtividade" ? "#fff" : t.txt, border: `1px solid ${subTabProd === "produtividade" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>👥 Produtividade da Cobrança</button>
+              <button onClick={() => setSubTabProd("metas")} style={{ background: subTabProd === "metas" ? t.p : t.surf2, color: subTabProd === "metas" ? "#fff" : t.txt, border: `1px solid ${subTabProd === "metas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>🎯 Metas de Cobrança</button>
             </div>
+            {subTabProd === "produtividade" && (
+              <>
+                <PainelProdutividade events={events} t={t} />
+                <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📊 Analytics & Exportação</div>
+                  <AnalyticsDashboard grouped={grouped} events={events} t={t} />
+                </div>
+              </>
+            )}
+            {subTabProd === "metas" && (
+              <PainelMetas grouped={grouped} events={events} t={t} />
+            )}
           </div>
-        )}
-
-        {/* ═══ METAS ═══ */}
-        {activeTab === "metas" && (
-          <PainelMetas grouped={grouped} events={events} t={t} />
         )}
 
         {/* ═══ FLUXO DE CAIXA ═══ */}

@@ -791,6 +791,22 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* KPIs Verificação */}
+        {activeTab === "verificacao" && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginBottom: 14 }}>
+            <KPI t={t} label="Pendentes de Verificação" color="#3b82f6" value={verifLista.length} sub="aguardando resposta" />
+            <KPI t={t} label="Valor em Verificação" color="#3b82f6" value={fmtM(verifLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a validar" />
+          </div>
+        )}
+
+        {/* KPIs Protesto */}
+        {activeTab === "protesto" && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginBottom: 14 }}>
+            <KPI t={t} label="Pendentes de Aprovação" color="#ef4444" value={protestoLista.length} sub="aguardando gestor" />
+            <KPI t={t} label="Valor em Protesto" color="#ef4444" value={fmtM(protestoLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a autorizar" />
+          </div>
+        )}
+
         
 
 

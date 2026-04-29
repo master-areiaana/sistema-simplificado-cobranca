@@ -1,5 +1,6 @@
 import { fmtD, fmtM, promAlerta, prioCor, promessaClassif } from "@/lib/cobranca";
 import { useState } from "react";
+import { fmtD, promAlerta, prioCor, promessaClassif } from "@/lib/cobranca";
 
 export function Btn({ children, onClick, ghost = false, sm = false, style = {}, t, color }) {
   const bg = color || (ghost ? "transparent" : t.p);

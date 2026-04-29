@@ -18,6 +18,10 @@ import MonitorPromessas from "@/components/cobranca/MonitorPromessas";
 import exportarPDFExecutivo from "@/components/cobranca/ExportPDF";
 import PainelProdutividade from "@/components/cobranca/PainelProdutividade";
 import ModalNegociacao from "@/components/cobranca/ModalNegociacao";
+import PainelGitHub from "@/components/cobranca/PainelGitHub";
+import PainelNotificacoes from "@/components/cobranca/PainelNotificacoes";
+import PrevisaoFluxo from "@/components/cobranca/PrevisaoFluxo";
+import PainelSupabase from "@/components/cobranca/PainelSupabase";
 
 const LOCAL_THEME = "sc_theme";
 const LOCAL_TAB = "sc_tab";
@@ -61,6 +65,18 @@ export default function Dashboard() {
   const [respModal, setRespModal] = useState(null);
   const [respForm, setRespForm] = useState({ responsavel: "", resposta: "", obs: "" });
   const [negModal, setNegModal] = useState(null);
+
+  // Contagem de notificações urgentes para badge
+  const notifCount = useMemo(() => {
+    let count = 0;
+    const hoje = new Date().toISOString().slice(0, 10);
+    const amanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    for (const g of grouped) {
+      if (g.dataPromessa && (g.dataPromessa === hoje || g.dataPromessa === amanha) && g.statusConsolidado !== "Encerrado") count++;
+      if ((g.maiorAtraso || 0) > 30 && !g.foiCobrado) count++;
+    }
+    return count;
+  }, [grouped]);
 
   const emptyForm = () => ({ status: "", encaminhar: "", tipo: "", solicitante: "", dataPromessa: "", obs: "" });
   const [form, setForm] = useState(emptyForm());
@@ -444,6 +460,10 @@ export default function Dashboard() {
           <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Protesto</TabBtn>
           <TabBtn t={t} active={activeTab === "promessas"} onClick={() => setActiveTab("promessas")}>📅 Promessas</TabBtn>
           <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade</TabBtn>
+          <TabBtn t={t} active={activeTab === "notificacoes"} onClick={() => setActiveTab("notificacoes")} badge={notifCount} badgeColor="#ef4444">🔔 Notificações</TabBtn>
+          <TabBtn t={t} active={activeTab === "fluxo"} onClick={() => setActiveTab("fluxo")}>📈 Fluxo de Caixa</TabBtn>
+          <TabBtn t={t} active={activeTab === "github"} onClick={() => setActiveTab("github")}>🐙 GitHub Issues</TabBtn>
+          <TabBtn t={t} active={activeTab === "supabase"} onClick={() => setActiveTab("supabase")}>🗄️ Supabase</TabBtn>
         </div>
 
         {/* DASHBOARD KPIs */}
@@ -618,6 +638,36 @@ export default function Dashboard() {
         {/* ═══ PRODUTIVIDADE ═══ */}
         {activeTab === "produtividade" && (
           <PainelProdutividade events={events} t={t} />
+        )}
+
+        {/* ═══ NOTIFICAÇÕES ═══ */}
+        {activeTab === "notificacoes" && (
+          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>🔔 Central de Notificações</div>
+            <PainelNotificacoes grouped={grouped} events={events} t={t} />
+          </div>
+        )}
+
+        {/* ═══ FLUXO DE CAIXA ═══ */}
+        {activeTab === "fluxo" && (
+          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📈 Previsão de Fluxo de Caixa</div>
+            <PrevisaoFluxo grouped={grouped} t={t} />
+          </div>
+        )}
+
+        {/* ═══ GITHUB ISSUES ═══ */}
+        {activeTab === "github" && (
+          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
+            <PainelGitHub t={t} />
+          </div>
+        )}
+
+        {/* ═══ SUPABASE ═══ */}
+        {activeTab === "supabase" && (
+          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
+            <PainelSupabase t={t} />
+          </div>
         )}
       </main>
 

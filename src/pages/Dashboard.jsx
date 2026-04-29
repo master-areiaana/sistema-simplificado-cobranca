@@ -100,6 +100,7 @@ export default function Dashboard() {
   const [fVerif, setFVerif] = useState({});
   const [fProt, setFProt] = useState({});
   const [kpiFilter, setKpiFilter] = useState(null); // "aCobrar" | "cobrado" | "cobHoje" | "faltando" | "pendVerif" | "pendProt" | null
+  const [cleanupMsg, setCleanupMsg] = useState(null);
 
   // ── Carregar dados do Base44 ──
   const loadData = useCallback(async () => {
@@ -366,7 +367,45 @@ export default function Dashboard() {
     await loadData();
   }
 
-  // ── IMPORTAÇÃO (corrigida: chama loadData após sync) ──
+  // ── LIMPEZA DE DUPLICATAS NO BANCO ──
+  // Remove fisicamente registros duplicados, mantendo apenas o mais recente por buildId.
+  // Seguro: nunca apaga ChargeEvents, apenas Titulos duplicados (active=true ou false).
+  async function limparDuplicatasBanco() {
+    setCleanupMsg("⏳ Verificando duplicatas no banco...");
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const allTitulos = await base44.entities.Titulo.list("client_name", 5000);
+    const byKey = new Map();
+    for (const r of (allTitulos || [])) {
+      const key = buildId({
+        origem: r.source, nrCli: r.client_code, tp: r.doc_type,
+        ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
+      });
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(r);
+    }
+    let removed = 0;
+    let idx = 0;
+    for (const [, group] of byKey) {
+      if (group.length <= 1) continue;
+      // Ordenar: manter o mais recente (maior updated_date ou created_date)
+      group.sort((a, b) => {
+        const da = a.updated_date || a.created_date || "";
+        const db2 = b.updated_date || b.created_date || "";
+        return db2.localeCompare(da);
+      });
+      // Deletar todos exceto o primeiro (mais recente)
+      for (let i = 1; i < group.length; i++) {
+        await base44.entities.Titulo.delete(group[i].id);
+        removed++;
+        idx++;
+        if (idx % 3 === 0) await sleep(600);
+      }
+    }
+    setCleanupMsg(removed > 0 ? `✅ ${removed} duplicata(s) removida(s) do banco.` : "✅ Nenhuma duplicata encontrada no banco.");
+    if (removed > 0) await loadData();
+  }
+
+  // ── IMPORTAÇÃO ──
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   async function syncImport(source, imported, fileName) {
@@ -654,6 +693,7 @@ export default function Dashboard() {
           <button onClick={() => setIsDark((x) => !x)} style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{isDark ? "☀️" : "🌙"}</button>
           <Btn t={t} sm onClick={() => setEmailModal(true)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📧 Enviar PDF</Btn>
           <Btn t={t} sm onClick={() => exportarPDFExecutivo({ grouped, filteredCart: sortedCart, dash, faixaAtraso, filtroOrigem, hojeISO })} style={{ background: "#0369a1", border: "none", color: "#fff" }}>📊 Baixar Relatório</Btn>
+          <Btn t={t} sm onClick={() => { if (window.confirm("Isso vai remover duplicatas físicas do banco, mantendo apenas o registro mais recente por título. Confirmar?")) limparDuplicatasBanco(); }} style={{ background: "#64748b", border: "none", color: "#fff" }} title="Remover duplicatas do banco">🧹 Limpar BD</Btn>
           <Btn t={t} sm onClick={() => fileRef.current?.click()} style={{ background: t.p, border: "none", color: "#fff" }}>⬆️ Importar</Btn>
         </div>
       </header>
@@ -664,6 +704,13 @@ export default function Dashboard() {
         <div style={{ background: importStatus.ok ? isDark ? "#052e16" : "#f0fdf4" : isDark ? "#2d0a0a" : "#fef2f2", border: `1px solid ${importStatus.ok ? "#16a34a" : "#dc2626"}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: importStatus.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span>{importStatus.msg}</span>
             <button onClick={() => setImportStatus(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button>
+          </div>
+        }
+        {/* Status limpeza de duplicatas */}
+        {cleanupMsg &&
+        <div style={{ background: isDark ? "#0c1a2e" : "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#3b82f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>{cleanupMsg}</span>
+            <button onClick={() => setCleanupMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button>
           </div>
         }
 

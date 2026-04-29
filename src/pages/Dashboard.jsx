@@ -991,6 +991,14 @@ export default function Dashboard() {
         {/* ═══ PRODUTIVIDADE / METAS (unificada) ═══ */}
         {activeTab === "produtividade" &&
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* KPIs Produtividade */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+              <KPI t={t} label="Total de Contatos" color="#3b82f6" value={events.filter(e => e.event_type === "COBRANCA").length} sub="no período" />
+              <KPI t={t} label="Promessas Obtidas" color="#f59e0b" value={events.filter(e => e.status === "Prometeu Pagar").length} sub="confirmadas" />
+              <KPI t={t} label="Pagamentos Confirmados" color="#10b981" value={events.filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado").length} sub="verificados" />
+              <KPI t={t} label="Taxa de Sucesso" color="#7c3aed" value={`${events.length > 0 ? ((events.filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Prometeu Pagar").length / events.length) * 100).toFixed(1) : 0}%`} sub="conversão" />
+            </div>
+            
             {/* Sub-abas internas */}
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => setSubTabProd("produtividade")} style={{ background: subTabProd === "produtividade" ? t.p : t.surf2, color: subTabProd === "produtividade" ? "#fff" : t.txt, border: `1px solid ${subTabProd === "produtividade" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>👥 Produtividade da Cobrança</button>
@@ -1013,7 +1021,16 @@ export default function Dashboard() {
 
         {/* ═══ FLUXO DE CAIXA ═══ */}
         {activeTab === "fluxo" &&
-        <PrevisaoFluxo grouped={grouped} t={t} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* KPIs Fluxo */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+            <KPI t={t} label="Previsão 30 dias" color="#3b82f6" value={fmtM(grouped.filter(g => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="próximo mês" />
+            <KPI t={t} label="Previsão 60 dias" color="#f59e0b" value={fmtM(grouped.filter(g => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 60 dias" />
+            <KPI t={t} label="Previsão 90 dias" color="#7c3aed" value={fmtM(grouped.filter(g => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 90 dias" />
+            <KPI t={t} label="Débitos Críticos" color="#ef4444" value={fmtM(grouped.filter(g => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="acima 90 dias" />
+          </div>
+          <PrevisaoFluxo grouped={grouped} t={t} />
+        </div>
         }
       </main>
 

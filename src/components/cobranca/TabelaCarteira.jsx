@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import ColHeader from "./ColHeader";
-import { Btn, PromBadge, ObsCell, Badge, PromessaClassifBadge, SugestaoEncBadge } from "./UI";
+import { Btn, PromBadge, ObsCell, Badge, SugestaoEncBadge } from "./UI";
 import { fmtM, fmtD, prioCor, sugestaoEncaminhamento } from "@/lib/cobranca";
 
-// Colunas visíveis por padrão e suas configs
+// Colunas visíveis por padrão e suas configs (CLASSIF. removida)
 const COLS_DEF = [
   { key: "check",    label: "",           width: 32,   fixed: true },
   { key: "expand",   label: "",           width: 28,   fixed: true },
@@ -21,7 +21,6 @@ const COLS_DEF = [
   { key: "origem",  label: "ORIG.",      width: 44 },
   { key: "contato", label: "DT. CONTATO",width: 78 },
   { key: "prom",    label: "PROMESSA",   width: 82 },
-  { key: "classif", label: "CLASSIF.",   width: 68 },
   { key: "sugest",  label: "SUGESTÃO",   width: 86 },
   { key: "obs",     label: "OBSERVAÇÃO", width: "14%", minWidth: 100 },
   { key: "acoes",   label: "AÇÕES",      width: 96,   fixed: true },
@@ -36,10 +35,9 @@ function encBadge(enc) {
   return null;
 }
 
-export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal, onEncaminharSugestao, hiddenCols, setHiddenCols }) {
+export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal, onEncaminharSugestao, hiddenCols, setHiddenCols, onClickFilter }) {
   const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
 
-  const toggleCol = (key) => setHiddenCols(p => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols.has(c.key));
 
   const CH = (props) => (
@@ -49,12 +47,20 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   const vis = visibleCols;
   const colCount = vis.length;
 
-  // Renderiza célula de linha de cliente pelo key da coluna
+  // Célula clicável para filtro rápido
+  const clickable = (val, style, children) => (
+    <span
+      title={`Filtrar por: ${val}`}
+      onClick={() => onClickFilter && onClickFilter(val)}
+      style={{ cursor: onClickFilter ? "pointer" : "default", ...style }}
+    >{children || val}</span>
+  );
+
   function renderCell(key, g) {
     const sugestao = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
     switch(key) {
       case "nrCli":   return <td style={{ ...tdS(), color: t.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.nrCli}</td>;
-      case "nomeCli": return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.nomeCli}><b>{g.nomeCli}</b></td>;
+      case "nomeCli": return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.nomeCli}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(g.nomeCli)}>{g.nomeCli}</b></td>;
       case "qtd":     return <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>;
       case "venc":    return <td style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtD(g.primeiroVencimento)}</td>;
       case "atraso":  return <td style={{ ...tdS(), color: g.maiorAtraso > 0 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>;
@@ -62,12 +68,11 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       case "multa":   return <td style={{ ...tdS(), color: "#f97316", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorMulta)}</td>;
       case "juros":   return <td style={{ ...tdS(), color: "#eab308", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorJuros)}</td>;
       case "total":   return <td style={{ ...tdS(), fontWeight: 800, color: t.p, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorTotalDebito)}</td>;
-      case "status":  return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10 }}>{g.statusConsolidado}</td>;
-      case "enc":     return <td style={tdS()}>{encBadge(g.encaminharConsolidado)}</td>;
+      case "status":  return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10 }}><span onClick={() => onClickFilter && onClickFilter(g.statusConsolidado)} style={{ cursor: "pointer" }}>{g.statusConsolidado}</span></td>;
+      case "enc":     return <td style={tdS()} onClick={() => g.encaminharConsolidado && onClickFilter && onClickFilter(g.encaminharConsolidado)} style={{ ...tdS(), cursor: g.encaminharConsolidado ? "pointer" : "default" }}>{encBadge(g.encaminharConsolidado)}</td>;
       case "origem":  return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.origem))].map(o => <span key={o} style={{ display: "inline-block", fontSize: 8, background: o === "FINR1253" ? "#7c3aed22" : "#0369a122", color: o === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{o === "FINR1253" ? "TC" : "EB"}</span>)}</td>;
       case "contato": return <td style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtD(g.ultimoContato)}</td>;
       case "prom":    return <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>;
-      case "classif": return <td style={tdS()}><PromessaClassifBadge qtd={g.qtdTotal} /></td>;
       case "sugest":  return (
         <td style={tdS()}>
           {sugestao ? (
@@ -110,9 +115,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                 if (c.key === "qtd") return <th key="qtd" style={thS(t)}>QTD.</th>;
                 if (c.key === "multa") return <th key="multa" style={thS(t)}>MULTA</th>;
                 if (c.key === "juros") return <th key="juros" style={thS(t)}>JUROS</th>;
-                if (c.key === "classif") return <th key="classif" style={thS(t)}>CLASSIF.</th>;
                 if (c.key === "sugest") return <th key="sugest" style={thS(t)}>SUGESTÃO</th>;
-                // ColHeader para colunas filtráveis
                 const fieldMap = { nrCli:"nrCli", nomeCli:"nomeCli", venc:"vencimento", atraso:"atrasoLabel", vOrig:"valorOriginal", total:"valorTotalDebito", status:"statusConsolidado", enc:"encaminharConsolidado", origem:"origem", contato:"ultimoContato", prom:"dataPromessa", obs:"obsConsolidada" };
                 const sortMap = { nrCli:"numero", nomeCli:"cliente", atraso:"atraso", vOrig:"valorOriginal", total:"valorTotalDebito" };
                 const field = fieldMap[c.key];
@@ -140,7 +143,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                   </tr>
                   {open && g.titulos.map(item => (
                     <tr key={item.id} style={{ background: t.surf2 }}>
-                      {vis.map((c, ci) => {
+                      {vis.map((c) => {
                         if (c.key === "check") return <td key="check" style={tdS()} />;
                         if (c.key === "expand") return <td key="expand" style={tdS()} />;
                         if (c.key === "nrCli") return <td key="nrCli" style={{ ...tdS(), color: t.muted }}>{item.nrCli}</td>;

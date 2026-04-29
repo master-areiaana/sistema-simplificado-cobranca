@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import ColHeader from "./ColHeader";
-import { Btn, PromBadge, ObsCell, Badge, PromessaClassifBadge } from "./UI";
+import { Btn, PromBadge, ObsCell, Badge } from "./UI";
 import { fmtM, fmtD, prioCor } from "@/lib/cobranca";
 
 const thS = (t) => ({ background: t.th, padding: 0, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, position: "sticky", top: 0, zIndex: 10 });
@@ -52,8 +52,8 @@ export default function TabelaCobrados({ data, t, setHistModal, dlCsv }) {
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Btn t={t} ghost sm onClick={() => dlCsv("cobrados.csv", [
-          ["Nº","Cliente","Qtd.","Total","Status","Encaminhar","Contato","Promessa","Classif.","Observação"],
-          ...filtered.map(g => [g.nrCli,g.nomeCli,g.qtdTitulos,Number(g.valorTotalDebito).toFixed(2).replace(".",","),g.statusConsolidado,g.encaminharConsolidado||"—",fmtD(g.ultimoContato),fmtD(g.dataPromessa),g.qtdTotal,g.obsConsolidada||"—"])
+          ["Nº","Cliente","Qtd.","Total","Status","Encaminhar","Contato","Promessa","Observação"],
+          ...filtered.map(g => [g.nrCli,g.nomeCli,g.qtdTitulos,Number(g.valorTotalDebito).toFixed(2).replace(".",","),g.statusConsolidado,g.encaminharConsolidado||"—",fmtD(g.ultimoContato),fmtD(g.dataPromessa),g.obsConsolidada||"—"])
         ])}>⬇️ CSV</Btn>
         {hasFilter && (
           <button onClick={() => setFilters({})} style={{ background: "none", border: `1px solid #ef4444`, color: "#ef4444", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕ Limpar filtros</button>
@@ -74,7 +74,6 @@ export default function TabelaCobrados({ data, t, setHistModal, dlCsv }) {
               <CH label="ENCAMINHAR" field="encaminharConsolidado" data={colData("encaminharConsolidado")} filters={filters} setFilters={setFilters} />
               <CH label="CONTATO"    field="ultimoContato"        data={colData("ultimoContato")}        filters={filters} setFilters={setFilters} />
               <CH label="PROMESSA"   field="dataPromessa"         data={colData("dataPromessa")}         filters={filters} setFilters={setFilters} />
-              <th style={thPlain(t)}>CLASSIF.</th>
               <CH label="OBSERVAÇÃO" field="obsConsolidada"       data={colData("obsConsolidada")}       filters={filters} setFilters={setFilters} />
               <th style={thPlain(t)}>HIST.</th>
             </tr>
@@ -93,7 +92,6 @@ export default function TabelaCobrados({ data, t, setHistModal, dlCsv }) {
                 <td style={tdS()}>{encBadge(g.encaminharConsolidado, t)}</td>
                 <td style={{ ...tdS(), color: t.muted }}>{fmtD(g.ultimoContato)}</td>
                 <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>
-                <td style={tdS()}><PromessaClassifBadge qtd={g.qtdTotal} /></td>
                 <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>
                 <td style={tdS()}><Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn></td>
               </tr>

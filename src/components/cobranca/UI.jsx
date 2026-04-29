@@ -31,22 +31,24 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
       style={{
         background: active ? color + "18" : t.card,
         borderRadius: 10,
-        padding: "10px 12px",
+        padding: "12px 14px",
         border: `1px solid ${active ? color : t.bor}`,
         borderLeft: `3px solid ${color}`,
-        flex: "1 1 110px",
-        minWidth: 110,
-        maxWidth: 180,
+        flex: "1 1 120px",
+        minWidth: 120,
+        maxWidth: 200,
         boxShadow: active ? `0 0 0 2px ${color}44` : t.shad,
         boxSizing: "border-box",
-        overflow: "hidden",
         cursor: onClick ? "pointer" : "default",
         transition: "all .15s",
+        display: "flex",
+        flexDirection: "column",
+        gap: 3,
       }}
     >
-      <div style={{ fontSize: 8, color: t.muted, textTransform: "uppercase", letterSpacing: .7, marginBottom: 4, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 800, color: active ? color : t.txt, lineHeight: 1.2, wordBreak: "break-all" }}>{value}</div>
-      {sub && <div style={{ fontSize: 8, color: t.muted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>}
+      <div style={{ fontSize: 9, color: t.muted, textTransform: "uppercase", letterSpacing: .7, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 800, color: active ? color : t.txt, lineHeight: 1.2, wordBreak: "break-word" }}>{value}</div>
+      {sub && <div style={{ fontSize: 9, color: t.muted }}>{sub}</div>}
     </div>
   );
 }

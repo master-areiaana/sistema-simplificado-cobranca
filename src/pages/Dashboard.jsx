@@ -7,7 +7,7 @@ import {
   dlCsv, openPrint, prioLabel, prioCor, sugestaoEncaminhamento, diffDias
 } from "@/lib/cobranca";
 import { DARK, LIGHT, loadL, saveL } from "@/lib/theme";
-import { KPI, TabBtn, Badge, PrioBadge, PromBadge, ObsCell, Btn, PromessaClassifBadge, SugestaoEncBadge } from "@/components/cobranca/UI";
+import { KPI, TabBtn, Badge, PrioBadge, PromBadge, ObsCell, Btn, SugestaoEncBadge } from "@/components/cobranca/UI";
 import ColHeader from "@/components/cobranca/ColHeader";
 import TabelaCarteira from "@/components/cobranca/TabelaCarteira";
 import ModalCobranca from "@/components/cobranca/ModalCobranca";
@@ -646,7 +646,7 @@ export default function Dashboard() {
                     { key: "venc", label: "VENCIMENTO" }, { key: "atraso", label: "ATRASO" }, { key: "vOrig", label: "VAL. ORIG" },
                     { key: "multa", label: "MULTA" }, { key: "juros", label: "JUROS" }, { key: "total", label: "TOTAL" },
                     { key: "status", label: "STATUS" }, { key: "enc", label: "ENCAMINHAR" }, { key: "origem", label: "ORIG." },
-                    { key: "contato", label: "DT. CONTATO" }, { key: "prom", label: "PROMESSA" }, { key: "classif", label: "CLASSIF." },
+                    { key: "contato", label: "DT. CONTATO" }, { key: "prom", label: "PROMESSA" },
                     { key: "sugest", label: "SUGESTÃO" }, { key: "obs", label: "OBSERVAÇÃO" },
                   ].map(c => (
                     <label key={c.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: hiddenCols.has(c.key) ? t.surf2 : "transparent" }}>
@@ -684,6 +684,7 @@ export default function Dashboard() {
               makeColData={makeColData} fieldVal={fieldVal} applyExcelFilter={applyExcelFilter}
               setNegModal={setNegModal}
               hiddenCols={hiddenCols} setHiddenCols={setHiddenCols}
+              onClickFilter={(val) => setBuscaCliente(val)}
               onEncaminharSugestao={async (g, enc) => {
                 for (const item of g.titulos) {
                   await base44.entities.ChargeEvent.create({
@@ -706,10 +707,23 @@ export default function Dashboard() {
         {/* ═══ COBRADOS + PROMESSAS ═══ */}
         {activeTab === "cobrados" && (
           <>
+            {/* KPIs da aba */}
+            <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 10 }}>Indicadores — Histórico & Promessas</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <KPI t={t} label="Total Cobrados" color="#10b981" value={cobrados.length} sub="clientes contactados" />
+                <KPI t={t} label="Valor Cobrado" color="#10b981" value={fmtM(cobrados.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total em aberto" />
+                <KPI t={t} label="Com Promessa" color="#f59e0b" value={cobrados.filter(g => g.dataPromessa).length} sub="clientes com data" />
+                <KPI t={t} label="Prometeu Pagar" color="#7c3aed" value={cobrados.filter(g => g.statusConsolidado === "Prometeu Pagar").length} sub="status atual" />
+                <KPI t={t} label="Pago Aguard. Baixa" color="#3b82f6" value={cobrados.filter(g => g.statusConsolidado === "Pago Aguard. Baixa").length} sub="aguardando baixa" />
+                <KPI t={t} label="Sem Retorno" color="#ef4444" value={cobrados.filter(g => g.statusConsolidado === "Sem Retorno").length} sub="sem resposta" />
+              </div>
+            </div>
+
             {/* Sub-abas */}
             <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
               <button onClick={() => setSubTabCobr("historico")} style={{ background: subTabCobr === "historico" ? t.p : t.surf2, color: subTabCobr === "historico" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "historico" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✅ Histórico de Cobranças</button>
-              <button onClick={() => setSubTabCobr("promessas")} style={{ background: subTabCobr === "promessas" ? t.p : t.surf2, color: subTabCobr === "promessas" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "promessas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>📅 Promessas</button>
+              <button onClick={() => setSubTabCobr("promessas")} style={{ background: subTabCobr === "promessas" ? t.p : t.surf2, color: subTabCobr === "promessas" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "promessas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>📅 Promessas & Calendário</button>
             </div>
 
             {subTabCobr === "historico" && (

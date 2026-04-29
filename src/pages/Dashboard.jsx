@@ -70,6 +70,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [syncMsg, setSyncMsg] = useState("");
   const [importStatus, setImportStatus] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
   const [activeTab, setActiveTab] = useState(() => loadL(LOCAL_TAB, "carteira"));
   const [subTabProd, setSubTabProd] = useState("produtividade");
 
@@ -405,136 +406,142 @@ export default function Dashboard() {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   async function syncImport(source, imported, fileName) {
-    const existingAll = await base44.entities.Titulo.filter({ source }, "client_name", 2000);
+    try {
+      const existingAll = await base44.entities.Titulo.filter({ source }, "client_name", 2000);
 
-    // ── Mapear por CHAVE DE COBRANÇA (buildId) ──
-    // Se houver duplicatas no banco com a mesma chave, manter o mais recente (pelo updated_date)
-    // para garantir que o upsert não cria novos registros quando já existe um.
-    const existMap = new Map();
-    for (const r of existingAll || []) {
-      // Usar dbToItem para garantir que a chave seja gerada com os mesmos critérios de normalização
-      const asItem = dbToItem(r);
-      const cobrancaKey = asItem.id;
-      const prev = existMap.get(cobrancaKey);
-      // Manter o mais recente; se não há anterior, inserir
-      if (!prev || (r.updated_date || r.created_date) >= (prev.updated_date || prev.created_date)) {
-        existMap.set(cobrancaKey, r);
-      }
-    }
-
-    // ── Chaves presentes na nova importação ──
-    const importKeys = new Set(imported.map((i) => i.id)); // i.id já é buildId(...)
-
-    // ── Proteção contra baixa indevida por planilha parcial ──
-    // Só executar baixa automática se a importação trouxe pelo menos 50% do que havia
-    // OU se não há nenhum registro existente ainda (primeira importação).
-    const existCount = existMap.size;
-    const importCount = imported.length;
-    const isCarteirCompleta = existCount === 0 || (importCount >= existCount * 0.5);
-
-    let ins = 0, upd = 0, deact = 0, baixados = 0;
-    let valorBaixado = 0;
-
-    const DELAY = 1000;       // 1s entre batches de updates
-    const BATCH_UPDATE = 3;   // updates individuais: 3 por vez
-    const BULK_SIZE = 20;     // novos registros: bulkCreate de 20 por vez
-    const BATCH_BAIXA = 2;
-
-    // Separar novos de existentes
-    const toCreate = [];
-    const toUpdate = [];
-    for (const item of imported) {
-      const old = existMap.get(item.id);
-      const payload = {
-        source: item.origem, client_code: item.nrCli, client_name: item.nomeCli,
-        doc_type: item.tp || null, serie: item.ser || null, title_number: item.titulo,
-        seq: item.seq || null, nf_servico: item.nfServico || null,
-        issue_date: item.emissao || null, due_date: item.vencimento || null,
-        original_value: Number(item.valorOriginal || 0),
-        portador: item.portador || null, active: true,
-        import_file: fileName,
-        current_status: old?.current_status || "Não Contatado",
-        current_motive: old?.current_motive || null,
-        current_contact_type: old?.current_contact_type || null,
-        promise_date: old?.promise_date || null,
-        last_contact_date: old?.last_contact_date || null,
-        last_note: old?.last_note || null,
-        contact_count: Number(old?.contact_count || 0),
-        protest_requested_by: old?.protest_requested_by || null,
-        workflow_status: old?.workflow_status || "normal",
-        updated_by: "Importação"
-      };
-      if (old) toUpdate.push({ dbId: old.id, payload });
-      else toCreate.push(payload);
-    }
-
-    // 1a. Novos registros: bulkCreate em lotes de BULK_SIZE (muito mais eficiente)
-    for (let i = 0; i < toCreate.length; i += BULK_SIZE) {
-      const chunk = toCreate.slice(i, i + BULK_SIZE);
-      await base44.entities.Titulo.bulkCreate(chunk);
-      ins += chunk.length;
-      if (i + BULK_SIZE < toCreate.length) await sleep(DELAY);
-    }
-
-    // 1b. Updates existentes: sequencial com throttle
-    for (let i = 0; i < toUpdate.length; i++) {
-      await base44.entities.Titulo.update(toUpdate[i].dbId, toUpdate[i].payload);
-      upd++;
-      if ((i + 1) % BATCH_UPDATE === 0) await sleep(DELAY);
-    }
-
-    // 2. Baixa automática — SOMENTE se a importação é uma carteira completa (≥ 50% do volume atual)
-    let deactIdx = 0;
-    if (isCarteirCompleta) {
+      // ── Mapear por CHAVE DE COBRANÇA (buildId) ──
+      // Se houver duplicatas no banco com a mesma chave, manter o mais recente (pelo updated_date)
+      // para garantir que o upsert não cria novos registros quando já existe um.
+      const existMap = new Map();
       for (const r of existingAll || []) {
-        const asItem2 = dbToItem(r);
-        const cobrancaKey = asItem2.id;
-        const jaFoiBaixado = ["Baixado", "Recebido", "Pago", "Encerrado"].includes(r.current_status);
-        if (!importKeys.has(cobrancaKey) && r.active && !jaFoiBaixado) {
-          const valorTit = Number(r.original_value || 0);
-          valorBaixado += valorTit;
-
-          await base44.entities.Titulo.update(r.id, {
-            active: false,
-            current_status: "Baixado",
-            current_motive: "Saiu da carteira em aberto — baixa automática por importação",
-            last_contact_date: hojeISO,
-            workflow_status: "baixado",
-            updated_by: "Importação"
-          });
-
-          await base44.entities.ChargeEvent.create({
-            titulo_id: r.id,
-            client_code: r.client_code,
-            client_name: r.client_name,
-            event_type: "BAIXA",
-            event_subtype: "SAIU_IMPORTACAO",
-            event_date: hojeISO,
-            status: "Baixado",
-            motive: "Título não presente na nova importação — presumido como recebido/baixado",
-            note: `Arquivo importado: ${fileName}. Valor original: R$ ${valorTit.toFixed(2).replace(".", ",")}`,
-            event_user: "Importação Automática"
-          });
-
-          deact++;
-          baixados++;
-          deactIdx++;
-          if (deactIdx % BATCH_BAIXA === 0) await sleep(1200);
+        // Usar dbToItem para garantir que a chave seja gerada com os mesmos critérios de normalização
+        const asItem = dbToItem(r);
+        const cobrancaKey = asItem.id;
+        const prev = existMap.get(cobrancaKey);
+        // Manter o mais recente; se não há anterior, inserir
+        if (!prev || (r.updated_date || r.created_date) >= (prev.updated_date || prev.created_date)) {
+          existMap.set(cobrancaKey, r);
         }
       }
+
+      // ── Chaves presentes na nova importação ──
+      const importKeys = new Set(imported.map((i) => i.id)); // i.id já é buildId(...)
+
+      // ── Proteção contra baixa indevida por planilha parcial ──
+      // Só executar baixa automática se a importação trouxe pelo menos 50% do que havia
+      // OU se não há nenhum registro existente ainda (primeira importação).
+      const existCount = existMap.size;
+      const importCount = imported.length;
+      const isCarteirCompleta = existCount === 0 || (importCount >= existCount * 0.5);
+
+      let ins = 0, upd = 0, deact = 0, baixados = 0;
+      let valorBaixado = 0;
+
+      const DELAY = 1000;       // 1s entre batches de updates
+      const BATCH_UPDATE = 3;   // updates individuais: 3 por vez
+      const BULK_SIZE = 20;     // novos registros: bulkCreate de 20 por vez
+      const BATCH_BAIXA = 2;
+
+      // Separar novos de existentes
+      const toCreate = [];
+      const toUpdate = [];
+      for (const item of imported) {
+        const old = existMap.get(item.id);
+        const payload = {
+          source: item.origem, client_code: item.nrCli, client_name: item.nomeCli,
+          doc_type: item.tp || null, serie: item.ser || null, title_number: item.titulo,
+          seq: item.seq || null, nf_servico: item.nfServico || null,
+          issue_date: item.emissao || null, due_date: item.vencimento || null,
+          original_value: Number(item.valorOriginal || 0),
+          portador: item.portador || null, active: true,
+          import_file: fileName,
+          current_status: old?.current_status || "Não Contatado",
+          current_motive: old?.current_motive || null,
+          current_contact_type: old?.current_contact_type || null,
+          promise_date: old?.promise_date || null,
+          last_contact_date: old?.last_contact_date || null,
+          last_note: old?.last_note || null,
+          contact_count: Number(old?.contact_count || 0),
+          protest_requested_by: old?.protest_requested_by || null,
+          workflow_status: old?.workflow_status || "normal",
+          updated_by: "Importação"
+        };
+        if (old) toUpdate.push({ dbId: old.id, payload });
+        else toCreate.push(payload);
+      }
+
+      // 1a. Novos registros: bulkCreate em lotes de BULK_SIZE (muito mais eficiente)
+      for (let i = 0; i < toCreate.length; i += BULK_SIZE) {
+        const chunk = toCreate.slice(i, i + BULK_SIZE);
+        await base44.entities.Titulo.bulkCreate(chunk);
+        ins += chunk.length;
+        if (i + BULK_SIZE < toCreate.length) await sleep(DELAY);
+      }
+
+      // 1b. Updates existentes: sequencial com throttle
+      for (let i = 0; i < toUpdate.length; i++) {
+        await base44.entities.Titulo.update(toUpdate[i].dbId, toUpdate[i].payload);
+        upd++;
+        if ((i + 1) % BATCH_UPDATE === 0) await sleep(DELAY);
+      }
+
+      // 2. Baixa automática — SOMENTE se a importação é uma carteira completa (≥ 50% do volume atual)
+      let deactIdx = 0;
+      if (isCarteirCompleta) {
+        for (const r of existingAll || []) {
+          const asItem2 = dbToItem(r);
+          const cobrancaKey = asItem2.id;
+          const jaFoiBaixado = ["Baixado", "Recebido", "Pago", "Encerrado"].includes(r.current_status);
+          if (!importKeys.has(cobrancaKey) && r.active && !jaFoiBaixado) {
+            const valorTit = Number(r.original_value || 0);
+            valorBaixado += valorTit;
+
+            await base44.entities.Titulo.update(r.id, {
+              active: false,
+              current_status: "Baixado",
+              current_motive: "Saiu da carteira em aberto — baixa automática por importação",
+              last_contact_date: hojeISO,
+              workflow_status: "baixado",
+              updated_by: "Importação"
+            });
+
+            await base44.entities.ChargeEvent.create({
+              titulo_id: r.id,
+              client_code: r.client_code,
+              client_name: r.client_name,
+              event_type: "BAIXA",
+              event_subtype: "SAIU_IMPORTACAO",
+              event_date: hojeISO,
+              status: "Baixado",
+              motive: "Título não presente na nova importação — presumido como recebido/baixado",
+              note: `Arquivo importado: ${fileName}. Valor original: R$ ${valorTit.toFixed(2).replace(".", ",")}`,
+              event_user: "Importação Automática"
+            });
+
+            deact++;
+            baixados++;
+            deactIdx++;
+            if (deactIdx % BATCH_BAIXA === 0) await sleep(1200);
+          }
+        }
+      }
+
+      await base44.entities.ImportLog.create({
+        file_name: fileName, source, total_read: imported.length,
+        inserted_count: ins, updated_count: upd, deactivated_count: deact
+      });
+
+      return { ins, upd, deact, baixados, valorBaixado, isCarteirCompleta, error: null };
+    } catch (err) {
+      console.error("Erro em syncImport:", err);
+      throw err;
     }
-
-    await base44.entities.ImportLog.create({
-      file_name: fileName, source, total_read: imported.length,
-      inserted_count: ins, updated_count: upd, deactivated_count: deact
-    });
-
-    return { ins, upd, deact, baixados, valorBaixado, isCarteirCompleta };
   }
 
   async function importarArquivo(e) {
     const file = e.target.files?.[0];if (!file) return;
     setImportStatus(null);
+    setIsImporting(true);
     const buf = await file.arrayBuffer();
 
     // Detectar se é CSV com separador ";"
@@ -554,124 +561,134 @@ export default function Dashboard() {
       return out;
     });
 
-    if (isCobrCsv(cleanRows)) {
-      // CSV de clientes cobrados: atualiza status dos títulos existentes
-      let atualizados = 0,naoEncontrados = 0, csvIdx = 0;
-      for (const row of cleanRows) {
-        const nrCli = String(row["Nº"] || row["Nr"] || row["N"] || "").trim();
-        const nomeCli = String(row["Cliente"] || "").trim();
-        const statusNovo = String(row["Status"] || "").trim() || "Em Cobrança";
-        const encaminhar = String(row["Encaminhar"] || "").trim().toLowerCase();
-        const promessa = String(row["Promessa"] || "").trim();
-        const obs = String(row["Observação"] || row["Observacao"] || "").trim();
+    try {
+      if (isCobrCsv(cleanRows)) {
+        // CSV de clientes cobrados: atualiza status dos títulos existentes
+        let atualizados = 0,naoEncontrados = 0, csvIdx = 0;
+        for (const row of cleanRows) {
+          const nrCli = String(row["Nº"] || row["Nr"] || row["N"] || "").trim();
+          const nomeCli = String(row["Cliente"] || "").trim();
+          const statusNovo = String(row["Status"] || "").trim() || "Em Cobrança";
+          const encaminhar = String(row["Encaminhar"] || "").trim().toLowerCase();
+          const promessa = String(row["Promessa"] || "").trim();
+          const obs = String(row["Observação"] || row["Observacao"] || "").trim();
 
-        if (!nomeCli) continue;
+          if (!nomeCli) continue;
 
-        // Encontrar títulos correspondentes por número ou nome
-        const cands = records.filter((r2) => {
-          if (nrCli && r2.nrCli && String(r2.nrCli).trim() === nrCli) return true;
-          return normText(r2.nomeCli) === normText(nomeCli);
-        });
-
-        if (!cands.length) {naoEncontrados++;continue;}
-
-        for (const item of cands) {
-          // Criar evento de cobrança
-          await base44.entities.ChargeEvent.create({
-            titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli,
-            event_type: "COBRANCA", event_date: hojeISO, status: statusNovo,
-            motive: encaminhar || null, contact_type: null,
-            promise_date: dateISO(promessa) || null, note: obs || null,
-            event_user: "Importação CSV"
+          // Encontrar títulos correspondentes por número ou nome
+          const cands = records.filter((r2) => {
+            if (nrCli && r2.nrCli && String(r2.nrCli).trim() === nrCli) return true;
+            return normText(r2.nomeCli) === normText(nomeCli);
           });
-          // Atualizar título
-          if (item._dbId) {
-            await base44.entities.Titulo.update(item._dbId, {
-              current_status: statusNovo,
-              current_motive: encaminhar || null,
-              promise_date: dateISO(promessa) || null,
-              last_contact_date: hojeISO,
-              last_note: obs || null,
-              contact_count: (item.qtd || 0) + 1,
-              workflow_status: encaminhar || "normal",
-              updated_by: "Importação CSV"
+
+          if (!cands.length) {naoEncontrados++;continue;}
+
+          for (const item of cands) {
+            // Criar evento de cobrança
+            await base44.entities.ChargeEvent.create({
+              titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli,
+              event_type: "COBRANCA", event_date: hojeISO, status: statusNovo,
+              motive: encaminhar || null, contact_type: null,
+              promise_date: dateISO(promessa) || null, note: obs || null,
+              event_user: "Importação CSV"
             });
+            // Atualizar título
+            if (item._dbId) {
+              await base44.entities.Titulo.update(item._dbId, {
+                current_status: statusNovo,
+                current_motive: encaminhar || null,
+                promise_date: dateISO(promessa) || null,
+                last_contact_date: hojeISO,
+                last_note: obs || null,
+                contact_count: (item.qtd || 0) + 1,
+                workflow_status: encaminhar || "normal",
+                updated_by: "Importação CSV"
+              });
+            }
+            atualizados++;
           }
-          atualizados++;
+          csvIdx++;
+          if (csvIdx % 3 === 0) await sleep(600);
         }
-        csvIdx++;
-        if (csvIdx % 3 === 0) await sleep(600);
+        setImportStatus({ ok: true, msg: `✅ CSV Cobrados importado — ${atualizados} títulos atualizados${naoEncontrados > 0 ? `, ${naoEncontrados} clientes não encontrados na carteira` : ""}.` });
+        e.target.value = "";
+        await loadData();
+        return;
       }
-      setImportStatus({ ok: true, msg: `✅ CSV Cobrados importado — ${atualizados} títulos atualizados${naoEncontrados > 0 ? `, ${naoEncontrados} clientes não encontrados na carteira` : ""}.` });
+
+      if (isCobrDia(cleanRows.length ? cleanRows : rows)) {
+        // Cobrança do dia — atualiza eventos + status dos títulos
+        const sourceRows = cleanRows.length ? cleanRows : rows;
+        const uniq = uniqCobr(sourceRows);
+        let evtCount = 0,updCount = 0,naoEnc = 0,diaIdx = 0;
+        for (const row of uniq) {
+          const nomeN = normText(pick(row, ["Cliente"]) || "");
+          const nrCliRow = String(pick(row, ["N", "Nº", "Nr", "N°"]) || "").replace(/\./g, "").trim();
+          const statusNovo2 = String(pick(row, ["Status"]) || "").trim() || "Em Cobrança";
+          const motivoNovo = String(pick(row, ["Motivo"]) || "").trim();
+          const tipoNovo = String(pick(row, ["Tipo de Contato"]) || "").trim();
+          const dtCont = dateISO(pick(row, ["Data do Contato"])) || hojeISO;
+          const dtProm = dateISO(pick(row, ["Data da Promessa"]));
+          const obsNova = String(pick(row, ["Observação", "Observacao"]) || "").trim();
+          // Buscar por número do cliente OU nome
+          let cands = records.filter((i) => {
+            if (nrCliRow && String(i.nrCli).replace(/\./g, "").trim() === nrCliRow) return true;
+            return nomeN && normText(i.nomeCli) === nomeN;
+          });
+          if (!cands.length) {naoEnc++;continue;}
+          for (const item of cands) {
+            await base44.entities.ChargeEvent.create({
+              titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli,
+              event_type: "COBRANCA", event_date: dtCont, status: statusNovo2,
+              motive: motivoNovo || null, contact_type: tipoNovo || null,
+              promise_date: dtProm || null, note: obsNova || null, event_user: "Importação"
+            });
+            evtCount++;
+            // Atualizar o título também
+            if (item._dbId) {
+              await base44.entities.Titulo.update(item._dbId, {
+                current_status: statusNovo2,
+                current_motive: motivoNovo || null,
+                current_contact_type: tipoNovo || null,
+                promise_date: dtProm || null,
+                last_contact_date: dtCont,
+                last_note: obsNova || null,
+                contact_count: (item.qtd || 0) + 1,
+                updated_by: "Importação"
+              });
+              updCount++;
+            }
+          }
+          diaIdx++;
+          if (diaIdx % 3 === 0) await sleep(600);
+        }
+        setImportStatus({ ok: true, msg: `✅ Cobrança do dia — ${uniq.length} clientes processados, ${evtCount} eventos, ${updCount} títulos atualizados${naoEnc > 0 ? `, ${naoEnc} não encontrados` : ""}.` });
+      } else {
+        const source = detectSrc(file.name);
+        const imported = source === "FINR1253" ?
+        parseRows1253(XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })) :
+        parseRows7007(rows);
+        if (imported.length === 0) {
+          setImportStatus({ ok: false, msg: `❌ Nenhum título válido em "${file.name}".` });
+          e.target.value = "";
+          setIsImporting(false);
+          return;
+        }
+        const r = await syncImport(source, imported, file.name);
+        const baixaMsg = r?.baixados > 0 ? ` | ${r.baixados} baixados (${fmtM(r.valorBaixado)} lançado no Impacto no Caixa)` : "";
+        const parcialMsg = r?.isCarteirCompleta === false ? " ⚠️ Planilha parcial detectada — baixa automática não aplicada." : "";
+        setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${r?.ins || 0} novos, ${r?.upd || 0} atualizados${baixaMsg}${parcialMsg}` });
+      }
       e.target.value = "";
+      // CORREÇÃO: recarregar dados após importação para atualizar cards e tabela
       await loadData();
-      return;
+    } catch (err) {
+      console.error("Erro na importação:", err);
+      e.target.value = "";
+      setImportStatus({ ok: false, msg: `❌ Erro na importação: ${err.message}. Carteira pode ter ficado parcialmente atualizada. Verifique o banco de dados.` });
+    } finally {
+      setIsImporting(false);
     }
-
-    if (isCobrDia(cleanRows.length ? cleanRows : rows)) {
-      // Cobrança do dia — atualiza eventos + status dos títulos
-      const sourceRows = cleanRows.length ? cleanRows : rows;
-      const uniq = uniqCobr(sourceRows);
-      let evtCount = 0,updCount = 0,naoEnc = 0,diaIdx = 0;
-      for (const row of uniq) {
-        const nomeN = normText(pick(row, ["Cliente"]) || "");
-        const nrCliRow = String(pick(row, ["N", "Nº", "Nr", "N°"]) || "").replace(/\./g, "").trim();
-        const statusNovo2 = String(pick(row, ["Status"]) || "").trim() || "Em Cobrança";
-        const motivoNovo = String(pick(row, ["Motivo"]) || "").trim();
-        const tipoNovo = String(pick(row, ["Tipo de Contato"]) || "").trim();
-        const dtCont = dateISO(pick(row, ["Data do Contato"])) || hojeISO;
-        const dtProm = dateISO(pick(row, ["Data da Promessa"]));
-        const obsNova = String(pick(row, ["Observação", "Observacao"]) || "").trim();
-        // Buscar por número do cliente OU nome
-        let cands = records.filter((i) => {
-          if (nrCliRow && String(i.nrCli).replace(/\./g, "").trim() === nrCliRow) return true;
-          return nomeN && normText(i.nomeCli) === nomeN;
-        });
-        if (!cands.length) {naoEnc++;continue;}
-        for (const item of cands) {
-          await base44.entities.ChargeEvent.create({
-            titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli,
-            event_type: "COBRANCA", event_date: dtCont, status: statusNovo2,
-            motive: motivoNovo || null, contact_type: tipoNovo || null,
-            promise_date: dtProm || null, note: obsNova || null, event_user: "Importação"
-          });
-          evtCount++;
-          // Atualizar o título também
-          if (item._dbId) {
-            await base44.entities.Titulo.update(item._dbId, {
-              current_status: statusNovo2,
-              current_motive: motivoNovo || null,
-              current_contact_type: tipoNovo || null,
-              promise_date: dtProm || null,
-              last_contact_date: dtCont,
-              last_note: obsNova || null,
-              contact_count: (item.qtd || 0) + 1,
-              updated_by: "Importação"
-            });
-            updCount++;
-          }
-        }
-        diaIdx++;
-        if (diaIdx % 3 === 0) await sleep(600);
-      }
-      setImportStatus({ ok: true, msg: `✅ Cobrança do dia — ${uniq.length} clientes processados, ${evtCount} eventos, ${updCount} títulos atualizados${naoEnc > 0 ? `, ${naoEnc} não encontrados` : ""}.` });
-    } else {
-      const source = detectSrc(file.name);
-      const imported = source === "FINR1253" ?
-      parseRows1253(XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })) :
-      parseRows7007(rows);
-      if (imported.length === 0) {
-        setImportStatus({ ok: false, msg: `❌ Nenhum título válido em "${file.name}".` });
-        e.target.value = "";return;
-      }
-      const r = await syncImport(source, imported, file.name);
-      const baixaMsg = r?.baixados > 0 ? ` | ${r.baixados} baixados (${fmtM(r.valorBaixado)} lançado no Impacto no Caixa)` : "";
-      const parcialMsg = r?.isCarteirCompleta === false ? " ⚠️ Planilha parcial detectada — baixa automática não aplicada." : "";
-      setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${r?.ins || 0} novos, ${r?.upd || 0} atualizados${baixaMsg}${parcialMsg}` });
-    }
-    e.target.value = "";
-    // CORREÇÃO: recarregar dados após importação para atualizar cards e tabela
-    await loadData();
   }
 
   const thS = { background: t.th, padding: "9px 10px", textAlign: "left", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .4, color: t.muted, position: "sticky", top: 0, zIndex: 10 };
@@ -696,8 +713,8 @@ export default function Dashboard() {
           <button onClick={() => setIsDark((x) => !x)} style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{isDark ? "☀️" : "🌙"}</button>
           <Btn t={t} sm onClick={() => setEmailModal(true)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📧 Enviar PDF</Btn>
           <Btn t={t} sm onClick={() => exportarPDFExecutivo({ grouped, filteredCart: sortedCart, dash, faixaAtraso, filtroOrigem, hojeISO })} style={{ background: "#0369a1", border: "none", color: "#fff" }}>📊 Baixar Relatório</Btn>
-          <Btn t={t} sm onClick={() => { if (window.confirm("Isso vai remover duplicatas físicas do banco, mantendo apenas o registro mais recente por título. Confirmar?")) limparDuplicatasBanco(); }} style={{ background: "#64748b", border: "none", color: "#fff" }} title="Remover duplicatas do banco">🧹 Limpar BD</Btn>
-          <Btn t={t} sm onClick={() => fileRef.current?.click()} style={{ background: t.p, border: "none", color: "#fff" }}>⬆️ Importar</Btn>
+          <Btn t={t} sm onClick={() => { if (window.confirm("⚠️ AÇÃO IRREVERSÍVEL\n\nIsso vai remover PERMANENTEMENTE duplicatas físicas do banco de dados, mantendo apenas o registro mais recente por título.\n\nEssa ação não pode ser desfeita. Use apenas para manutenção.\n\nDeseja continuar?")) limparDuplicatasBanco(); }} style={{ background: "#64748b", border: "none", color: "#fff" }} title="Remover duplicatas do banco (irreversível)">🧹 Limpar BD</Btn>
+          <Btn t={t} sm onClick={() => fileRef.current?.click()} disabled={isImporting} style={{ background: isImporting ? "#ccc" : t.p, border: "none", color: isImporting ? "#999" : "#fff", cursor: isImporting ? "not-allowed" : "pointer" }}>⬆️ {isImporting ? "Importando..." : "Importar"}</Btn>
         </div>
       </header>
 
@@ -717,7 +734,7 @@ export default function Dashboard() {
           </div>
         }
 
-        <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{loading ? "⏳ Carregando..." : syncMsg}</div>
+        <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{isImporting ? "⏳ Importando relatório, aguarde... (não feche a tela)" : loading ? "⏳ Carregando..." : syncMsg}</div>
 
         {/* TABS */}
         <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", paddingBottom: 6, paddingTop: 4, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "center", justifyContent: "center" }} className="bg-transparent">

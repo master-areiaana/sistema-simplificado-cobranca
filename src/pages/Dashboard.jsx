@@ -33,10 +33,11 @@ const PROT_RESP = ["Aprovado","Reprovado","Devolver para cobrança"];
 function isCobrDia(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return false;
   const h = Object.keys(rows[0] || {}).map(x => normText(x));
-  // Aceita formato: N/Nº, Cliente, Total/Status/Motivo (relatório de cobrança do dia)
-  return (h.includes("CLIENTE") || h.includes("cliente")) &&
-    (h.includes("STATUS") || h.includes("status")) &&
-    (h.includes("MOTIVO") || h.includes("motivo") || h.includes("Tipo de Contato") || h.some(x => x.includes("contato")));
+  // Aceita relatório de cobrança do dia: precisa ter "Cliente" e pelo menos "Status" ou "Motivo"
+  const temCliente = h.some(x => x === "CLIENTE" || x.includes("CLIENTE"));
+  const temStatus = h.some(x => x === "STATUS" || x.includes("STATUS"));
+  const temMotivo = h.some(x => x === "MOTIVO" || x.includes("MOTIVO") || x.includes("CONTATO"));
+  return temCliente && (temStatus || temMotivo);
 }
 
 // Detecta o CSV de "clientes cobrados" com colunas: Nº;Cliente;Qtd.;Val. Orig;Multa;Juros;Total;Status;...
@@ -85,6 +86,7 @@ export default function Dashboard() {
   const [scCart, setScCart] = useState({ key: "cliente", dir: "asc" });
   const [faixaAtraso, setFaixaAtraso] = useState(0); // 0 = todos
   const [filtroOrigem, setFiltroOrigem] = useState(""); // "" = todos, "FINR1253", "RPT_7007_CONS_CAR_EB"
+  const [buscaCliente, setBuscaCliente] = useState(""); // busca rápida por nome/nº cliente
 
   const [fCart, setFCart] = useState({});
   const [fCob, setFCob] = useState({});
@@ -212,14 +214,16 @@ export default function Dashboard() {
     });
   }
 
-  // ── Aplicar filtro faixa + origem (memoizado para reatividade) ──
+  // ── Aplicar filtro faixa + origem + busca (memoizado para reatividade) ──
   const groupedFiltrado = useMemo(() => {
+    const busca = normText(buscaCliente);
     return grouped.filter(g => {
       if (faixaAtraso > 0 && g.maiorAtraso < faixaAtraso) return false;
       if (filtroOrigem && !g.titulos.some(ti => ti.origem === filtroOrigem)) return false;
+      if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente)) return false;
       return true;
     });
-  }, [grouped, faixaAtraso, filtroOrigem]);
+  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente]);
 
   // ── Sort + filtros ──
   const baseCart = useMemo(() => {
@@ -613,6 +617,19 @@ export default function Dashboard() {
               <option value="FINR1253">Topcon (FINR1253)</option>
               <option value="RPT_7007_CONS_CAR_EB">EB (RPT_7007)</option>
             </select>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}>
+            <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>🔍 Cliente:</span>
+            <input
+              type="text"
+              placeholder="Buscar por nome ou nº..."
+              value={buscaCliente}
+              onChange={e => setBuscaCliente(e.target.value)}
+              style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }}
+            />
+            {buscaCliente && (
+              <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
+            )}
           </div>
           <div style={{ marginLeft: "auto", fontSize: 11, color: t.muted }}>
             <b style={{ color: t.txt }}>

@@ -26,10 +26,10 @@ export function Lbl({ children, t }) {
 
 export function KPI({ label, value, sub, color, t }) {
   return (
-    <div style={{ background: t.card, borderRadius: 10, padding: "12px 14px", border: `1px solid ${t.bor}`, borderLeft: `3px solid ${color}`, flex: "1 1 130px", minWidth: 120, maxWidth: 220, boxShadow: t.shad }}>
-      <div style={{ fontSize: 9, color: t.muted, textTransform: "uppercase", letterSpacing: .7, marginBottom: 5, fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: t.txt, lineHeight: 1.1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 9, color: t.muted, marginTop: 3 }}>{sub}</div>}
+    <div style={{ background: t.card, borderRadius: 10, padding: "10px 12px", border: `1px solid ${t.bor}`, borderLeft: `3px solid ${color}`, flex: "1 1 110px", minWidth: 110, maxWidth: 180, boxShadow: t.shad, boxSizing: "border-box", overflow: "hidden" }}>
+      <div style={{ fontSize: 8, color: t.muted, textTransform: "uppercase", letterSpacing: .7, marginBottom: 4, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: t.txt, lineHeight: 1.2, wordBreak: "break-all" }}>{value}</div>
+      {sub && <div style={{ fontSize: 8, color: t.muted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>}
     </div>
   );
 }
@@ -66,9 +66,9 @@ export function PromessaClassifBadge({ qtd }) {
 
 export function TabBtn({ active, children, badge, badgeColor = "#ef4444", onClick, t }) {
   return (
-    <button onClick={onClick} style={{ position: "relative", background: active ? t.p : "transparent", color: active ? "#fff" : t.txt, border: `2px solid ${active ? t.p : t.bor}`, borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+    <button onClick={onClick} style={{ position: "relative", background: active ? t.p : "transparent", color: active ? "#fff" : t.txt, border: `2px solid ${active ? t.p : t.bor}`, borderRadius: 8, padding: "8px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, minHeight: 38 }}>
       {children}
-      {badge > 0 && <span style={{ position: "absolute", top: -6, right: -6, background: badgeColor, color: "#fff", borderRadius: "50%", width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800 }}>{badge}</span>}
+      {badge > 0 && <span style={{ position: "absolute", top: -8, right: -8, background: badgeColor, color: "#fff", borderRadius: "50%", minWidth: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, padding: "0 3px" }}>{badge}</span>}
     </button>
   );
 }

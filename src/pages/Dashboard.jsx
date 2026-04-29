@@ -537,14 +537,14 @@ export default function Dashboard() {
 
         {/* TABS */}
         <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", flexShrink: 0 }}>
-          <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")}>📋 Carteira Atual</TabBtn>
-          <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Cobrados</TabBtn>
-          <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Verificar Pagamento</TabBtn>
-          <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Protesto</TabBtn>
-          <TabBtn t={t} active={activeTab === "promessas"} onClick={() => setActiveTab("promessas")} badge={notifCount} badgeColor="#ef4444">📅 Promessas & Alertas</TabBtn>
-          <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade & Analytics</TabBtn>
-          <TabBtn t={t} active={activeTab === "metas"} onClick={() => setActiveTab("metas")}>🎯 Metas</TabBtn>
-          <TabBtn t={t} active={activeTab === "fluxo"} onClick={() => setActiveTab("fluxo")}>📈 Fluxo de Caixa</TabBtn>
+          <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")}>📋 Carteira Geral</TabBtn>
+          <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico de Cobranças</TabBtn>
+          <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Conferência de Pagamento</TabBtn>
+          <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Aprovação do Gestor</TabBtn>
+          <TabBtn t={t} active={activeTab === "promessas"} onClick={() => setActiveTab("promessas")} badge={notifCount} badgeColor="#ef4444">📅 Promessas e Alertas</TabBtn>
+          <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade da Cobrança</TabBtn>
+          <TabBtn t={t} active={activeTab === "metas"} onClick={() => setActiveTab("metas")}>🎯 Metas de Cobrança</TabBtn>
+          <TabBtn t={t} active={activeTab === "fluxo"} onClick={() => setActiveTab("fluxo")}>📈 Impacto no Caixa</TabBtn>
         </div>
 
         {/* DASHBOARD KPIs */}

@@ -117,15 +117,15 @@ export default function PainelMetas({ grouped, events, t }) {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20, justifyContent: "center" }}>
           {[
             { label: "Meta do Mês", value: fmtM(metaMensal), cor: "#64748b" },
             { label: "Recuperado", value: fmtM(valorRecuperadoMes), cor: "#10b981" },
             { label: "Falta Recuperar", value: fmtM(Math.max(metaMensal - valorRecuperadoMes, 0)), cor: "#ef4444" },
           ].map(k => (
-            <div key={k.label} style={{ background: t.surf2, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "14px 16px", borderLeft: `3px solid ${k.cor}` }}>
-              <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: t.muted, fontWeight: 700 }}>{k.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 900, color: t.txt, marginTop: 6 }}>{k.value}</div>
+            <div key={k.label} style={{ flex: "1 1 130px", minWidth: 120, maxWidth: 190, background: t.card, border: `1px solid ${t.bor}`, borderLeft: `4px solid ${k.cor}`, borderRadius: 10, padding: "12px 16px", boxShadow: t.shad, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 3 }}>
+              <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: .7, color: t.muted, fontWeight: 700 }}>{k.label}</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: k.cor, lineHeight: 1.2, wordBreak: "break-word" }}>{k.value}</div>
             </div>
           ))}
         </div>

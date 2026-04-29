@@ -67,18 +67,6 @@ export default function Dashboard() {
   const [respForm, setRespForm] = useState({ responsavel: "", resposta: "", obs: "" });
   const [negModal, setNegModal] = useState(null);
 
-  // Contagem de notificações urgentes para badge
-  const notifCount = useMemo(() => {
-    let count = 0;
-    const hoje = new Date().toISOString().slice(0, 10);
-    const amanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-    for (const g of grouped) {
-      if (g.dataPromessa && (g.dataPromessa === hoje || g.dataPromessa === amanha) && g.statusConsolidado !== "Encerrado") count++;
-      if ((g.maiorAtraso || 0) > 30 && !g.foiCobrado) count++;
-    }
-    return count;
-  }, [grouped]);
-
   const emptyForm = () => ({ status: "", encaminhar: "", tipo: "", solicitante: "", dataPromessa: "", obs: "" });
   const [form, setForm] = useState(emptyForm());
   const [batchForm, setBatchForm] = useState(emptyForm());
@@ -167,6 +155,18 @@ export default function Dashboard() {
       return { ...g, valorOriginal: vOrig, valorMulta: vMult, valorJuros: vJuro, valorTotalDebito: vTot, maiorAtraso: mAtr, qtdTitulos: ts.length, qtdTotal: qtdT, ultimoContato: ultCont, dataPromessa: dataProm, statusConsolidado: statusC, obsConsolidada: obsC, encaminharConsolidado: encC, solicitanteProtestoConsolidado: solProt, prioridadeCliente: prio, foiCobrado, historicoCliente: histMap[g.clientKey] || [], primeiroVencimento };
     });
   }, [records, histMap]);
+
+  // Contagem de notificações urgentes para badge
+  const notifCount = useMemo(() => {
+    let count = 0;
+    const hoje = new Date().toISOString().slice(0, 10);
+    const amanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    for (const g of grouped) {
+      if (g.dataPromessa && (g.dataPromessa === hoje || g.dataPromessa === amanha) && g.statusConsolidado !== "Encerrado") count++;
+      if ((g.maiorAtraso || 0) > 30 && !g.foiCobrado) count++;
+    }
+    return count;
+  }, [grouped]);
 
   // ── Helpers para filtros Excel ──
   function fieldVal(g, field) {

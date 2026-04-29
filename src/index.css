@@ -85,4 +85,44 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* KPI Container Standardization */
+  .kpi-container {
+    width: 100%;
+    max-width: 1405px;
+    margin: 0 auto 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .kpi-container-8 {
+    grid-template-columns: repeat(8, 1fr);
+  }
+
+  .kpi-container-6 {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .kpi-container-5 {
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .kpi-container-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .kpi-container-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .kpi-card {
+    height: 74px;
+    min-width: 0;
+    max-width: 180px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    overflow: hidden;
+  }
 }

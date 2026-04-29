@@ -78,6 +78,7 @@ export default function Dashboard() {
   const [respForm, setRespForm] = useState({ responsavel: "", resposta: "", obs: "" });
   const [negModal, setNegModal] = useState(null);
   const [emailModal, setEmailModal] = useState(false);
+  const [subTabCobr, setSubTabCobr] = useState("historico");
 
   const emptyForm = () => ({ status: "", encaminhar: "", tipo: "", solicitante: "", dataPromessa: "", obs: "" });
   const [form, setForm] = useState(emptyForm());
@@ -172,17 +173,7 @@ export default function Dashboard() {
     });
   }, [records, histMap]);
 
-  // Contagem de notificações urgentes para badge
-  const notifCount = useMemo(() => {
-    let count = 0;
-    const hoje = new Date().toISOString().slice(0, 10);
-    const amanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-    for (const g of grouped) {
-      if (g.dataPromessa && (g.dataPromessa === hoje || g.dataPromessa === amanha) && g.statusConsolidado !== "Encerrado") count++;
-      if ((g.maiorAtraso || 0) > 30 && !g.foiCobrado) count++;
-    }
-    return count;
-  }, [grouped]);
+
 
   // ── Helpers para filtros Excel ──
   function fieldVal(g, field) {
@@ -576,10 +567,9 @@ export default function Dashboard() {
         {/* TABS */}
         <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", paddingBottom: 6, paddingTop: 4, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", flexShrink: 0, alignItems: "center" }}>
           <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")}>📋 Carteira Geral</TabBtn>
-          <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico de Cobranças</TabBtn>
+          <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico / Promessas</TabBtn>
           <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Conferência de Pagamento</TabBtn>
           <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Aprovação do Gestor</TabBtn>
-          <TabBtn t={t} active={activeTab === "promessas"} onClick={() => setActiveTab("promessas")} badge={notifCount} badgeColor="#ef4444">📅 Promessas e Alertas</TabBtn>
           <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade da Cobrança</TabBtn>
           <TabBtn t={t} active={activeTab === "metas"} onClick={() => setActiveTab("metas")}>🎯 Metas de Cobrança</TabBtn>
           <TabBtn t={t} active={activeTab === "fluxo"} onClick={() => setActiveTab("fluxo")}>📈 Impacto no Caixa</TabBtn>
@@ -710,41 +700,54 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ═══ COBRADOS ═══ */}
+        {/* ═══ COBRADOS + PROMESSAS ═══ */}
         {activeTab === "cobrados" && (
           <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <Btn t={t} ghost sm onClick={() => dlCsv("cobrados.csv", [["Nº","Cliente","Qtd.","Total","Status","Contato","Promessa","Obs","Prioridade"], ...cobrados.map(g => [g.nrCli,g.nomeCli,g.qtdTitulos,Number(g.valorTotalDebito).toFixed(2).replace(".",","),g.statusConsolidado,fmtD(g.ultimoContato),fmtD(g.dataPromessa),g.obsConsolidada||"—",g.prioridadeCliente])])}>⬇️ CSV</Btn>
-              <span style={{ fontSize: 11, color: t.muted, marginLeft: "auto" }}><b style={{ color: t.txt }}>{cobrados.length}</b> clientes</span>
+            {/* Sub-abas */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <button onClick={() => setSubTabCobr("historico")} style={{ background: subTabCobr === "historico" ? t.p : t.surf2, color: subTabCobr === "historico" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "historico" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✅ Histórico de Cobranças</button>
+              <button onClick={() => setSubTabCobr("promessas")} style={{ background: subTabCobr === "promessas" ? t.p : t.surf2, color: subTabCobr === "promessas" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "promessas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>📅 Promessas</button>
             </div>
-            <div style={{ overflowX: "auto", borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    {["Nº","CLIENTE","QTD.","TOTAL","STATUS","ENCAMINHAR","CONTATO","PROMESSA","CLASSIF.","OBSERVAÇÃO","PRIORIDADE","HIST."].map(h => <th key={h} style={thS}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {cobrados.length === 0 && <tr><td colSpan={12} style={{ textAlign: "center", padding: 44, color: t.muted }}>Nenhum cliente cobrado.</td></tr>}
-                  {cobrados.map((g, i) => (
-                    <tr key={g.clientKey} style={{ background: i % 2 === 0 ? t.surf : t.alt, borderLeft: `4px solid ${prioCor(g.prioridadeCliente)}` }}>
-                      <td style={{ ...tdS(), color: t.muted }}>{g.nrCli}</td>
-                      <td style={tdS()}><b>{g.nomeCli}</b></td>
-                      <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>
-                      <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(g.valorTotalDebito)}</td>
-                      <td style={tdS()}>{g.statusConsolidado}</td>
-                      <td style={tdS()}>{encBadge(g.encaminharConsolidado)}</td>
-                      <td style={{ ...tdS(), color: t.muted }}>{fmtD(g.ultimoContato)}</td>
-                      <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>
-                      <td style={tdS()}><PromessaClassifBadge qtd={g.qtdTotal} /></td>
-                      <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>
-                      <td style={tdS()}><PrioBadge label={g.prioridadeCliente} /></td>
-                      <td style={tdS()}><Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+
+            {subTabCobr === "historico" && (
+              <>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <Btn t={t} ghost sm onClick={() => dlCsv("cobrados.csv", [["Nº","Cliente","Qtd.","Total","Status","Contato","Promessa","Obs"], ...cobrados.map(g => [g.nrCli,g.nomeCli,g.qtdTitulos,Number(g.valorTotalDebito).toFixed(2).replace(".",","),g.statusConsolidado,fmtD(g.ultimoContato),fmtD(g.dataPromessa),g.obsConsolidada||"—"])])}>⬇️ CSV</Btn>
+                  <span style={{ fontSize: 11, color: t.muted, marginLeft: "auto" }}><b style={{ color: t.txt }}>{cobrados.length}</b> clientes</span>
+                </div>
+                <div style={{ overflowX: "auto", borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        {["Nº","CLIENTE","QTD.","TOTAL","STATUS","ENCAMINHAR","CONTATO","PROMESSA","CLASSIF.","OBSERVAÇÃO","HIST."].map(h => <th key={h} style={thS}>{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cobrados.length === 0 && <tr><td colSpan={11} style={{ textAlign: "center", padding: 44, color: t.muted }}>Nenhum cliente cobrado.</td></tr>}
+                      {cobrados.map((g, i) => (
+                        <tr key={g.clientKey} style={{ background: i % 2 === 0 ? t.surf : t.alt, borderLeft: `4px solid ${prioCor(g.prioridadeCliente)}` }}>
+                          <td style={{ ...tdS(), color: t.muted }}>{g.nrCli}</td>
+                          <td style={tdS()}><b>{g.nomeCli}</b></td>
+                          <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>
+                          <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(g.valorTotalDebito)}</td>
+                          <td style={tdS()}>{g.statusConsolidado}</td>
+                          <td style={tdS()}>{encBadge(g.encaminharConsolidado)}</td>
+                          <td style={{ ...tdS(), color: t.muted }}>{fmtD(g.ultimoContato)}</td>
+                          <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>
+                          <td style={tdS()}><PromessaClassifBadge qtd={g.qtdTotal} /></td>
+                          <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>
+                          <td style={tdS()}><Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {subTabCobr === "promessas" && (
+              <MonitorPromessas grouped={groupedFiltrado} t={t} />
+            )}
           </>
         )}
 
@@ -819,12 +822,7 @@ export default function Dashboard() {
             </div>
           </>
         )}
-        {/* ═══ PROMESSAS & ALERTAS ═══ */}
-        {activeTab === "promessas" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <MonitorPromessas grouped={grouped} t={t} />
-          </div>
-        )}
+
 
         {/* ═══ PRODUTIVIDADE & ANALYTICS ═══ */}
         {activeTab === "produtividade" && (

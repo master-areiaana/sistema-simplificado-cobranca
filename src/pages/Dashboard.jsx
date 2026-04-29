@@ -800,17 +800,12 @@ export default function Dashboard() {
         )}
 
         {/* KPIs Protesto */}
-        {activeTab === "protesto" && (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginBottom: 14 }}>
-            <KPI t={t} label="Pendentes de Aprovação" color="#ef4444" value={protestoLista.length} sub="aguardando gestor" />
-            <KPI t={t} label="Valor em Protesto" color="#ef4444" value={fmtM(protestoLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a autorizar" />
-          </div>
-        )}
-
-        
-
-
-
+         {activeTab === "protesto" && (
+           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginBottom: 14 }}>
+             <KPI t={t} label="Pendentes de Aprovação" color="#ef4444" value={protestoLista.length} sub="aguardando gestor" />
+             <KPI t={t} label="Valor em Protesto" color="#ef4444" value={fmtM(protestoLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a autorizar" />
+           </div>
+         )}
 
 
 

@@ -581,29 +581,29 @@ export default function Dashboard() {
         </div>
 
         {/* DASHBOARD KPIs — só exibe na aba Carteira */}
-        {activeTab === "carteira" &&
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }} className="bg-transparent hidden">
+        
 
-            {kpiFilter &&
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 11, color: t.p }}>
-                <span>🔍 Filtrando por indicador</span>
-                <button onClick={() => setKpiFilter(null)} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
-              </div>
-          }
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-              <KPI t={t} label="Total em Aberto" color={t.p} value={fmtM(dash.vTot)} sub="com multa/juros" />
-              <KPI t={t} label="A Cobrar" color="#ef4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => setKpiFilter((p) => p === "aCobrar" ? null : "aCobrar")} active={kpiFilter === "aCobrar"} />
-              <KPI t={t} label="Cobrado" color="#10b981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => setKpiFilter((p) => p === "cobrado" ? null : "cobrado")} active={kpiFilter === "cobrado"} />
-              <KPI t={t} label="Cobrados Hoje" color="#f59e0b" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} onClick={() => setKpiFilter((p) => p === "cobHoje" ? null : "cobHoje")} active={kpiFilter === "cobHoje"} />
-              <KPI t={t} label="Faltam Cobrar" color="#ef4444" value={dash.faltando} sub="sem contato hoje" onClick={() => setKpiFilter((p) => p === "faltando" ? null : "faltando")} active={kpiFilter === "faltando"} />
-              <KPI t={t} label="Nº Clientes" color="#555" value={dash.numCli} sub="ativos" />
-              <KPI t={t} label="Nº Títulos" color="#888" value={dash.numTit} sub="ativos" />
-              <KPI t={t} label="Val. Original" color="#10b981" value={fmtM(dash.vOrig)} sub="sem multa/juros" />
-              <KPI t={t} label="Verif. Pendentes" color="#3b82f6" value={dash.pendVerif} sub="aguard. resposta" onClick={() => setKpiFilter((p) => p === "pendVerif" ? null : "pendVerif")} active={kpiFilter === "pendVerif"} />
-              <KPI t={t} label="Protesto Pendentes" color="#ef4444" value={dash.pendProt} sub="aguard. aprovação" onClick={() => setKpiFilter((p) => p === "pendProt" ? null : "pendProt")} active={kpiFilter === "pendProt"} />
-            </div>
-          </div>
-        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
 
         {/* FILTROS GLOBAIS — somente Carteira, Verificação e Protesto */}
         {(activeTab === "carteira" || activeTab === "verificacao" || activeTab === "protesto") &&

@@ -56,9 +56,7 @@ export default function TabelaCobrados({ data, t, setHistModal, dlCsv }) {
             <button onClick={() => setFilters({})} style={{ background: "none", border: `1px solid #ef4444`, color: "#ef4444", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕ Limpar filtros</button>
           )}
         </div>
-        <span style={{ fontSize: 11, color: t.muted }}>
-          <b style={{ color: t.txt }}>{filtered.length}</b> de {data.length} clientes
-        </span>
+
       </div>
       <div style={{ overflowX: "auto", borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>

@@ -630,13 +630,7 @@ export default function Dashboard() {
                 <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
               )}
             </div>
-            <div style={{ fontSize: 11, color: t.muted }}>
-              <b style={{ color: t.txt }}>
-                {activeTab === "verificacao" ? verifLista.length
-                  : activeTab === "protesto" ? protestoLista.length
-                  : sortedCart.length}
-              </b> clientes na visão atual
-            </div>
+
             {activeTab === "carteira" && (
               <div style={{ position: "relative" }}>
                 <button onClick={() => setShowColMenu(x => !x)} style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
@@ -746,7 +740,7 @@ export default function Dashboard() {
                 <input type="text" placeholder="Buscar por nome ou nº..." value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />
                 {buscaCliente && <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>}
               </div>
-              <div style={{ fontSize: 11, color: t.muted }}><b style={{ color: t.txt }}>{cobrados.length}</b> clientes na visão atual</div>
+
             </div>
 
             {/* 4. Conteúdo da sub-aba */}

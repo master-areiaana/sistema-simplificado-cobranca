@@ -24,11 +24,28 @@ export function Lbl({ children, t }) {
   return <label style={{ fontSize: 11, color: t.muted, display: "block", marginBottom: 4, fontWeight: 600 }}>{children}</label>;
 }
 
-export function KPI({ label, value, sub, color, t }) {
+export function KPI({ label, value, sub, color, t, onClick, active }) {
   return (
-    <div style={{ background: t.card, borderRadius: 10, padding: "10px 12px", border: `1px solid ${t.bor}`, borderLeft: `3px solid ${color}`, flex: "1 1 110px", minWidth: 110, maxWidth: 180, boxShadow: t.shad, boxSizing: "border-box", overflow: "hidden" }}>
+    <div
+      onClick={onClick}
+      style={{
+        background: active ? color + "18" : t.card,
+        borderRadius: 10,
+        padding: "10px 12px",
+        border: `1px solid ${active ? color : t.bor}`,
+        borderLeft: `3px solid ${color}`,
+        flex: "1 1 110px",
+        minWidth: 110,
+        maxWidth: 180,
+        boxShadow: active ? `0 0 0 2px ${color}44` : t.shad,
+        boxSizing: "border-box",
+        overflow: "hidden",
+        cursor: onClick ? "pointer" : "default",
+        transition: "all .15s",
+      }}
+    >
       <div style={{ fontSize: 8, color: t.muted, textTransform: "uppercase", letterSpacing: .7, marginBottom: 4, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 800, color: t.txt, lineHeight: 1.2, wordBreak: "break-all" }}>{value}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: active ? color : t.txt, lineHeight: 1.2, wordBreak: "break-all" }}>{value}</div>
       {sub && <div style={{ fontSize: 8, color: t.muted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>}
     </div>
   );

@@ -87,6 +87,7 @@ export default function Dashboard() {
   const [fCob, setFCob] = useState({});
   const [fVerif, setFVerif] = useState({});
   const [fProt, setFProt] = useState({});
+  const [kpiFilter, setKpiFilter] = useState(null); // "aCobrar" | "cobrado" | "cobHoje" | "faltando" | "pendVerif" | "pendProt" | null
 
   // ── Carregar dados do Base44 ──
   const loadData = useCallback(async () => {
@@ -108,7 +109,7 @@ export default function Dashboard() {
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { saveL(LOCAL_THEME, isDark ? "dark" : "light"); }, [isDark]);
-  useEffect(() => { saveL(LOCAL_TAB, activeTab); }, [activeTab]);
+  useEffect(() => { saveL(LOCAL_TAB, activeTab); setKpiFilter(null); }, [activeTab]);
 
   // Real-time
   useEffect(() => {
@@ -233,7 +234,17 @@ export default function Dashboard() {
     return arr;
   }, [groupedFiltrado, scCart]);
 
-  const sortedCart = useMemo(() => applyExcelFilter(baseCart, fCart), [baseCart, fCart]);
+  const sortedCartBase = useMemo(() => applyExcelFilter(baseCart, fCart), [baseCart, fCart]);
+  const sortedCart = useMemo(() => {
+    if (!kpiFilter) return sortedCartBase;
+    if (kpiFilter === "aCobrar") return sortedCartBase.filter(g => !g.foiCobrado);
+    if (kpiFilter === "cobrado") return sortedCartBase.filter(g => g.foiCobrado);
+    if (kpiFilter === "cobHoje") return sortedCartBase.filter(g => g.ultimoContato === hojeISO);
+    if (kpiFilter === "faltando") return sortedCartBase.filter(g => g.ultimoContato !== hojeISO);
+    if (kpiFilter === "pendVerif") return sortedCartBase.filter(g => g.encaminharConsolidado === "verificacao");
+    if (kpiFilter === "pendProt") return sortedCartBase.filter(g => g.encaminharConsolidado === "protesto");
+    return sortedCartBase;
+  }, [sortedCartBase, kpiFilter, hojeISO]);
   const cobrados = useMemo(() => applyExcelFilter(groupedFiltrado.filter(g => g.foiCobrado), fCob), [groupedFiltrado, fCob]);
   const verifLista = useMemo(() => applyExcelFilter(groupedFiltrado.filter(g => g.encaminharConsolidado === "verificacao"), fVerif), [groupedFiltrado, fVerif]);
   const protestoLista = useMemo(() => applyExcelFilter(groupedFiltrado.filter(g => g.encaminharConsolidado === "protesto"), fProt), [groupedFiltrado, fProt]);
@@ -550,18 +561,24 @@ export default function Dashboard() {
         {/* DASHBOARD KPIs */}
         <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }}>
           <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 10 }}>Indicadores</div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          {kpiFilter && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 11, color: t.p }}>
+              <span>🔍 Filtrando por indicador</span>
+              <button onClick={() => setKpiFilter(null)} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <KPI t={t} label="Total em Aberto" color={t.p} value={fmtM(dash.vTot)} sub="com multa/juros" />
-            <KPI t={t} label="A Cobrar" color="#ef4444" value={fmtM(dash.aCobrar)} sub="sem contato" />
-            <KPI t={t} label="Cobrado" color="#10b981" value={fmtM(dash.cobrado)} sub="já contactados" />
+            <KPI t={t} label="A Cobrar" color="#ef4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "aCobrar" ? null : "aCobrar"); }} active={kpiFilter === "aCobrar"} />
+            <KPI t={t} label="Cobrado" color="#10b981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "cobrado" ? null : "cobrado"); }} active={kpiFilter === "cobrado"} />
             <KPI t={t} label="Recuperado no Mês" color="#7c3aed" value={fmtM(dash.recuperadoMes)} sub={hojeISO.slice(0, 7)} />
-            <KPI t={t} label="Cobrados hoje" color="#f59e0b" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} />
-            <KPI t={t} label="Faltam cobrar" color="#ef4444" value={dash.faltando} sub="sem contato hoje" />
+            <KPI t={t} label="Cobrados hoje" color="#f59e0b" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "cobHoje" ? null : "cobHoje"); }} active={kpiFilter === "cobHoje"} />
+            <KPI t={t} label="Faltam cobrar" color="#ef4444" value={dash.faltando} sub="sem contato hoje" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "faltando" ? null : "faltando"); }} active={kpiFilter === "faltando"} />
             <KPI t={t} label="Nº Clientes" color="#555" value={dash.numCli} sub="ativos" />
             <KPI t={t} label="Nº Títulos" color="#888" value={dash.numTit} sub="ativos" />
             <KPI t={t} label="Val. Original" color="#10b981" value={fmtM(dash.vOrig)} sub="sem multa/juros" />
-            <KPI t={t} label="Verif. Pendentes" color="#3b82f6" value={dash.pendVerif} sub="aguard. resposta" />
-            <KPI t={t} label="Protesto Pendentes" color="#ef4444" value={dash.pendProt} sub="aguard. aprovação" />
+            <KPI t={t} label="Verif. Pendentes" color="#3b82f6" value={dash.pendVerif} sub="aguard. resposta" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "pendVerif" ? null : "pendVerif"); }} active={kpiFilter === "pendVerif"} />
+            <KPI t={t} label="Protesto Pendentes" color="#ef4444" value={dash.pendProt} sub="aguard. aprovação" onClick={() => { setActiveTab("carteira"); setKpiFilter(p => p === "pendProt" ? null : "pendProt"); }} active={kpiFilter === "pendProt"} />
           </div>
         </div>
 

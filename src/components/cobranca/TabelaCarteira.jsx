@@ -36,11 +36,8 @@ function encBadge(enc) {
   return null;
 }
 
-export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal, onEncaminharSugestao }) {
+export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal, onEncaminharSugestao, hiddenCols, setHiddenCols }) {
   const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
-  // Colunas ocultas pelo usuário (keys)
-  const [hiddenCols, setHiddenCols] = useState(new Set());
-  const [showColMenu, setShowColMenu] = useState(false);
 
   const toggleCol = (key) => setHiddenCols(p => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols.has(c.key));
@@ -92,30 +89,12 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        {hasAnyFilter(fCart) && (
-          <>
-            <span style={{ fontSize: 11, color: t.p }}>🔍 Filtros ativos</span>
-            <button onClick={() => setFCart({})} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
-          </>
-        )}
-        <div style={{ marginLeft: "auto", position: "relative" }}>
-          <button onClick={() => setShowColMenu(x => !x)} style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-            ☰ Colunas {hiddenCols.size > 0 ? `(${hiddenCols.size} ocultas)` : ""}
-          </button>
-          {showColMenu && (
-            <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: "8px", zIndex: 200, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,.2)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-              {COLS_DEF.filter(c => !c.fixed && c.key !== "check" && c.key !== "expand").map(c => (
-                <label key={c.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: hiddenCols.has(c.key) ? t.surf2 : "transparent" }}>
-                  <input type="checkbox" checked={!hiddenCols.has(c.key)} onChange={() => toggleCol(c.key)} style={{ accentColor: t.p }} />
-                  {c.label || c.key}
-                </label>
-              ))}
-              <button onClick={() => { setHiddenCols(new Set()); setShowColMenu(false); }} style={{ gridColumn: "1/-1", marginTop: 4, background: t.p, color: "#fff", border: "none", borderRadius: 4, padding: "4px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Mostrar Todas</button>
-            </div>
-          )}
+      {hasAnyFilter(fCart) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, color: t.p }}>🔍 Filtros ativos</span>
+          <button onClick={() => setFCart({})} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
         </div>
-      </div>
+      )}
 
       <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "hidden", width: "100%" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>

@@ -89,6 +89,8 @@ export default function Dashboard() {
   const [buscaCliente, setBuscaCliente] = useState(""); // busca rápida por nome/nº cliente
 
   const [fCart, setFCart] = useState({});
+  const [hiddenCols, setHiddenCols] = useState(new Set());
+  const [showColMenu, setShowColMenu] = useState(false);
   const [fCob, setFCob] = useState({});
   const [fVerif, setFVerif] = useState({});
   const [fProt, setFProt] = useState({});
@@ -631,7 +633,7 @@ export default function Dashboard() {
               <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
             )}
           </div>
-          <div style={{ marginLeft: "auto", fontSize: 11, color: t.muted }}>
+          <div style={{ fontSize: 11, color: t.muted }}>
             <b style={{ color: t.txt }}>
               {activeTab === "cobrados" ? cobrados.length
                 : activeTab === "verificacao" ? verifLista.length
@@ -639,6 +641,31 @@ export default function Dashboard() {
                 : sortedCart.length}
             </b> clientes na visão atual
           </div>
+          {activeTab === "carteira" && (
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setShowColMenu(x => !x)} style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                ☰ Colunas {hiddenCols.size > 0 ? `(${hiddenCols.size} ocultas)` : ""}
+              </button>
+              {showColMenu && (
+                <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: "8px", zIndex: 300, minWidth: 200, boxShadow: "0 8px 24px rgba(0,0,0,.2)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                  {[
+                    { key: "nrCli", label: "Nº" }, { key: "nomeCli", label: "CLIENTE" }, { key: "qtd", label: "QTD." },
+                    { key: "venc", label: "VENCIMENTO" }, { key: "atraso", label: "ATRASO" }, { key: "vOrig", label: "VAL. ORIG" },
+                    { key: "multa", label: "MULTA" }, { key: "juros", label: "JUROS" }, { key: "total", label: "TOTAL" },
+                    { key: "status", label: "STATUS" }, { key: "enc", label: "ENCAMINHAR" }, { key: "origem", label: "ORIG." },
+                    { key: "contato", label: "DT. CONTATO" }, { key: "prom", label: "PROMESSA" }, { key: "classif", label: "CLASSIF." },
+                    { key: "sugest", label: "SUGESTÃO" }, { key: "obs", label: "OBSERVAÇÃO" },
+                  ].map(c => (
+                    <label key={c.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: hiddenCols.has(c.key) ? t.surf2 : "transparent" }}>
+                      <input type="checkbox" checked={!hiddenCols.has(c.key)} onChange={() => setHiddenCols(p => { const n = new Set(p); n.has(c.key) ? n.delete(c.key) : n.add(c.key); return n; })} style={{ accentColor: t.p }} />
+                      {c.label}
+                    </label>
+                  ))}
+                  <button onClick={() => { setHiddenCols(new Set()); setShowColMenu(false); }} style={{ gridColumn: "1/-1", marginTop: 4, background: t.p, color: "#fff", border: "none", borderRadius: 4, padding: "4px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Mostrar Todas</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ═══ CARTEIRA ═══ */}
@@ -663,6 +690,7 @@ export default function Dashboard() {
               isDark={isDark} t={t}
               makeColData={makeColData} fieldVal={fieldVal} applyExcelFilter={applyExcelFilter}
               setNegModal={setNegModal}
+              hiddenCols={hiddenCols} setHiddenCols={setHiddenCols}
               onEncaminharSugestao={async (g, enc) => {
                 for (const item of g.titulos) {
                   await base44.entities.ChargeEvent.create({

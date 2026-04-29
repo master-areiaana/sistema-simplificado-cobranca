@@ -771,7 +771,7 @@ export default function Dashboard() {
 
         {/* DASHBOARD KPIs — Carteira Geral */}
         {activeTab === "carteira" && (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, justifyContent: "center", marginBottom: 14, maxWidth: "1400px", margin: "0 auto 14px" }}>
             {kpiFilter && (
               <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, marginBottom: 4, fontSize: 11, color: t.p }}>
                 <span>🔍 Filtrando por indicador</span>
@@ -791,7 +791,7 @@ export default function Dashboard() {
 
         {/* KPIs Verificação */}
         {activeTab === "verificacao" && (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, justifyContent: "center", marginBottom: 14, maxWidth: "1400px", margin: "0 auto 14px" }}>
             <KPI t={t} label="Pendentes de Verificação" color="#3b82f6" value={verifLista.length} sub="aguardando resposta" />
             <KPI t={t} label="Valor em Verificação" color="#3b82f6" value={fmtM(verifLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a validar" />
           </div>
@@ -799,7 +799,7 @@ export default function Dashboard() {
 
         {/* KPIs Protesto */}
          {activeTab === "protesto" && (
-           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginBottom: 14 }}>
+           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, justifyContent: "center", marginBottom: 14, maxWidth: "1400px", margin: "0 auto 14px" }}>
              <KPI t={t} label="Pendentes de Aprovação" color="#ef4444" value={protestoLista.length} sub="aguardando gestor" />
              <KPI t={t} label="Valor em Protesto" color="#ef4444" value={fmtM(protestoLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a autorizar" />
            </div>
@@ -985,7 +985,7 @@ export default function Dashboard() {
         {activeTab === "produtividade" &&
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* KPIs Produtividade */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, justifyContent: "center", maxWidth: "1400px", margin: "0 auto" }}>
               <KPI t={t} label="Total de Contatos" color="#3b82f6" value={events.filter(e => e.event_type === "COBRANCA").length} sub="no período" />
               <KPI t={t} label="Promessas Obtidas" color="#f59e0b" value={events.filter(e => e.status === "Prometeu Pagar").length} sub="confirmadas" />
               <KPI t={t} label="Pagamentos Confirmados" color="#10b981" value={events.filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado").length} sub="verificados" />
@@ -1016,7 +1016,7 @@ export default function Dashboard() {
         {activeTab === "fluxo" &&
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* KPIs Fluxo */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, justifyContent: "center", maxWidth: "1400px", margin: "0 auto" }}>
             <KPI t={t} label="Previsão 30 dias" color="#3b82f6" value={fmtM(grouped.filter(g => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="próximo mês" />
             <KPI t={t} label="Previsão 60 dias" color="#f59e0b" value={fmtM(grouped.filter(g => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 60 dias" />
             <KPI t={t} label="Previsão 90 dias" color="#7c3aed" value={fmtM(grouped.filter(g => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 90 dias" />

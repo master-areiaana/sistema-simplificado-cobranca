@@ -571,7 +571,7 @@ export default function Dashboard() {
         <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{loading ? "⏳ Carregando..." : syncMsg}</div>
 
         {/* TABS */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", paddingBottom: 6, paddingTop: 4, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "center", justifyContent: "center" }} className="bg-[hsl(var(--sidebar-border))]">
+        <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", paddingBottom: 6, paddingTop: 4, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "center", justifyContent: "center" }} className="bg-transparent">
           <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")}>📋 Carteira Geral</TabBtn>
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico / Promessas</TabBtn>
           <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Conferência de Pagamento</TabBtn>
@@ -582,7 +582,7 @@ export default function Dashboard() {
 
         {/* DASHBOARD KPIs — só exibe na aba Carteira */}
         {activeTab === "carteira" &&
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }}>
+        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }} className="bg-transparent">
 
             {kpiFilter &&
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 11, color: t.p }}>

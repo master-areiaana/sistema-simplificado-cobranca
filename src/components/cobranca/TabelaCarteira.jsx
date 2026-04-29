@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import React, { useState } from "react";
 import ColHeader from "./ColHeader";
 import { Btn, PromBadge, ObsCell, Badge, PromessaClassifBadge, SugestaoEncBadge } from "./UI";
 import { fmtM, fmtD, prioCor, sugestaoEncaminhamento } from "@/lib/cobranca";

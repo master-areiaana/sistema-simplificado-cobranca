@@ -1,6 +1,8 @@
 import React, { useMemo } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, ReferenceLine } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
 import { fmtM, fmtD } from "@/lib/cobranca";
+import { base44 } from "@/api/base44Client";
+import { useQuery } from "@tanstack/react-query";
 
 function addDias(dateStr, dias) {
   const d = new Date(dateStr);
@@ -9,14 +11,21 @@ function addDias(dateStr, dias) {
 }
 
 const hoje = new Date().toISOString().slice(0, 10);
+const mesAtual = hoje.slice(0, 7);
 
 export default function PrevisaoFluxo({ grouped, t }) {
-  const { faixas, totalCarteira, totalProjetado, promessasValidas } = useMemo(() => {
+  // Buscar eventos de baixa automática por importação
+  const { data: baixaEvents = [] } = useQuery({
+    queryKey: ["baixa_events"],
+    queryFn: () => base44.entities.ChargeEvent.filter({ event_type: "BAIXA" }, "-event_date", 1000),
+  });
+
+  const { faixas, totalCarteira, totalProjetado, promessasValidas, recuperadoImportacao, recuperadoMes } = useMemo(() => {
     const limite30 = addDias(hoje, 30);
     const limite60 = addDias(hoje, 60);
     const limite90 = addDias(hoje, 90);
 
-    const com = (g) => g.statusConsolidado !== "Encerrado" && g.statusConsolidado !== "Pago Aguard. Baixa";
+    const com = (g) => g.statusConsolidado !== "Encerrado" && g.statusConsolidado !== "Pago Aguard. Baixa" && g.statusConsolidado !== "Baixado";
 
     const promessasValidas = grouped.filter(g => g.dataPromessa && g.dataPromessa >= hoje && com(g));
 
@@ -33,8 +42,21 @@ export default function PrevisaoFluxo({ grouped, t }) {
       { label: "61-90 dias", valor: p90, qtd: promessasValidas.filter(g => g.dataPromessa > limite60 && g.dataPromessa <= limite90).length, cor: "#7c3aed" },
     ];
 
-    return { faixas, totalCarteira, totalProjetado, promessasValidas };
-  }, [grouped]);
+    // Calcular recuperado via baixa automática (extraindo valor da nota do evento)
+    const baixaDoMes = baixaEvents.filter(e => e.event_date && e.event_date.startsWith(mesAtual));
+    const recuperadoImportacao = baixaDoMes.reduce((s, e) => {
+      const match = (e.note || "").match(/Valor original: R\$ ([\d.,]+)/);
+      if (match) {
+        const v = Number(match[1].replace(/\./g, "").replace(",", "."));
+        return s + (isFinite(v) ? v : 0);
+      }
+      return s;
+    }, 0);
+
+    const recuperadoMes = recuperadoImportacao;
+
+    return { faixas, totalCarteira, totalProjetado, promessasValidas, recuperadoImportacao, recuperadoMes };
+  }, [grouped, baixaEvents]);
 
   const perc = totalCarteira > 0 ? (totalProjetado / totalCarteira * 100) : 0;
 
@@ -45,6 +67,7 @@ export default function PrevisaoFluxo({ grouped, t }) {
         {[
           { label: "Projeção Total (90d)", value: fmtM(totalProjetado), sub: `${perc.toFixed(1)}% da carteira total`, color: "#10b981" },
           { label: "Carteira Total", value: fmtM(totalCarteira), sub: "com multa e juros", color: "#ef4444" },
+          { label: "Recuperado no Mês", value: fmtM(recuperadoMes), sub: "baixas via importação", color: "#22c55e" },
           { label: "Promessas Ativas", value: promessasValidas.length, sub: "clientes com promessa", color: "#f59e0b" },
           { label: "Gap não projetado", value: fmtM(totalCarteira - totalProjetado), sub: "sem promessa nos 90 dias", color: "#6366f1" },
         ].map(k => (
@@ -55,6 +78,17 @@ export default function PrevisaoFluxo({ grouped, t }) {
           </div>
         ))}
       </div>
+
+      {/* Card de recuperação via importação */}
+      {recuperadoImportacao > 0 && (
+        <div style={{ background: "#052e1688", border: "1px solid #16a34a55", borderLeft: "4px solid #22c55e", borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 20 }}>💰</span>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#22c55e" }}>Valor recuperado este mês via baixa automática: {fmtM(recuperadoImportacao)}</div>
+            <div style={{ fontSize: 11, color: t.muted }}>Títulos que saíram da carteira em aberto nas últimas importações e foram presumidos como recebidos.</div>
+          </div>
+        </div>
+      )}
 
       {/* Barra de progresso */}
       <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>

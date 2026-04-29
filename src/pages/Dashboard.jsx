@@ -352,14 +352,28 @@ export default function Dashboard() {
 
   async function syncImport(source, imported, fileName) {
     const existingAll = await base44.entities.Titulo.filter({ source }, "client_name", 2000);
-    const existMap = new Map((existingAll || []).map((r) => [r.id || buildId({ origem: r.source, nrCli: r.client_code, tp: r.doc_type, ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico }), r]));
-    const importIds = new Set(imported.map((i) => i.id));
-    let ins = 0,upd = 0,deact = 0;
+
+    // Mapear por CHAVE DE COBRANÇA (buildId), não pelo ID interno do banco
+    const existMap = new Map();
+    for (const r of existingAll || []) {
+      const cobrancaKey = buildId({
+        origem: r.source, nrCli: r.client_code, tp: r.doc_type,
+        ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
+      });
+      existMap.set(cobrancaKey, r);
+    }
+
+    // Chaves presentes na nova importação
+    const importKeys = new Set(imported.map((i) => i.id)); // i.id já é buildId(...)
+    let ins = 0, upd = 0, deact = 0, baixados = 0;
+    let valorBaixado = 0;
 
     const BATCH = 5;
+
+    // 1. Upsert: criar novos ou atualizar existentes
     for (let i = 0; i < imported.length; i++) {
       const item = imported[i];
-      const old = existMap.get(item.id);
+      const old = existMap.get(item.id); // comparação por chave de cobrança
       const payload = {
         source: item.origem, client_code: item.nrCli, client_name: item.nomeCli,
         doc_type: item.tp || null, serie: item.ser || null, title_number: item.titulo,
@@ -368,6 +382,7 @@ export default function Dashboard() {
         original_value: Number(item.valorOriginal || 0),
         portador: item.portador || null, active: true,
         import_file: fileName,
+        // Preservar histórico de cobrança existente
         current_status: old?.current_status || "Não Contatado",
         current_motive: old?.current_motive || null,
         current_contact_type: old?.current_contact_type || null,
@@ -389,20 +404,54 @@ export default function Dashboard() {
       if ((i + 1) % BATCH === 0) await sleep(300);
     }
 
-    // Desativar títulos removidos
+    // 2. Baixar títulos que saíram da nova importação (estavam ativos, não vieram mais)
     let deactIdx = 0;
     for (const r of existingAll || []) {
-      const rId = r.id || "";
-      if (!importIds.has(rId) && r.active) {
-        await base44.entities.Titulo.update(r.id, { active: false, updated_by: "Importação" });
+      const cobrancaKey = buildId({
+        origem: r.source, nrCli: r.client_code, tp: r.doc_type,
+        ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico
+      });
+      const jaFoiBaixado = ["Baixado", "Recebido", "Pago", "Encerrado"].includes(r.current_status);
+      if (!importKeys.has(cobrancaKey) && r.active && !jaFoiBaixado) {
+        const valorTit = Number(r.original_value || 0);
+        valorBaixado += valorTit;
+
+        // Marcar como baixado/recebido
+        await base44.entities.Titulo.update(r.id, {
+          active: false,
+          current_status: "Baixado",
+          current_motive: "Saiu da carteira em aberto — baixa automática por importação",
+          last_contact_date: hojeISO,
+          workflow_status: "baixado",
+          updated_by: "Importação"
+        });
+
+        // Registrar evento de baixa no histórico
+        await base44.entities.ChargeEvent.create({
+          titulo_id: r.id,
+          client_code: r.client_code,
+          client_name: r.client_name,
+          event_type: "BAIXA",
+          event_subtype: "SAIU_IMPORTACAO",
+          event_date: hojeISO,
+          status: "Baixado",
+          motive: "Título não presente na nova importação — presumido como recebido/baixado",
+          note: `Arquivo importado: ${fileName}. Valor original: R$ ${valorTit.toFixed(2).replace(".", ",")}`,
+          event_user: "Importação Automática"
+        });
+
         deact++;
+        baixados++;
         deactIdx++;
         if (deactIdx % BATCH === 0) await sleep(300);
       }
     }
 
-    await base44.entities.ImportLog.create({ file_name: fileName, source, total_read: imported.length, inserted_count: ins, updated_count: upd, deactivated_count: deact });
-    return { ins, upd, deact };
+    await base44.entities.ImportLog.create({
+      file_name: fileName, source, total_read: imported.length,
+      inserted_count: ins, updated_count: upd, deactivated_count: deact
+    });
+    return { ins, upd, deact, baixados, valorBaixado };
   }
 
   async function importarArquivo(e) {
@@ -538,7 +587,8 @@ export default function Dashboard() {
         e.target.value = "";return;
       }
       const r = await syncImport(source, imported, file.name);
-      setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${r?.ins || 0} novos, ${r?.upd || 0} atualizados, ${r?.deact || 0} desativados.` });
+      const baixaMsg = r?.baixados > 0 ? ` | ${r.baixados} baixados (${fmtM(r.valorBaixado)} lançado no Impacto no Caixa)` : "";
+      setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${r?.ins || 0} novos, ${r?.upd || 0} atualizados${baixaMsg}.` });
     }
     e.target.value = "";
     // CORREÇÃO: recarregar dados após importação para atualizar cards e tabela

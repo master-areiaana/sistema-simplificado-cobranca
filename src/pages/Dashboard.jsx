@@ -22,6 +22,7 @@ import PainelGitHub from "@/components/cobranca/PainelGitHub";
 import PainelNotificacoes from "@/components/cobranca/PainelNotificacoes";
 import PrevisaoFluxo from "@/components/cobranca/PrevisaoFluxo";
 import PainelSupabase from "@/components/cobranca/PainelSupabase";
+import AnalyticsDashboard from "@/components/cobranca/AnalyticsDashboard";
 
 const LOCAL_THEME = "sc_theme";
 const LOCAL_TAB = "sc_tab";
@@ -460,6 +461,7 @@ export default function Dashboard() {
           <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Protesto</TabBtn>
           <TabBtn t={t} active={activeTab === "promessas"} onClick={() => setActiveTab("promessas")}>📅 Promessas</TabBtn>
           <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade</TabBtn>
+          <TabBtn t={t} active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")}>📊 Analytics</TabBtn>
           <TabBtn t={t} active={activeTab === "notificacoes"} onClick={() => setActiveTab("notificacoes")} badge={notifCount} badgeColor="#ef4444">🔔 Notificações</TabBtn>
           <TabBtn t={t} active={activeTab === "fluxo"} onClick={() => setActiveTab("fluxo")}>📈 Fluxo de Caixa</TabBtn>
           <TabBtn t={t} active={activeTab === "github"} onClick={() => setActiveTab("github")}>🐙 GitHub Issues</TabBtn>
@@ -638,6 +640,14 @@ export default function Dashboard() {
         {/* ═══ PRODUTIVIDADE ═══ */}
         {activeTab === "produtividade" && (
           <PainelProdutividade events={events} t={t} />
+        )}
+
+        {/* ═══ ANALYTICS ═══ */}
+        {activeTab === "analytics" && (
+          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📊 Analytics & Exportação</div>
+            <AnalyticsDashboard grouped={grouped} events={events} t={t} />
+          </div>
         )}
 
         {/* ═══ NOTIFICAÇÕES ═══ */}

@@ -27,31 +27,23 @@ export function Lbl({ children, t }) {
 export function KPI({ label, value, sub, color, t, onClick, active }) {
    return (
      <div
+       className="kpi-card"
        onClick={onClick}
        style={{
-         flex: "1 1 140px",
-         minWidth: 120,
-         maxWidth: 200,
-         background: t.card,
-         border: `1px solid ${t.bor}`,
          borderLeft: `4px solid ${color}`,
-         borderRadius: 8,
-         padding: "12px 14px",
+         background: t.card,
+         opacity: active ? 1 : 0.9,
          cursor: onClick ? "pointer" : "default",
-         transition: "all .2s",
-         opacity: active ? 1 : 0.8,
-         transform: active ? "scale(1.02)" : "scale(1)",
-         boxShadow: active ? `0 4px 12px ${color}33` : t.shad,
        }}
      >
-       <div style={{ fontSize: 9, fontWeight: 700, color: t.muted, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+       <div style={{ fontSize: 10, fontWeight: 700, color: t.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6 }}>
           {label}
         </div>
-        <div style={{ fontSize: 20, fontWeight: 900, color: color, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 22, fontWeight: 900, color: color, marginBottom: 4, lineHeight: 1 }}>
           {value}
         </div>
         {sub && (
-          <div style={{ fontSize: 8, color: t.muted, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 11, color: t.muted, fontWeight: 500, lineHeight: 1.2 }}>
             {sub}
           </div>
         )}

@@ -771,37 +771,38 @@ export default function Dashboard() {
 
         {/* DASHBOARD KPIs — Carteira Geral */}
         {activeTab === "carteira" && (
-          <div className="kpi-container kpi-container-8">
+          <>
+            <div className="kpi-container kpi-container-8">
+              <KPI t={t} label="Total em Aberto" color="#F59E0B" value={fmtM(dash.vTot)} sub="com multa/juros" />
+              <KPI t={t} label="A Cobrar" color="#EF4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => setKpiFilter(p => p === "aCobrar" ? null : "aCobrar")} active={kpiFilter === "aCobrar"} />
+              <KPI t={t} label="Cobrado" color="#10B981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => setKpiFilter(p => p === "cobrado" ? null : "cobrado")} active={kpiFilter === "cobrado"} />
+              <KPI t={t} label="Cobrados Hoje" color="#FBBF24" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} onClick={() => setKpiFilter(p => p === "cobHoje" ? null : "cobHoje")} active={kpiFilter === "cobHoje"} />
+              <KPI t={t} label="Faltam Cobrar" color="#EF4444" value={dash.faltando} sub="sem contato hoje" onClick={() => setKpiFilter(p => p === "faltando" ? null : "faltando")} active={kpiFilter === "faltando"} />
+              <KPI t={t} label="Nº Clientes" color="#6B7280" value={dash.numCli} sub="ativos" />
+              <KPI t={t} label="Nº Títulos" color="#6B7280" value={dash.numTit} sub="ativos" />
+              <KPI t={t} label="Val. Original" color="#10B981" value={fmtM(dash.vOrig)} sub="sem multa/juros" />
+            </div>
             {kpiFilter && (
-              <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, marginBottom: 4, fontSize: 11, color: t.p }}>
-                <span>🔍 Filtrando por indicador</span>
-                <button onClick={() => setKpiFilter(null)} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
+              <div style={{ textAlign: "center", marginBottom: 12 }}>
+                <button onClick={() => setKpiFilter(null)} style={{ background: t.p, border: "none", borderRadius: 6, padding: "6px 14px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 11 }}>✕ Limpar Filtro</button>
               </div>
             )}
-            <KPI t={t} label="Total em Aberto" color={t.p} value={fmtM(dash.vTot)} sub="com multa/juros" />
-            <KPI t={t} label="A Cobrar" color="#ef4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => setKpiFilter(p => p === "aCobrar" ? null : "aCobrar")} active={kpiFilter === "aCobrar"} />
-            <KPI t={t} label="Cobrado" color="#10b981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => setKpiFilter(p => p === "cobrado" ? null : "cobrado")} active={kpiFilter === "cobrado"} />
-            <KPI t={t} label="Cobrados Hoje" color="#f59e0b" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} onClick={() => setKpiFilter(p => p === "cobHoje" ? null : "cobHoje")} active={kpiFilter === "cobHoje"} />
-            <KPI t={t} label="Faltam Cobrar" color="#ef4444" value={dash.faltando} sub="sem contato hoje" onClick={() => setKpiFilter(p => p === "faltando" ? null : "faltando")} active={kpiFilter === "faltando"} />
-            <KPI t={t} label="Nº Clientes" color="#555" value={dash.numCli} sub="ativos" />
-            <KPI t={t} label="Nº Títulos" color="#888" value={dash.numTit} sub="ativos" />
-            <KPI t={t} label="Val. Original" color="#10b981" value={fmtM(dash.vOrig)} sub="sem multa/juros" />
-          </div>
+          </>
         )}
 
         {/* KPIs Verificação */}
         {activeTab === "verificacao" && (
           <div className="kpi-container kpi-container-2">
-            <KPI t={t} label="Pendentes de Verificação" color="#3b82f6" value={verifLista.length} sub="aguardando resposta" />
-            <KPI t={t} label="Valor em Verificação" color="#3b82f6" value={fmtM(verifLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a validar" />
+            <KPI t={t} label="Pendentes de Verificação" color="#3B82F6" value={verifLista.length} sub="aguardando resposta" />
+            <KPI t={t} label="Valor em Verificação" color="#3B82F6" value={fmtM(verifLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a validar" />
           </div>
         )}
 
         {/* KPIs Protesto */}
          {activeTab === "protesto" && (
            <div className="kpi-container kpi-container-2">
-             <KPI t={t} label="Pendentes de Aprovação" color="#ef4444" value={protestoLista.length} sub="aguardando gestor" />
-             <KPI t={t} label="Valor em Protesto" color="#ef4444" value={fmtM(protestoLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a autorizar" />
+             <KPI t={t} label="Pendentes de Aprovação" color="#EF4444" value={protestoLista.length} sub="aguardando gestor" />
+             <KPI t={t} label="Valor em Protesto" color="#EF4444" value={fmtM(protestoLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a autorizar" />
            </div>
          )}
 
@@ -932,12 +933,12 @@ export default function Dashboard() {
 
             {/* 2. KPIs da aba */}
             <div className="kpi-container kpi-container-6">
-              <KPI t={t} label="Total Cobrados" color="#10b981" value={cobrados.length} sub="clientes contactados" />
-              <KPI t={t} label="Valor Cobrado" color="#10b981" value={fmtM(cobrados.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total em aberto" />
-              <KPI t={t} label="Com Promessa" color="#f59e0b" value={cobrados.filter((g) => g.dataPromessa).length} sub="clientes com data" />
-              <KPI t={t} label="Prometeu Pagar" color="#7c3aed" value={cobrados.filter((g) => g.statusConsolidado === "Prometeu Pagar").length} sub="status atual" />
-              <KPI t={t} label="Pago Aguard. Baixa" color="#3b82f6" value={cobrados.filter((g) => g.statusConsolidado === "Pago Aguard. Baixa").length} sub="aguardando baixa" />
-              <KPI t={t} label="Sem Retorno" color="#ef4444" value={cobrados.filter((g) => g.statusConsolidado === "Sem Retorno").length} sub="sem resposta" />
+              <KPI t={t} label="Total Cobrados" color="#10B981" value={cobrados.length} sub="clientes contactados" />
+              <KPI t={t} label="Valor Cobrado" color="#10B981" value={fmtM(cobrados.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total em aberto" />
+              <KPI t={t} label="Com Promessa" color="#FBBF24" value={cobrados.filter((g) => g.dataPromessa).length} sub="clientes com data" />
+              <KPI t={t} label="Prometeu Pagar" color="#A78BFA" value={cobrados.filter((g) => g.statusConsolidado === "Prometeu Pagar").length} sub="status atual" />
+              <KPI t={t} label="Pago Aguard. Baixa" color="#3B82F6" value={cobrados.filter((g) => g.statusConsolidado === "Pago Aguard. Baixa").length} sub="aguardando baixa" />
+              <KPI t={t} label="Sem Retorno" color="#EF4444" value={cobrados.filter((g) => g.statusConsolidado === "Sem Retorno").length} sub="sem resposta" />
             </div>
 
             {/* 3. Filtros da aba (abaixo dos KPIs) */}
@@ -986,10 +987,10 @@ export default function Dashboard() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* KPIs Produtividade */}
             <div className="kpi-container kpi-container-4">
-              <KPI t={t} label="Total de Contatos" color="#3b82f6" value={events.filter(e => e.event_type === "COBRANCA").length} sub="no período" />
-              <KPI t={t} label="Promessas Obtidas" color="#f59e0b" value={events.filter(e => e.status === "Prometeu Pagar").length} sub="confirmadas" />
-              <KPI t={t} label="Pagamentos Confirmados" color="#10b981" value={events.filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado").length} sub="verificados" />
-              <KPI t={t} label="Taxa de Sucesso" color="#7c3aed" value={`${events.length > 0 ? ((events.filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Prometeu Pagar").length / events.length) * 100).toFixed(1) : 0}%`} sub="conversão" />
+              <KPI t={t} label="Total de Contatos" color="#3B82F6" value={events.filter(e => e.event_type === "COBRANCA").length} sub="no período" />
+              <KPI t={t} label="Promessas Obtidas" color="#FBBF24" value={events.filter(e => e.status === "Prometeu Pagar").length} sub="confirmadas" />
+              <KPI t={t} label="Pagamentos Confirmados" color="#10B981" value={events.filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado").length} sub="verificados" />
+              <KPI t={t} label="Taxa de Sucesso" color="#A78BFA" value={`${events.length > 0 ? ((events.filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Prometeu Pagar").length / events.length) * 100).toFixed(1) : 0}%`} sub="conversão" />
             </div>
             
             {/* Sub-abas internas */}
@@ -1017,10 +1018,10 @@ export default function Dashboard() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* KPIs Fluxo */}
           <div className="kpi-container kpi-container-4">
-            <KPI t={t} label="Previsão 30 dias" color="#3b82f6" value={fmtM(grouped.filter(g => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="próximo mês" />
-            <KPI t={t} label="Previsão 60 dias" color="#f59e0b" value={fmtM(grouped.filter(g => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 60 dias" />
-            <KPI t={t} label="Previsão 90 dias" color="#7c3aed" value={fmtM(grouped.filter(g => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 90 dias" />
-            <KPI t={t} label="Débitos Críticos" color="#ef4444" value={fmtM(grouped.filter(g => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="acima 90 dias" />
+            <KPI t={t} label="Previsão 30 Dias" color="#3B82F6" value={fmtM(grouped.filter(g => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="próximo mês" />
+            <KPI t={t} label="Previsão 60 Dias" color="#FBBF24" value={fmtM(grouped.filter(g => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 60 dias" />
+            <KPI t={t} label="Previsão 90 Dias" color="#A78BFA" value={fmtM(grouped.filter(g => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 90 dias" />
+            <KPI t={t} label="Débitos Críticos" color="#EF4444" value={fmtM(grouped.filter(g => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="acima 90 dias" />
           </div>
           <PrevisaoFluxo grouped={grouped} t={t} />
         </div>

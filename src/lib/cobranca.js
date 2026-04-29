@@ -216,7 +216,7 @@ export function parseRows7007(rows) {
 }
 
 export function dbToItem(r) {
-  return buildItem({
+  const item = buildItem({
     origem: r.source, nrCli: r.client_code, nomeCli: r.client_name,
     tp: r.doc_type, ser: r.serie, titulo: r.title_number, seq: r.seq,
     nfServico: r.nf_servico, emissao: r.issue_date, vencimento: r.due_date,
@@ -231,6 +231,8 @@ export function dbToItem(r) {
     obs: r.last_note || "",
     qtd: r.contact_count || 0,
   });
+  item._dbId = r.id; // preserve DB id for updates
+  return item;
 }
 
 export function dlCsv(fn, rows) {

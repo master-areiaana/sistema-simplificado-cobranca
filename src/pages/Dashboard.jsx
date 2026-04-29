@@ -208,18 +208,18 @@ export default function Dashboard() {
     });
   }
 
-  // ── Aplicar filtro faixa + origem ──
-  function applyFaixaOrigem(arr) {
-    return arr.filter(g => {
+  // ── Aplicar filtro faixa + origem (memoizado para reatividade) ──
+  const groupedFiltrado = useMemo(() => {
+    return grouped.filter(g => {
       if (faixaAtraso > 0 && g.maiorAtraso < faixaAtraso) return false;
       if (filtroOrigem && !g.titulos.some(ti => ti.origem === filtroOrigem)) return false;
       return true;
     });
-  }
+  }, [grouped, faixaAtraso, filtroOrigem]);
 
   // ── Sort + filtros ──
   const baseCart = useMemo(() => {
-    let arr = applyFaixaOrigem([...grouped]);
+    let arr = [...groupedFiltrado];
     const d = scCart.dir === "asc" ? 1 : -1;
     arr.sort((a, b) => {
       switch (scCart.key) {
@@ -231,32 +231,40 @@ export default function Dashboard() {
       }
     });
     return arr;
-  }, [grouped, scCart, faixaAtraso, filtroOrigem]);
+  }, [groupedFiltrado, scCart]);
 
   const sortedCart = useMemo(() => applyExcelFilter(baseCart, fCart), [baseCart, fCart]);
-  const cobrados = useMemo(() => applyExcelFilter(applyFaixaOrigem(grouped.filter(g => g.foiCobrado)), fCob), [grouped, fCob, faixaAtraso, filtroOrigem]);
-  const verifLista = useMemo(() => applyExcelFilter(applyFaixaOrigem(grouped.filter(g => g.encaminharConsolidado === "verificacao")), fVerif), [grouped, fVerif, faixaAtraso, filtroOrigem]);
-  const protestoLista = useMemo(() => applyExcelFilter(applyFaixaOrigem(grouped.filter(g => g.encaminharConsolidado === "protesto")), fProt), [grouped, fProt, faixaAtraso, filtroOrigem]);
+  const cobrados = useMemo(() => applyExcelFilter(groupedFiltrado.filter(g => g.foiCobrado), fCob), [groupedFiltrado, fCob]);
+  const verifLista = useMemo(() => applyExcelFilter(groupedFiltrado.filter(g => g.encaminharConsolidado === "verificacao"), fVerif), [groupedFiltrado, fVerif]);
+  const protestoLista = useMemo(() => applyExcelFilter(groupedFiltrado.filter(g => g.encaminharConsolidado === "protesto"), fProt), [groupedFiltrado, fProt]);
   const selGroups = useMemo(() => sortedCart.filter(g => selected.has(g.clientKey)), [sortedCart, selected]);
 
+  // KPIs dinâmicos baseados na aba ativa e nos dados filtrados
   const dash = useMemo(() => {
-    const cobHoje = grouped.filter(x => x.ultimoContato === hojeISO).length;
-    const tot = grouped.length;
+    // Base de dados conforme aba
+    let base = groupedFiltrado;
+    if (activeTab === "cobrados") base = cobrados;
+    else if (activeTab === "verificacao") base = verifLista;
+    else if (activeTab === "protesto") base = protestoLista;
+    else if (activeTab === "carteira") base = sortedCart;
+
+    const cobHoje = base.filter(x => x.ultimoContato === hojeISO).length;
+    const tot = base.length;
     const recuperadoMes = events
       .filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado")
       .filter(e => e.event_date && e.event_date.startsWith(hojeISO.slice(0, 7)))
       .reduce((s, e) => s + (e.total_value || 0), 0);
     return {
       cobHoje, faltando: tot - cobHoje, perc: tot ? (cobHoje / tot * 100) : 0,
-      numCli: tot, numTit: grouped.reduce((s, x) => s + x.qtdTitulos, 0),
-      vOrig: grouped.reduce((s, x) => s + x.valorOriginal, 0),
-      vTot: grouped.reduce((s, x) => s + x.valorTotalDebito, 0),
+      numCli: tot, numTit: base.reduce((s, x) => s + x.qtdTitulos, 0),
+      vOrig: base.reduce((s, x) => s + x.valorOriginal, 0),
+      vTot: base.reduce((s, x) => s + x.valorTotalDebito, 0),
       pendVerif: verifLista.length, pendProt: protestoLista.length,
       recuperadoMes,
-      aCobrar: grouped.filter(g => !g.foiCobrado).reduce((s, x) => s + x.valorTotalDebito, 0),
-      cobrado: grouped.filter(g => g.foiCobrado).reduce((s, x) => s + x.valorTotalDebito, 0),
+      aCobrar: base.filter(g => !g.foiCobrado).reduce((s, x) => s + x.valorTotalDebito, 0),
+      cobrado: base.filter(g => g.foiCobrado).reduce((s, x) => s + x.valorTotalDebito, 0),
     };
-  }, [grouped, verifLista, protestoLista, events]);
+  }, [groupedFiltrado, sortedCart, cobrados, verifLista, protestoLista, events, activeTab]);
 
   function handleSort(k) { setScCart(p => p.key === k ? { key: k, dir: p.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "asc" }); }
   function toggleSel(k) { setSelected(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; }); }
@@ -569,7 +577,12 @@ export default function Dashboard() {
             </select>
           </div>
           <div style={{ marginLeft: "auto", fontSize: 11, color: t.muted }}>
-            <b style={{ color: t.txt }}>{sortedCart.length}</b> clientes na visão atual
+            <b style={{ color: t.txt }}>
+              {activeTab === "cobrados" ? cobrados.length
+                : activeTab === "verificacao" ? verifLista.length
+                : activeTab === "protesto" ? protestoLista.length
+                : sortedCart.length}
+            </b> clientes na visão atual
           </div>
         </div>
 
@@ -595,6 +608,21 @@ export default function Dashboard() {
               isDark={isDark} t={t}
               makeColData={makeColData} fieldVal={fieldVal} applyExcelFilter={applyExcelFilter}
               setNegModal={setNegModal}
+              onEncaminharSugestao={async (g, enc) => {
+                for (const item of g.titulos) {
+                  await base44.entities.ChargeEvent.create({
+                    titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli,
+                    event_type: "COBRANCA", event_subtype: enc, event_date: hojeISO,
+                    status: g.statusConsolidado || "Em Cobrança", motive: enc,
+                    event_user: "Sistema",
+                  });
+                  if (item._dbId) {
+                    await base44.entities.Titulo.update(item._dbId, { workflow_status: enc, updated_by: "Sistema" });
+                  }
+                }
+                setSyncMsg(`✅ ${g.nomeCli} encaminhado para ${enc === "protesto" ? "Protesto" : enc === "verificacao" ? "Verificação" : enc}.`);
+                await loadData();
+              }}
             />
           </div>
         )}

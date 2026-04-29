@@ -12,7 +12,7 @@ function encBadge(enc) {
   return null;
 }
 
-export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal }) {
+export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal, onEncaminharSugestao }) {
   const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
 
   const CH = (props) => (
@@ -89,7 +89,20 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                     <td style={{ ...tdS(), color: t.muted }}>{fmtD(g.ultimoContato)}</td>
                     <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>
                     <td style={tdS()}><PromessaClassifBadge qtd={g.qtdTotal} /></td>
-                    <td style={tdS()}><SugestaoEncBadge sugestao={sugestao} /></td>
+                    <td style={tdS()}>
+                      {sugestao ? (
+                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                          <SugestaoEncBadge sugestao={sugestao} />
+                          {onEncaminharSugestao && (sugestao.label === "Protesto" || sugestao.label === "Verificar" || sugestao.label === "Assessoria" || sugestao.label === "Jurídico") && (
+                            <button
+                              title={`Encaminhar para ${sugestao.label === "Verificar" ? "verificação" : "protesto"}`}
+                              onClick={() => onEncaminharSugestao(g, sugestao.label === "Verificar" ? "verificacao" : "protesto")}
+                              style={{ background: sugestao.cor, color: "#fff", border: "none", borderRadius: 4, padding: "2px 6px", fontSize: 9, fontWeight: 700, cursor: "pointer" }}
+                            >→</button>
+                          )}
+                        </div>
+                      ) : null}
+                    </td>
                     <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>
                     <td style={tdS()}><PrioBadge label={g.prioridadeCliente} /></td>
                     <td style={tdS()}>

@@ -786,8 +786,6 @@ export default function Dashboard() {
             <KPI t={t} label="Nº Clientes" color="#555" value={dash.numCli} sub="ativos" />
             <KPI t={t} label="Nº Títulos" color="#888" value={dash.numTit} sub="ativos" />
             <KPI t={t} label="Val. Original" color="#10b981" value={fmtM(dash.vOrig)} sub="sem multa/juros" />
-            <KPI t={t} label="Verif. Pendentes" color="#3b82f6" value={dash.pendVerif} sub="aguard. resposta" onClick={() => setKpiFilter(p => p === "pendVerif" ? null : "pendVerif")} active={kpiFilter === "pendVerif"} />
-            <KPI t={t} label="Protesto Pendentes" color="#ef4444" value={dash.pendProt} sub="aguard. aprovação" onClick={() => setKpiFilter(p => p === "pendProt" ? null : "pendProt")} active={kpiFilter === "pendProt"} />
           </div>
         )}
 

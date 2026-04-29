@@ -195,11 +195,8 @@ function getHMap(row) {
     seq:      fi(["SEQ", "SEQUENCIA", "SEQ DOC", "SEQUENCIA DOC"]),
     nfServico:fi(["NF SERVICO", "NFSERVICO", "NF DE SERVICO", "NFDESERVICO", "NFSERV", "NF SERV", "NF"]),
     vencto:   fi(["VENCTO", "VENCIMENTO", "DT VENC", "DTVENC", "DTVENCIMENTO", "DATA VENC", "DATA VENCIMENTO", "DT VENCIMENTO"]),
-    // CRÍTICO: priorizar "VALOR ORIGINAL" ou "VL ORIG" antes de "SALDO" ou "VALOR TOTAL"
-    valorOrig:fi(["VALOR ORIGINAL", "VL ORIG", "VLORIGINAL", "VL ORIGINAL", "VALOR ORIG", "VALOR BRUTO"]),
-    multa:    fi(["MULTA", "VLMULTA", "VL MULTA", "MULTA JUROS", "MULTA ACRESCIMO"]),
-    juros:    fi(["JUROS", "VLJUROS", "VL JUROS", "JUROS MULTA"]),
-    recebPrc: fi(["RECEB PRC", "RECEBPRC", "VLRECEB", "VL RECEB", "VALOR TOTAL", "SALDO", "SALDO DEVEDOR", "VL SALDO"]),
+    // FINR1253: Receb.Prc é a coluna que alimenta o KPI Val. Original
+    recebPrc: fi(["RECEB PRC", "RECEBPRC", "VLRECEB", "VL RECEB", "RECEB.PRC", "RECEBER PRC", "RECEBERPRC"]),
     portador: fi(["PORTADOR", "BANCO", "PORT", "PORTADOR COBR", "BANCO COBR"])
   };
 }
@@ -228,14 +225,10 @@ export function parseRows1253(matrix) {
   const map = getHMap(matrix[lc]); 
   let cN = "", cNome = ""; 
   const itens = [];
+  let totalRecebPrc = 0;
   
-  // Log dos campos detectados no FINR1253
-  console.log("📋 FINR1253 Mapeamento de colunas:", {
-    valorOrig: map.valorOrig >= 0 ? "✅ Detectado" : "❌ Não encontrado",
-    multa: map.multa >= 0 ? "✅ Detectado" : "❌ Não encontrado",
-    juros: map.juros >= 0 ? "✅ Detectado" : "❌ Não encontrado",
-    recebPrc: map.recebPrc >= 0 ? "✅ Detectado (Saldo/Total)" : "❌ Não encontrado"
-  });
+  // Log do mapeamento detectado
+  console.log("📋 FINR1253 Coluna Receb.Prc:", map.recebPrc >= 0 ? "✅ Detectada" : "❌ NÃO ENCONTRADA");
   
   for (let i = lc + 1; i < matrix.length; i++) {
     const row = matrix[i] || [], txt = rowTxt(row); 
@@ -249,15 +242,14 @@ export function parseRows1253(matrix) {
     const nd = String(row[map.numero] ?? "").trim();
     const sq = map.seq >= 0 ? String(row[map.seq] ?? "").trim() : "";
     
-    // REGRA: preferir VALOR ORIGINAL; se não existir, usar SALDO/TOTAL
-    let valorPrincipal = "";
-    if (map.valorOrig >= 0) {
-      valorPrincipal = row[map.valorOrig];
-    } else if (map.recebPrc >= 0) {
-      valorPrincipal = row[map.recebPrc];
-    }
+    // FINR1253: SEMPRE usar Receb.Prc (não buscar Valor Original, Saldo ou outra coluna)
+    const recebPrc = map.recebPrc >= 0 ? row[map.recebPrc] : "";
     
-    if (!nd || String(valorPrincipal ?? "").trim() === "") continue;
+    if (!nd || String(recebPrc ?? "").trim() === "") continue;
+    
+    // Acumular total para debug
+    const valNumero = Number(recebPrc ?? 0);
+    if (isFinite(valNumero)) totalRecebPrc += valNumero;
     
     itens.push(buildItem({ 
       origem: "FINR1253", 
@@ -270,7 +262,7 @@ export function parseRows1253(matrix) {
       nfServico: map.nfServico >= 0 ? row[map.nfServico] : "", 
       emissao: "", 
       vencimento: map.vencto >= 0 ? row[map.vencto] : "", 
-      valor: valorPrincipal,
+      valor: recebPrc,
       portador: map.portador >= 0 ? row[map.portador] : "" 
     }));
   }
@@ -283,7 +275,7 @@ export function parseRows1253(matrix) {
     } 
   }
   
-  console.log(`📊 FINR1253 Parser: ${itens.length} linhas lidas, ${out.length} títulos únicos importados`);
+  console.log(`📊 FINR1253 Parser — ${itens.length} linhas lidas | ${out.length} títulos únicos | Total Receb.Prc = R$ ${totalRecebPrc.toFixed(2).replace(".", ",")}`);
   return out;
 }
 

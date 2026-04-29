@@ -790,7 +790,7 @@ export default function Dashboard() {
 
         {/* ═══ FLUXO DE CAIXA ═══ */}
         {activeTab === "fluxo" && (
-          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
+          <div style={{ background: t.bg, borderRadius: 10, padding: "0" }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📈 Previsão de Fluxo de Caixa</div>
             <PrevisaoFluxo grouped={grouped} t={t} />
           </div>

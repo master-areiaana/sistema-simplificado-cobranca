@@ -30,25 +30,25 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
       onClick={onClick}
       style={{
         background: active ? color + "18" : t.card,
-        borderRadius: 10,
-        padding: "12px 14px",
+        borderRadius: 8,
+        padding: "8px 12px",
         border: `1px solid ${active ? color : t.bor}`,
         borderLeft: `3px solid ${color}`,
-        flex: "1 1 120px",
-        minWidth: 120,
-        maxWidth: 200,
+        flex: "0 1 auto",
+        minWidth: 100,
+        maxWidth: 160,
         boxShadow: active ? `0 0 0 2px ${color}44` : t.shad,
         boxSizing: "border-box",
         cursor: onClick ? "pointer" : "default",
         transition: "all .15s",
         display: "flex",
         flexDirection: "column",
-        gap: 3,
+        gap: 2,
       }}
     >
-      <div style={{ fontSize: 9, color: t.muted, textTransform: "uppercase", letterSpacing: .7, fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: 800, color: active ? color : t.txt, lineHeight: 1.2, wordBreak: "break-word" }}>{value}</div>
-      {sub && <div style={{ fontSize: 9, color: t.muted }}>{sub}</div>}
+      <div style={{ fontSize: 8.5, color: t.muted, textTransform: "uppercase", letterSpacing: .6, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: active ? color : t.txt, lineHeight: 1.2, wordBreak: "break-word" }}>{value}</div>
+      {sub && <div style={{ fontSize: 8.5, color: t.muted }}>{sub}</div>}
     </div>
   );
 }

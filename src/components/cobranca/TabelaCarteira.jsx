@@ -12,7 +12,7 @@ function encBadge(enc) {
   return null;
 }
 
-export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter }) {
+export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal }) {
   const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
 
   const CH = (props) => (
@@ -96,6 +96,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                       <div style={{ display: "flex", gap: 4 }}>
                         <Btn t={t} sm onClick={() => { setModal(g); setForm({ ...emptyForm(), status: g.statusConsolidado || "", encaminhar: g.encaminharConsolidado || "", tipo: g.titulos[0]?.tipoContato || "", dataPromessa: g.dataPromessa || "", obs: g.obsConsolidada || "" }); }}>✏️</Btn>
                         <Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn>
+                        {setNegModal && <Btn t={t} sm onClick={() => setNegModal(g)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>🤝</Btn>}
                       </div>
                     </td>
                   </tr>

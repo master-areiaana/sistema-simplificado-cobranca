@@ -16,6 +16,8 @@ import ModalHistorico from "@/components/cobranca/ModalHistorico";
 import FaixaFilter from "@/components/cobranca/FaixaFilter";
 import MonitorPromessas from "@/components/cobranca/MonitorPromessas";
 import exportarPDFExecutivo from "@/components/cobranca/ExportPDF";
+import PainelProdutividade from "@/components/cobranca/PainelProdutividade";
+import ModalNegociacao from "@/components/cobranca/ModalNegociacao";
 
 const LOCAL_THEME = "sc_theme";
 const LOCAL_TAB = "sc_tab";
@@ -58,6 +60,7 @@ export default function Dashboard() {
   const [batchModal, setBatchModal] = useState(false);
   const [respModal, setRespModal] = useState(null);
   const [respForm, setRespForm] = useState({ responsavel: "", resposta: "", obs: "" });
+  const [negModal, setNegModal] = useState(null);
 
   const emptyForm = () => ({ status: "", encaminhar: "", tipo: "", solicitante: "", dataPromessa: "", obs: "" });
   const [form, setForm] = useState(emptyForm());
@@ -440,6 +443,7 @@ export default function Dashboard() {
           <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Verificar Pagamento</TabBtn>
           <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Protesto</TabBtn>
           <TabBtn t={t} active={activeTab === "promessas"} onClick={() => setActiveTab("promessas")}>📅 Promessas</TabBtn>
+          <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade</TabBtn>
         </div>
 
         {/* DASHBOARD KPIs */}
@@ -478,6 +482,9 @@ export default function Dashboard() {
               <div style={{ background: t.p, borderRadius: 8, padding: "8px 14px", marginBottom: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span style={{ color: "#fff", fontWeight: 700, fontSize: 12 }}>{selected.size} selecionado(s)</span>
                 <button onClick={() => { setBatchForm(emptyForm()); setBatchModal(true); }} style={{ background: "#fff", color: t.p, border: "none", borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>✏️ Cobrança em Lote</button>
+                {selGroups.length === 1 && (
+                  <button onClick={() => setNegModal(selGroups[0])} style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>🤝 Negociar</button>
+                )}
                 <Btn t={t} ghost sm onClick={() => setSelected(new Set())} style={{ color: "#fff", borderColor: "#fff" }}>✕ Deselecionar</Btn>
               </div>
             )}
@@ -489,6 +496,7 @@ export default function Dashboard() {
               openCli={openCli} setOpenCli={setOpenCli} emptyForm={emptyForm}
               isDark={isDark} t={t}
               makeColData={makeColData} fieldVal={fieldVal} applyExcelFilter={applyExcelFilter}
+              setNegModal={setNegModal}
             />
           </div>
         )}
@@ -606,6 +614,11 @@ export default function Dashboard() {
         {activeTab === "promessas" && (
           <MonitorPromessas grouped={grouped} t={t} />
         )}
+
+        {/* ═══ PRODUTIVIDADE ═══ */}
+        {activeTab === "produtividade" && (
+          <PainelProdutividade events={events} t={t} />
+        )}
       </main>
 
       {/* MODAIS */}
@@ -627,6 +640,7 @@ export default function Dashboard() {
       )}
       <ModalResposta respModal={respModal} respForm={respForm} setRespForm={setRespForm} onSave={salvarResposta} onClose={() => setRespModal(null)} t={t} isDark={isDark} />
       <ModalHistorico histModal={histModal} onClose={() => setHistModal(null)} t={t} />
+      {negModal && <ModalNegociacao grupo={negModal} onClose={() => setNegModal(null)} t={t} isDark={isDark} />}
     </div>
   );
 }

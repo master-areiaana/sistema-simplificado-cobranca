@@ -101,7 +101,7 @@ export default function PainelProdutividade({ events, t }) {
       </div>
 
       {/* KPIs */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, justifyContent: "center" }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
         {[
           { label: "Total Contatos", value: kpis.totalContatos, cor: t.p },
           { label: "Cobradores Ativos", value: kpis.totalCobradores, cor: "#3b82f6" },
@@ -109,9 +109,9 @@ export default function PainelProdutividade({ events, t }) {
           { label: "Clientes Contactados", value: kpis.totalClientes, cor: "#10b981" },
           { label: "Recuperado no Período", value: fmtM(kpis.totalRecuperado), cor: "#7c3aed" },
         ].map(k => (
-          <div key={k.label} style={{ flex: "1 1 130px", minWidth: 120, maxWidth: 190, background: t.card, border: `1px solid ${t.bor}`, borderLeft: `4px solid ${k.cor}`, borderRadius: 10, padding: "12px 16px", boxShadow: t.shad, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 3 }}>
-            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: .7, color: t.muted, fontWeight: 700 }}>{k.label}</div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: k.cor, lineHeight: 1.2, wordBreak: "break-word" }}>{k.value}</div>
+          <div key={k.label} style={{ flex: "1 1 130px", background: t.card, border: `1px solid ${t.bor}`, borderLeft: `3px solid ${k.cor}`, borderRadius: 10, padding: "10px 14px" }}>
+            <div style={{ fontSize: 8, textTransform: "uppercase", letterSpacing: 1, color: t.muted, fontWeight: 700 }}>{k.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: t.txt, marginTop: 4 }}>{k.value}</div>
           </div>
         ))}
       </div>

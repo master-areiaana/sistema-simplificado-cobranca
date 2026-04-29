@@ -92,7 +92,7 @@ export default function MonitorPromessas({ grouped, t }) {
   return (
     <div>
       {/* Estatísticas */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16, justifyContent: "center" }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
         {[
           { label: "Descumpridas", value: stats.vencidas, cor: "#ef4444", tipo: "vencida", sub: fmtM(stats.valorVencido) },
           { label: "Vencem Hoje", value: stats.hoje, cor: "#f97316", tipo: "hoje" },
@@ -101,10 +101,10 @@ export default function MonitorPromessas({ grouped, t }) {
           { label: "Cumpridas", value: stats.pagas, cor: "#10b981", tipo: "pago" },
           { label: "Total", value: stats.total, cor: t.p, tipo: "todas" },
         ].map(s => (
-          <button key={s.tipo} onClick={() => setFiltro(s.tipo)} style={{ flex: "1 1 120px", minWidth: 110, maxWidth: 190, background: filtro === s.tipo ? s.cor + "18" : t.card, border: `1px solid ${filtro === s.tipo ? s.cor : t.bor}`, borderLeft: `4px solid ${s.cor}`, borderRadius: 10, padding: "12px 16px", cursor: "pointer", textAlign: "left", transition: "all .15s", boxShadow: filtro === s.tipo ? `0 0 0 2px ${s.cor}44` : t.shad, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 3 }}>
-            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: .7, color: t.muted, fontWeight: 700 }}>{s.label}</div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: filtro === s.tipo ? s.cor : s.cor, lineHeight: 1.2 }}>{s.value}</div>
-            {s.sub && <div style={{ fontSize: 9, color: t.muted }}>{s.sub}</div>}
+          <button key={s.tipo} onClick={() => setFiltro(s.tipo)} style={{ flex: "1 1 100px", background: filtro === s.tipo ? s.cor : t.card, border: `2px solid ${filtro === s.tipo ? s.cor : t.bor}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", textAlign: "left", transition: "all .15s" }}>
+            <div style={{ fontSize: 8, textTransform: "uppercase", letterSpacing: 1, color: filtro === s.tipo ? "#fff" : t.muted, fontWeight: 700 }}>{s.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: filtro === s.tipo ? "#fff" : s.cor, marginTop: 4 }}>{s.value}</div>
+            {s.sub && <div style={{ fontSize: 9, color: filtro === s.tipo ? "rgba(255,255,255,.8)" : t.muted, marginTop: 2 }}>{s.sub}</div>}
           </button>
         ))}
       </div>

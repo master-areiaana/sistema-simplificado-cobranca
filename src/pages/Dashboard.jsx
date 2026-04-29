@@ -33,7 +33,10 @@ const PROT_RESP = ["Aprovado","Reprovado","Devolver para cobrança"];
 function isCobrDia(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return false;
   const h = Object.keys(rows[0] || {}).map(x => normText(x));
-  return h.includes("CLIENTE") && h.includes("TOTAL") && h.includes("STATUS") && h.includes("MOTIVO");
+  // Aceita formato: N/Nº, Cliente, Total/Status/Motivo (relatório de cobrança do dia)
+  return (h.includes("CLIENTE") || h.includes("cliente")) &&
+    (h.includes("STATUS") || h.includes("status")) &&
+    (h.includes("MOTIVO") || h.includes("motivo") || h.includes("Tipo de Contato") || h.some(x => x.includes("contato")));
 }
 
 // Detecta o CSV de "clientes cobrados" com colunas: Nº;Cliente;Qtd.;Val. Orig;Multa;Juros;Total;Status;...
@@ -469,19 +472,25 @@ export default function Dashboard() {
     }
 
     if (isCobrDia(cleanRows.length ? cleanRows : rows)) {
-      // Cobrança do dia — atualiza eventos
-      const uniq = uniqCobr(cleanRows.length ? cleanRows : rows);
-      let evtCount = 0;
+      // Cobrança do dia — atualiza eventos + status dos títulos
+      const sourceRows = cleanRows.length ? cleanRows : rows;
+      const uniq = uniqCobr(sourceRows);
+      let evtCount = 0, updCount = 0, naoEnc = 0;
       for (const row of uniq) {
         const nomeN = normText(pick(row, ["Cliente"]) || "");
+        const nrCliRow = String(pick(row, ["N", "Nº", "Nr", "N°"]) || "").replace(/\./g, "").trim();
         const statusNovo2 = String(pick(row, ["Status"]) || "").trim() || "Em Cobrança";
         const motivoNovo = String(pick(row, ["Motivo"]) || "").trim();
         const tipoNovo = String(pick(row, ["Tipo de Contato"]) || "").trim();
         const dtCont = dateISO(pick(row, ["Data do Contato"])) || hojeISO;
         const dtProm = dateISO(pick(row, ["Data da Promessa"]));
         const obsNova = String(pick(row, ["Observação", "Observacao"]) || "").trim();
-        let cands = records.filter(i => normText(i.nomeCli) === nomeN);
-        if (!cands.length) continue;
+        // Buscar por número do cliente OU nome
+        let cands = records.filter(i => {
+          if (nrCliRow && String(i.nrCli).replace(/\./g, "").trim() === nrCliRow) return true;
+          return nomeN && normText(i.nomeCli) === nomeN;
+        });
+        if (!cands.length) { naoEnc++; continue; }
         for (const item of cands) {
           await base44.entities.ChargeEvent.create({
             titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli,
@@ -490,9 +499,23 @@ export default function Dashboard() {
             promise_date: dtProm || null, note: obsNova || null, event_user: "Importação",
           });
           evtCount++;
+          // Atualizar o título também
+          if (item._dbId) {
+            await base44.entities.Titulo.update(item._dbId, {
+              current_status: statusNovo2,
+              current_motive: motivoNovo || null,
+              current_contact_type: tipoNovo || null,
+              promise_date: dtProm || null,
+              last_contact_date: dtCont,
+              last_note: obsNova || null,
+              contact_count: (item.qtd || 0) + 1,
+              updated_by: "Importação",
+            });
+            updCount++;
+          }
         }
       }
-      setImportStatus({ ok: true, msg: `✅ Cobrança do dia — ${uniq.length} clientes, ${evtCount} eventos.` });
+      setImportStatus({ ok: true, msg: `✅ Cobrança do dia — ${uniq.length} clientes processados, ${evtCount} eventos, ${updCount} títulos atualizados${naoEnc > 0 ? `, ${naoEnc} não encontrados` : ""}.` });
     } else {
       const source = detectSrc(file.name);
       const imported = source === "FINR1253"
@@ -535,7 +558,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main style={{ padding: "16px 20px", maxWidth: 1920, margin: "0 auto" }}>
+      <main style={{ padding: "14px 16px", maxWidth: "100%", margin: "0 auto" }}>
         {/* Status import */}
         {importStatus && (
           <div style={{ background: importStatus.ok ? (isDark ? "#052e16" : "#f0fdf4") : (isDark ? "#2d0a0a" : "#fef2f2"), border: `1px solid ${importStatus.ok ? "#16a34a" : "#dc2626"}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: importStatus.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -757,10 +780,6 @@ export default function Dashboard() {
         {activeTab === "promessas" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <MonitorPromessas grouped={grouped} t={t} />
-            <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>🔔 Central de Notificações</div>
-              <PainelNotificacoes grouped={grouped} events={events} t={t} />
-            </div>
           </div>
         )}
 

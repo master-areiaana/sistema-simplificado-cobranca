@@ -368,7 +368,9 @@ export default function Dashboard() {
     let ins = 0, upd = 0, deact = 0, baixados = 0;
     let valorBaixado = 0;
 
-    const BATCH = 5;
+    const BATCH_UPSERT = 3;
+    const BATCH_BAIXA = 2; // baixa faz 2 chamadas por título (update + create event)
+    const DELAY = 600;
 
     // 1. Upsert: criar novos ou atualizar existentes
     for (let i = 0; i < imported.length; i++) {
@@ -401,7 +403,7 @@ export default function Dashboard() {
         await base44.entities.Titulo.create(payload);
         ins++;
       }
-      if ((i + 1) % BATCH === 0) await sleep(300);
+      if ((i + 1) % BATCH_UPSERT === 0) await sleep(DELAY);
     }
 
     // 2. Baixar títulos que saíram da nova importação (estavam ativos, não vieram mais)
@@ -443,7 +445,7 @@ export default function Dashboard() {
         deact++;
         baixados++;
         deactIdx++;
-        if (deactIdx % BATCH === 0) await sleep(300);
+        if (deactIdx % BATCH_BAIXA === 0) await sleep(DELAY);
       }
     }
 
@@ -522,7 +524,7 @@ export default function Dashboard() {
           atualizados++;
         }
         csvIdx++;
-        if (csvIdx % 5 === 0) await sleep(300);
+        if (csvIdx % 3 === 0) await sleep(600);
       }
       setImportStatus({ ok: true, msg: `✅ CSV Cobrados importado — ${atualizados} títulos atualizados${naoEncontrados > 0 ? `, ${naoEncontrados} clientes não encontrados na carteira` : ""}.` });
       e.target.value = "";
@@ -574,7 +576,7 @@ export default function Dashboard() {
           }
         }
         diaIdx++;
-        if (diaIdx % 5 === 0) await sleep(300);
+        if (diaIdx % 3 === 0) await sleep(600);
       }
       setImportStatus({ ok: true, msg: `✅ Cobrança do dia — ${uniq.length} clientes processados, ${evtCount} eventos, ${updCount} títulos atualizados${naoEnc > 0 ? `, ${naoEnc} não encontrados` : ""}.` });
     } else {

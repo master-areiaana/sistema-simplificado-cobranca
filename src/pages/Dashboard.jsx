@@ -572,7 +572,7 @@ export default function Dashboard() {
         <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{loading ? "⏳ Carregando..." : syncMsg}</div>
 
         {/* TABS */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", paddingBottom: 6, paddingTop: 4, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", flexShrink: 0, alignItems: "center" }}>
           <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")}>📋 Carteira Geral</TabBtn>
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico de Cobranças</TabBtn>
           <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Conferência de Pagamento</TabBtn>

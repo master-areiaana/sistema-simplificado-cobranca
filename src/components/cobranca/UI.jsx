@@ -44,17 +44,17 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
          boxShadow: active ? `0 4px 12px ${color}33` : t.shad,
        }}
      >
-       <div style={{ fontSize: 10, fontWeight: 700, color: t.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6 }}>
-         {label}
-       </div>
-       <div style={{ fontSize: 24, fontWeight: 900, color: color, marginBottom: 4 }}>
-         {value}
-       </div>
-       {sub && (
-         <div style={{ fontSize: 9, color: t.muted, fontWeight: 600 }}>
-           {sub}
-         </div>
-       )}
+       <div style={{ fontSize: 9, fontWeight: 700, color: t.muted, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 900, color: color, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {value}
+        </div>
+        {sub && (
+          <div style={{ fontSize: 8, color: t.muted, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {sub}
+          </div>
+        )}
      </div>
    );
 

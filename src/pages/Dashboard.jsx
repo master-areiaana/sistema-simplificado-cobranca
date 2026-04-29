@@ -540,6 +540,22 @@ export default function Dashboard() {
 
   async function importarArquivo(e) {
     const file = e.target.files?.[0];if (!file) return;
+    
+    // Validar formato do arquivo
+    const nomeArq = file.name.toLowerCase();
+    const tipoMime = file.type.toLowerCase();
+    const extensoesValidas = [".csv", ".xlsx", ".xls"];
+    const mimeValidos = ["text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
+    
+    const temExtensaoValida = extensoesValidas.some(ext => nomeArq.endsWith(ext));
+    const temMimeValido = mimeValidos.some(mime => tipoMime.includes(mime)) || tipoMime === "";
+    
+    if (!temExtensaoValida && !temMimeValido) {
+      setImportStatus({ ok: false, msg: "❌ Formato de arquivo não permitido. Envie um arquivo CSV, XLSX ou XLS." });
+      e.target.value = "";
+      return;
+    }
+    
     setImportStatus(null);
     setIsImporting(true);
     const buf = await file.arrayBuffer();
@@ -711,7 +727,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ fontFamily: "'Segoe UI',system-ui,sans-serif", background: t.bg, minHeight: "100vh", color: t.txt }}>
-      <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={importarArquivo} />
+      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={importarArquivo} />
 
       {/* HEADER */}
       <header style={{ background: t.head, borderBottom: `1px solid ${t.bor}`, padding: "0 20px", height: 50, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: t.shad }}>

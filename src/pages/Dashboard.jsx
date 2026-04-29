@@ -14,6 +14,8 @@ import ModalCobranca from "@/components/cobranca/ModalCobranca";
 import ModalResposta from "@/components/cobranca/ModalResposta";
 import ModalHistorico from "@/components/cobranca/ModalHistorico";
 import FaixaFilter from "@/components/cobranca/FaixaFilter";
+import MonitorPromessas from "@/components/cobranca/MonitorPromessas";
+import exportarPDFExecutivo from "@/components/cobranca/ExportPDF";
 
 const LOCAL_THEME = "sc_theme";
 const LOCAL_TAB = "sc_tab";
@@ -415,6 +417,7 @@ export default function Dashboard() {
         <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 4, color: t.txt }}>SISTEMA DE COBRANÇA</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button onClick={() => setIsDark(x => !x)} style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{isDark ? "☀️" : "🌙"}</button>
+          <Btn t={t} sm onClick={() => exportarPDFExecutivo({ grouped, filteredCart: sortedCart, dash, faixaAtraso, filtroOrigem, hojeISO })} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📄 PDF</Btn>
           <Btn t={t} sm onClick={() => fileRef.current?.click()} style={{ background: t.p, border: "none", color: "#fff" }}>⬆️ Importar</Btn>
         </div>
       </header>
@@ -436,6 +439,7 @@ export default function Dashboard() {
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Cobrados</TabBtn>
           <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Verificar Pagamento</TabBtn>
           <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Protesto</TabBtn>
+          <TabBtn t={t} active={activeTab === "promessas"} onClick={() => setActiveTab("promessas")}>📅 Promessas</TabBtn>
         </div>
 
         {/* DASHBOARD KPIs */}
@@ -597,6 +601,10 @@ export default function Dashboard() {
               </table>
             </div>
           </>
+        )}
+        {/* ═══ PROMESSAS ═══ */}
+        {activeTab === "promessas" && (
+          <MonitorPromessas grouped={grouped} t={t} />
         )}
       </main>
 

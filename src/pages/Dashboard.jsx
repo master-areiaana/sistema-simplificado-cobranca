@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import * as XLSX from "xlsx";
 import { base44 } from "@/api/base44Client";
 import {
-  hoje, hojeISO, fmtM, fmtD, normText, cliKey, buildItem, dbToItem,
+  hoje, hojeISO, fmtM, fmtD, normText, cliKey, buildItem, buildId, dbToItem,
   detectSrc, parseRows1253, parseRows7007, calcFin, dateISO, num, pick,
   dlCsv, openPrint, prioLabel, prioCor, sugestaoEncaminhamento, diffDias
 } from "@/lib/cobranca";

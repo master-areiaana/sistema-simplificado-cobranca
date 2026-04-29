@@ -582,7 +582,7 @@ export default function Dashboard() {
 
         {/* DASHBOARD KPIs — só exibe na aba Carteira */}
         {activeTab === "carteira" &&
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }} className="bg-transparent">
+        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }} className="bg-transparent hidden">
 
             {kpiFilter &&
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 11, color: t.p }}>

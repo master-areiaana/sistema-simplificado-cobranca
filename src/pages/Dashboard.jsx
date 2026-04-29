@@ -36,6 +36,13 @@ function isCobrDia(rows) {
   return h.includes("CLIENTE") && h.includes("TOTAL") && h.includes("STATUS") && h.includes("MOTIVO");
 }
 
+// Detecta o CSV de "clientes cobrados" com colunas: Nº;Cliente;Qtd.;Val. Orig;Multa;Juros;Total;Status;...
+function isCobrCsv(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  const h = Object.keys(rows[0] || {}).map(x => normText(x).replace(/[^a-z0-9]/g, ""));
+  return h.some(x => x === "nr" || x === "n") && h.includes("cliente") && h.includes("status") && h.some(x => x.includes("orig") || x.includes("valoig"));
+}
+
 function uniqCobr(rows) {
   const seen = new Set(), out = [];
   rows.forEach(r => {
@@ -371,17 +378,83 @@ export default function Dashboard() {
     const file = e.target.files?.[0]; if (!file) return;
     setImportStatus(null);
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array" });
+
+    // Detectar se é CSV com separador ";"
+    const isCsv = file.name.toLowerCase().endsWith(".csv");
+    const wb = isCsv
+      ? XLSX.read(buf, { type: "array", FS: ";" })
+      : XLSX.read(buf, { type: "array" });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
-    if (isCobrDia(rows)) {
+    // Limpar BOM e espaços dos cabeçalhos
+    const cleanRows = rows.map(r => {
+      const out = {};
+      for (const [k, v] of Object.entries(r)) {
+        out[k.replace(/^\uFEFF/, "").trim()] = v;
+      }
+      return out;
+    });
+
+    if (isCobrCsv(cleanRows)) {
+      // CSV de clientes cobrados: atualiza status dos títulos existentes
+      let atualizados = 0, naoEncontrados = 0;
+      for (const row of cleanRows) {
+        const nrCli = String(row["Nº"] || row["Nr"] || row["N"] || "").trim();
+        const nomeCli = String(row["Cliente"] || "").trim();
+        const statusNovo = String(row["Status"] || "").trim() || "Em Cobrança";
+        const encaminhar = String(row["Encaminhar"] || "").trim().toLowerCase();
+        const promessa = String(row["Promessa"] || "").trim();
+        const obs = String(row["Observação"] || row["Observacao"] || "").trim();
+
+        if (!nomeCli) continue;
+
+        // Encontrar títulos correspondentes por número ou nome
+        const cands = records.filter(r2 => {
+          if (nrCli && r2.nrCli && String(r2.nrCli).trim() === nrCli) return true;
+          return normText(r2.nomeCli) === normText(nomeCli);
+        });
+
+        if (!cands.length) { naoEncontrados++; continue; }
+
+        for (const item of cands) {
+          // Criar evento de cobrança
+          await base44.entities.ChargeEvent.create({
+            titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli,
+            event_type: "COBRANCA", event_date: hojeISO, status: statusNovo,
+            motive: encaminhar || null, contact_type: null,
+            promise_date: dateISO(promessa) || null, note: obs || null,
+            event_user: "Importação CSV",
+          });
+          // Atualizar título
+          if (item._dbId) {
+            await base44.entities.Titulo.update(item._dbId, {
+              current_status: statusNovo,
+              current_motive: encaminhar || null,
+              promise_date: dateISO(promessa) || null,
+              last_contact_date: hojeISO,
+              last_note: obs || null,
+              contact_count: (item.qtd || 0) + 1,
+              workflow_status: encaminhar || "normal",
+              updated_by: "Importação CSV",
+            });
+          }
+          atualizados++;
+        }
+      }
+      setImportStatus({ ok: true, msg: `✅ CSV Cobrados importado — ${atualizados} títulos atualizados${naoEncontrados > 0 ? `, ${naoEncontrados} clientes não encontrados na carteira` : ""}.` });
+      e.target.value = "";
+      await loadData();
+      return;
+    }
+
+    if (isCobrDia(cleanRows.length ? cleanRows : rows)) {
       // Cobrança do dia — atualiza eventos
-      const uniq = uniqCobr(rows);
+      const uniq = uniqCobr(cleanRows.length ? cleanRows : rows);
       let evtCount = 0;
       for (const row of uniq) {
         const nomeN = normText(pick(row, ["Cliente"]) || "");
-        const statusNovo = String(pick(row, ["Status"]) || "").trim() || "Em Cobrança";
+        const statusNovo2 = String(pick(row, ["Status"]) || "").trim() || "Em Cobrança";
         const motivoNovo = String(pick(row, ["Motivo"]) || "").trim();
         const tipoNovo = String(pick(row, ["Tipo de Contato"]) || "").trim();
         const dtCont = dateISO(pick(row, ["Data do Contato"])) || hojeISO;
@@ -392,7 +465,7 @@ export default function Dashboard() {
         for (const item of cands) {
           await base44.entities.ChargeEvent.create({
             titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli,
-            event_type: "COBRANCA", event_date: dtCont, status: statusNovo,
+            event_type: "COBRANCA", event_date: dtCont, status: statusNovo2,
             motive: motivoNovo || null, contact_type: tipoNovo || null,
             promise_date: dtProm || null, note: obsNova || null, event_user: "Importação",
           });

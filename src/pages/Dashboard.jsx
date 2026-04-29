@@ -760,7 +760,7 @@ export default function Dashboard() {
         <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{isImporting ? "⏳ Importando relatório, aguarde... (não feche a tela)" : loading ? "⏳ Carregando..." : syncMsg}</div>
 
         {/* TABS */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", paddingBottom: 6, paddingTop: 4, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "center", justifyContent: "center" }} className="bg-transparent">
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto", paddingBottom: 8, paddingTop: 8, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "stretch", justifyContent: "flex-start", borderBottom: `1px solid ${t.bor}` }} className="bg-transparent">
           <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")}>📋 Carteira Geral</TabBtn>
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico / Promessas</TabBtn>
           <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Conferência de Pagamento</TabBtn>

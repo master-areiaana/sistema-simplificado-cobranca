@@ -104,9 +104,9 @@ export function PromessaClassifBadge({ qtd }) {
 
 export function TabBtn({ active, children, badge, badgeColor = "#ef4444", onClick, t }) {
   return (
-    <button onClick={onClick} style={{ position: "relative", background: active ? t.p : "transparent", color: active ? "#fff" : t.txt, border: `2px solid ${active ? t.p : t.bor}`, borderRadius: 8, padding: "8px 14px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, lineHeight: 1.3, marginTop: badge > 0 ? 8 : 0 }}>
+    <button onClick={onClick} style={{ position: "relative", background: active ? t.p : "transparent", color: active ? "#fff" : t.txt, border: "none", borderBottom: `3px solid ${active ? t.p : "transparent"}`, borderRadius: 0, padding: "10px 16px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, lineHeight: 1.3, transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center" }}>
       {children}
-      {badge > 0 && <span style={{ position: "absolute", top: -10, right: -10, background: badgeColor, color: "#fff", borderRadius: "50%", minWidth: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, padding: "0 4px", boxShadow: "0 2px 6px rgba(0,0,0,.3)", border: "2px solid #fff", zIndex: 1 }}>{badge}</span>}
+      {badge > 0 && <span style={{ position: "absolute", top: -8, right: 4, background: badgeColor, color: "#fff", borderRadius: "50%", minWidth: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, padding: "0 4px", boxShadow: "0 2px 6px rgba(0,0,0,.3)", border: "2px solid " + t.bg, zIndex: 1 }}>{badge}</span>}
     </button>);
 
 }

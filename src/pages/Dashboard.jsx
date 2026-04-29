@@ -603,64 +603,65 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* FILTROS GLOBAIS */}
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
-          <FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} />
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span>
-            <select value={filtroOrigem} onChange={e => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}>
-              <option value="">Todos</option>
-              <option value="FINR1253">Topcon (FINR1253)</option>
-              <option value="RPT_7007_CONS_CAR_EB">EB (RPT_7007)</option>
-            </select>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}>
-            <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>🔍 Cliente:</span>
-            <input
-              type="text"
-              placeholder="Buscar por nome ou nº..."
-              value={buscaCliente}
-              onChange={e => setBuscaCliente(e.target.value)}
-              style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }}
-            />
-            {buscaCliente && (
-              <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
-            )}
-          </div>
-          <div style={{ fontSize: 11, color: t.muted }}>
-            <b style={{ color: t.txt }}>
-              {activeTab === "cobrados" ? cobrados.length
-                : activeTab === "verificacao" ? verifLista.length
-                : activeTab === "protesto" ? protestoLista.length
-                : sortedCart.length}
-            </b> clientes na visão atual
-          </div>
-          {activeTab === "carteira" && (
-            <div style={{ position: "relative" }}>
-              <button onClick={() => setShowColMenu(x => !x)} style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                ☰ Colunas {hiddenCols.size > 0 ? `(${hiddenCols.size} ocultas)` : ""}
-              </button>
-              {showColMenu && (
-                <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: "8px", zIndex: 300, minWidth: 200, boxShadow: "0 8px 24px rgba(0,0,0,.2)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                  {[
-                    { key: "nrCli", label: "Nº" }, { key: "nomeCli", label: "CLIENTE" }, { key: "qtd", label: "QTD." },
-                    { key: "venc", label: "VENCIMENTO" }, { key: "atraso", label: "ATRASO" }, { key: "vOrig", label: "VAL. ORIG" },
-                    { key: "multa", label: "MULTA" }, { key: "juros", label: "JUROS" }, { key: "total", label: "TOTAL" },
-                    { key: "status", label: "STATUS" }, { key: "enc", label: "ENCAMINHAR" }, { key: "origem", label: "ORIG." },
-                    { key: "contato", label: "DT. CONTATO" }, { key: "prom", label: "PROMESSA" },
-                    { key: "sugest", label: "SUGESTÃO" }, { key: "obs", label: "OBSERVAÇÃO" },
-                  ].map(c => (
-                    <label key={c.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: hiddenCols.has(c.key) ? t.surf2 : "transparent" }}>
-                      <input type="checkbox" checked={!hiddenCols.has(c.key)} onChange={() => setHiddenCols(p => { const n = new Set(p); n.has(c.key) ? n.delete(c.key) : n.add(c.key); return n; })} style={{ accentColor: t.p }} />
-                      {c.label}
-                    </label>
-                  ))}
-                  <button onClick={() => { setHiddenCols(new Set()); setShowColMenu(false); }} style={{ gridColumn: "1/-1", marginTop: 4, background: t.p, color: "#fff", border: "none", borderRadius: 4, padding: "4px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Mostrar Todas</button>
-                </div>
+        {/* FILTROS GLOBAIS — somente Carteira, Verificação e Protesto */}
+        {(activeTab === "carteira" || activeTab === "verificacao" || activeTab === "protesto") && (
+          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} />
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span>
+              <select value={filtroOrigem} onChange={e => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}>
+                <option value="">Todos</option>
+                <option value="FINR1253">Topcon (FINR1253)</option>
+                <option value="RPT_7007_CONS_CAR_EB">EB (RPT_7007)</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}>
+              <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>🔍 Cliente:</span>
+              <input
+                type="text"
+                placeholder="Buscar por nome ou nº..."
+                value={buscaCliente}
+                onChange={e => setBuscaCliente(e.target.value)}
+                style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }}
+              />
+              {buscaCliente && (
+                <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
               )}
             </div>
-          )}
-        </div>
+            <div style={{ fontSize: 11, color: t.muted }}>
+              <b style={{ color: t.txt }}>
+                {activeTab === "verificacao" ? verifLista.length
+                  : activeTab === "protesto" ? protestoLista.length
+                  : sortedCart.length}
+              </b> clientes na visão atual
+            </div>
+            {activeTab === "carteira" && (
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setShowColMenu(x => !x)} style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  ☰ Colunas {hiddenCols.size > 0 ? `(${hiddenCols.size} ocultas)` : ""}
+                </button>
+                {showColMenu && (
+                  <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: "8px", zIndex: 300, minWidth: 200, boxShadow: "0 8px 24px rgba(0,0,0,.2)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                    {[
+                      { key: "nrCli", label: "Nº" }, { key: "nomeCli", label: "CLIENTE" }, { key: "qtd", label: "QTD." },
+                      { key: "venc", label: "VENCIMENTO" }, { key: "atraso", label: "ATRASO" }, { key: "vOrig", label: "VAL. ORIG" },
+                      { key: "multa", label: "MULTA" }, { key: "juros", label: "JUROS" }, { key: "total", label: "TOTAL" },
+                      { key: "status", label: "STATUS" }, { key: "enc", label: "ENCAMINHAR" }, { key: "origem", label: "ORIG." },
+                      { key: "contato", label: "DT. CONTATO" }, { key: "prom", label: "PROMESSA" },
+                      { key: "sugest", label: "SUGESTÃO" }, { key: "obs", label: "OBSERVAÇÃO" },
+                    ].map(c => (
+                      <label key={c.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: hiddenCols.has(c.key) ? t.surf2 : "transparent" }}>
+                        <input type="checkbox" checked={!hiddenCols.has(c.key)} onChange={() => setHiddenCols(p => { const n = new Set(p); n.has(c.key) ? n.delete(c.key) : n.add(c.key); return n; })} style={{ accentColor: t.p }} />
+                        {c.label}
+                      </label>
+                    ))}
+                    <button onClick={() => { setHiddenCols(new Set()); setShowColMenu(false); }} style={{ gridColumn: "1/-1", marginTop: 4, background: t.p, color: "#fff", border: "none", borderRadius: 4, padding: "4px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Mostrar Todas</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ═══ CARTEIRA ═══ */}
         {activeTab === "carteira" && (
@@ -708,7 +709,13 @@ export default function Dashboard() {
         {/* ═══ COBRADOS + PROMESSAS ═══ */}
         {activeTab === "cobrados" && (
           <>
-            {/* KPIs da aba */}
+            {/* 1. Sub-abas — acima dos indicadores */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <button onClick={() => setSubTabCobr("historico")} style={{ background: subTabCobr === "historico" ? t.p : t.surf2, color: subTabCobr === "historico" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "historico" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✅ Histórico de Cobrança</button>
+              <button onClick={() => setSubTabCobr("promessas")} style={{ background: subTabCobr === "promessas" ? t.p : t.surf2, color: subTabCobr === "promessas" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "promessas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>📅 Promessas & Calendário</button>
+            </div>
+
+            {/* 2. KPIs da aba */}
             <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: t.shad }}>
               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: t.muted, textTransform: "uppercase", marginBottom: 10 }}>Indicadores — Histórico & Promessas</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -721,12 +728,26 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Sub-abas */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-              <button onClick={() => setSubTabCobr("historico")} style={{ background: subTabCobr === "historico" ? t.p : t.surf2, color: subTabCobr === "historico" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "historico" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✅ Histórico de Cobranças</button>
-              <button onClick={() => setSubTabCobr("promessas")} style={{ background: subTabCobr === "promessas" ? t.p : t.surf2, color: subTabCobr === "promessas" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "promessas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>📅 Promessas & Calendário</button>
+            {/* 3. Filtros da aba (abaixo dos KPIs) */}
+            <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+              <FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} />
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span>
+                <select value={filtroOrigem} onChange={e => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}>
+                  <option value="">Todos</option>
+                  <option value="FINR1253">Topcon (FINR1253)</option>
+                  <option value="RPT_7007_CONS_CAR_EB">EB (RPT_7007)</option>
+                </select>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}>
+                <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>🔍 Cliente:</span>
+                <input type="text" placeholder="Buscar por nome ou nº..." value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />
+                {buscaCliente && <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>}
+              </div>
+              <div style={{ fontSize: 11, color: t.muted }}><b style={{ color: t.txt }}>{cobrados.length}</b> clientes na visão atual</div>
             </div>
 
+            {/* 4. Conteúdo da sub-aba */}
             {subTabCobr === "historico" && (
               <TabelaCobrados data={cobrados} t={t} setHistModal={setHistModal} dlCsv={dlCsv} />
             )}

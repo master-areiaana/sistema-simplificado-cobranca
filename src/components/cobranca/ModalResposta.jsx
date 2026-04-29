@@ -1,5 +1,8 @@
-import { VERIF_RESP, PROT_RESP, fmtM } from "@/lib/cobranca";
+import { fmtM } from "@/lib/cobranca";
 import { Btn, Inp, Lbl } from "./UI";
+
+const VERIF_RESP = ["Confirmado", "Não localizado", "Baixado", "Erro", "Duplicidade"];
+const PROT_RESP = ["Aprovado", "Reprovado"];
 
 export default function ModalResposta({ respModal, respForm, setRespForm, onSave, onClose, t, isDark }) {
   if (!respModal) return null;
@@ -33,7 +36,7 @@ export default function ModalResposta({ respModal, respForm, setRespForm, onSave
               {resps.map(r => (
                 <label key={r} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 7, border: `2px solid ${respForm.resposta === r ? cor : t.bor}`, cursor: "pointer", background: respForm.resposta === r ? (isDark ? "rgba(0,0,0,.3)" : t.surf2) : t.surf }}>
                   <input type="radio" name="resp" value={r} checked={respForm.resposta === r} onChange={() => setRespForm(x => ({ ...x, resposta: r }))} style={{ accentColor: cor }} />
-                  <span style={{ fontSize: 12, fontWeight: 600, color: r === "Devolver para cobrança" ? "#f59e0b" : respForm.resposta === r ? cor : t.txt }}>{r === "Devolver para cobrança" ? "↩️ " + r : r}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: respForm.resposta === r ? cor : t.txt }}>{r}</span>
                 </label>
               ))}
             </div>

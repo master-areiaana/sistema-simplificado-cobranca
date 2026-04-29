@@ -325,25 +325,23 @@ export default function Dashboard() {
     if (!respModal || !respForm.responsavel.trim()) { alert("Informe o responsável."); return; }
     if (!respForm.resposta) { alert("Selecione uma resposta."); return; }
     const tipo = respModal.tipo;
-    const retornar = respForm.resposta === "Devolver para cobrança";
-    const novoStatus = retornar ? "Em Cobrança" : respModal.grupo.statusConsolidado;
     for (const item of respModal.grupo.titulos) {
       await base44.entities.ChargeEvent.create({
         titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli,
         event_type: "COBRANCA", event_subtype: `RESP_${tipo.toUpperCase()}`,
-        event_date: hojeISO, status: novoStatus, motive: respForm.resposta,
+        event_date: hojeISO, status: "Em Cobrança", motive: respForm.resposta,
         note: respForm.obs || null, event_user: respForm.responsavel.trim(),
       });
       const existing = records.find(r => r.id === item.id);
       if (existing?._dbId) {
         await base44.entities.Titulo.update(existing._dbId, {
-          current_status: novoStatus, workflow_status: retornar ? "normal" : "done",
+          current_status: "Em Cobrança", workflow_status: "normal",
           updated_by: respForm.responsavel.trim(),
         });
       }
     }
     setRespModal(null);
-    setSyncMsg(retornar ? "✅ Devolvido para a Carteira." : "✅ Resposta registrada.");
+    setSyncMsg("✅ Resposta registrada. Cliente devolvido para a Carteira.");
     await loadData();
   }
 

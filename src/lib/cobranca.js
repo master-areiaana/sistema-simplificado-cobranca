@@ -195,7 +195,11 @@ function getHMap(row) {
     seq:      fi(["SEQ", "SEQUENCIA", "SEQ DOC", "SEQUENCIA DOC"]),
     nfServico:fi(["NF SERVICO", "NFSERVICO", "NF DE SERVICO", "NFDESERVICO", "NFSERV", "NF SERV", "NF"]),
     vencto:   fi(["VENCTO", "VENCIMENTO", "DT VENC", "DTVENC", "DTVENCIMENTO", "DATA VENC", "DATA VENCIMENTO", "DT VENCIMENTO"]),
-    recebPrc: fi(["RECEB PRC", "RECEBPRC", "VLRECEB", "VL RECEB", "VALOR", "VL", "RECEBERPRC", "RECEBER PRC", "VALOR TITULO", "VL TITULO", "SALDO"]),
+    // CRÍTICO: priorizar "VALOR ORIGINAL" ou "VL ORIG" antes de "SALDO" ou "VALOR TOTAL"
+    valorOrig:fi(["VALOR ORIGINAL", "VL ORIG", "VLORIGINAL", "VL ORIGINAL", "VALOR ORIG", "VALOR BRUTO"]),
+    multa:    fi(["MULTA", "VLMULTA", "VL MULTA", "MULTA JUROS", "MULTA ACRESCIMO"]),
+    juros:    fi(["JUROS", "VLJUROS", "VL JUROS", "JUROS MULTA"]),
+    recebPrc: fi(["RECEB PRC", "RECEBPRC", "VLRECEB", "VL RECEB", "VALOR TOTAL", "SALDO", "SALDO DEVEDOR", "VL SALDO"]),
     portador: fi(["PORTADOR", "BANCO", "PORT", "PORTADOR COBR", "BANCO COBR"])
   };
 }
@@ -221,19 +225,65 @@ function parseCli(txt) {
 
 export function parseRows1253(matrix) {
   const lc = matrix.findIndex(r => isH1253(r)); if (lc < 0) return [];
-  const map = getHMap(matrix[lc]); let cN = "", cNome = ""; const itens = [];
+  const map = getHMap(matrix[lc]); 
+  let cN = "", cNome = ""; 
+  const itens = [];
+  
+  // Log dos campos detectados no FINR1253
+  console.log("📋 FINR1253 Mapeamento de colunas:", {
+    valorOrig: map.valorOrig >= 0 ? "✅ Detectado" : "❌ Não encontrado",
+    multa: map.multa >= 0 ? "✅ Detectado" : "❌ Não encontrado",
+    juros: map.juros >= 0 ? "✅ Detectado" : "❌ Não encontrado",
+    recebPrc: map.recebPrc >= 0 ? "✅ Detectado (Saldo/Total)" : "❌ Não encontrado"
+  });
+  
   for (let i = lc + 1; i < matrix.length; i++) {
-    const row = matrix[i] || [], txt = rowTxt(row); if (!txt) continue;
+    const row = matrix[i] || [], txt = rowTxt(row); 
+    if (!txt) continue;
+    
     const cl = findCL(row);
     if (cl) { const p = parseCli(cl); cN = p.numeroCliente; cNome = p.nomeCliente; continue; }
     if (txt.toUpperCase().includes("TOTAL CLIENTE") || txt.toUpperCase().includes("CONTATO:")) continue;
     if (!cN) continue;
-    const nd = String(row[map.numero] ?? "").trim(), sq = map.seq >= 0 ? String(row[map.seq] ?? "").trim() : "", rp = map.recebPrc >= 0 ? row[map.recebPrc] : "";
-    if (!nd || String(rp ?? "").trim() === "") continue;
-    itens.push(buildItem({ origem: "FINR1253", nrCli: cN, nomeCli: cNome, tp: map.tp >= 0 ? row[map.tp] : "", ser: map.ser >= 0 ? row[map.ser] : "", titulo: nd, seq: sq, nfServico: map.nfServico >= 0 ? row[map.nfServico] : "", emissao: "", vencimento: map.vencto >= 0 ? row[map.vencto] : "", valor: rp, portador: map.portador >= 0 ? row[map.portador] : "" }));
+    
+    const nd = String(row[map.numero] ?? "").trim();
+    const sq = map.seq >= 0 ? String(row[map.seq] ?? "").trim() : "";
+    
+    // REGRA: preferir VALOR ORIGINAL; se não existir, usar SALDO/TOTAL
+    let valorPrincipal = "";
+    if (map.valorOrig >= 0) {
+      valorPrincipal = row[map.valorOrig];
+    } else if (map.recebPrc >= 0) {
+      valorPrincipal = row[map.recebPrc];
+    }
+    
+    if (!nd || String(valorPrincipal ?? "").trim() === "") continue;
+    
+    itens.push(buildItem({ 
+      origem: "FINR1253", 
+      nrCli: cN, 
+      nomeCli: cNome, 
+      tp: map.tp >= 0 ? row[map.tp] : "", 
+      ser: map.ser >= 0 ? row[map.ser] : "", 
+      titulo: nd, 
+      seq: sq, 
+      nfServico: map.nfServico >= 0 ? row[map.nfServico] : "", 
+      emissao: "", 
+      vencimento: map.vencto >= 0 ? row[map.vencto] : "", 
+      valor: valorPrincipal,
+      portador: map.portador >= 0 ? row[map.portador] : "" 
+    }));
   }
+  
   const seen = new Set(), out = [];
-  for (const x of itens) { if (!seen.has(x.id) && x.nrCli && x.titulo) { seen.add(x.id); out.push(x); } }
+  for (const x of itens) { 
+    if (!seen.has(x.id) && x.nrCli && x.titulo) { 
+      seen.add(x.id); 
+      out.push(x); 
+    } 
+  }
+  
+  console.log(`📊 FINR1253 Parser: ${itens.length} linhas lidas, ${out.length} títulos únicos importados`);
   return out;
 }
 

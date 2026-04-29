@@ -674,6 +674,13 @@ export default function Dashboard() {
           setIsImporting(false);
           return;
         }
+        
+        // Log para debug FINR1253
+        if (source === "FINR1253") {
+          const totalValorPorParsing = imported.reduce((s, x) => s + (x.valorOriginal || 0), 0);
+          console.log(`💰 FINR1253 Debug: ${imported.length} títulos, valor total parser = ${fmtM(totalValorPorParsing)}`);
+        }
+        
         const r = await syncImport(source, imported, file.name);
         const baixaMsg = r?.baixados > 0 ? ` | ${r.baixados} baixados (${fmtM(r.valorBaixado)} lançado no Impacto no Caixa)` : "";
         const parcialMsg = r?.isCarteirCompleta === false ? " ⚠️ Planilha parcial detectada — baixa automática não aplicada." : "";

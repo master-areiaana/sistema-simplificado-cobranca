@@ -27,13 +27,11 @@ export function Lbl({ children, t }) {
 export function KPI({ label, value, sub, color, t, onClick, active }) {
    return (
      <div
-       className="kpi-card"
+       className={`kpi-card ${active ? "active" : ""} ${onClick ? "cursor-pointer" : ""}`}
        onClick={onClick}
        style={{
-         borderLeft: `4px solid ${color}`,
-         background: t.card,
-         opacity: active ? 1 : 0.9,
-         cursor: onClick ? "pointer" : "default",
+         borderLeft: `4px solid ${color} !important`,
+         background: `${t.card} !important`,
        }}
      >
        <div style={{ fontSize: 10, fontWeight: 700, color: t.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6 }}>

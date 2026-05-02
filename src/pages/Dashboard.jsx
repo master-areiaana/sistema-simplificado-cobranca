@@ -288,12 +288,24 @@ export default function Dashboard() {
     filter((e) => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado").
     filter((e) => e.event_date && e.event_date.startsWith(hojeISO.slice(0, 7))).
     reduce((s, e) => s + (e.total_value || 0), 0);
+    // Clientes devolvidos para a carteira (resposta de verificação ou protesto ainda não recontatados hoje)
+    const clientesComResposta = grouped.filter((g) => {
+      const temResposta = g.historicoCliente.some(h =>
+        h.subtype?.startsWith("RESP_VERIF") || h.subtype?.startsWith("RESP_PROT")
+      );
+      const workflow = g.encaminharConsolidado;
+      // Devolvido = tem resposta E saiu do fluxo (workflow normal) E não foi contatado hoje
+      return temResposta && (!workflow || workflow === "normal" || workflow === "") && g.ultimoContato !== hojeISO;
+    });
+    const devolvidos = clientesComResposta.length;
+
     return {
       cobHoje, faltando: tot - cobHoje, perc: tot ? cobHoje / tot * 100 : 0,
       numCli: tot, numTit: base.reduce((s, x) => s + x.qtdTitulos, 0),
       vOrig: base.reduce((s, x) => s + x.valorOriginal, 0),
       vTot: base.reduce((s, x) => s + x.valorTotalDebito, 0),
       pendVerif: verifLista.length, pendProt: protestoLista.length,
+      devolvidos,
       recuperadoMes,
       aCobrar: base.filter((g) => !g.foiCobrado).reduce((s, x) => s + x.valorTotalDebito, 0),
       cobrado: base.filter((g) => g.foiCobrado).reduce((s, x) => s + x.valorTotalDebito, 0)
@@ -761,7 +773,7 @@ export default function Dashboard() {
 
         {/* TABS */}
         <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto", paddingBottom: 8, paddingTop: 8, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "stretch", justifyContent: "flex-start", borderBottom: `1px solid ${t.bor}` }} className="bg-transparent">
-          <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")}>📋 Carteira Geral</TabBtn>
+          <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")} badge={dash.devolvidos} badgeColor="#10b981">📋 Carteira Geral</TabBtn>
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico / Promessas</TabBtn>
           <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Conferência de Pagamento</TabBtn>
           <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Aprovação do Gestor</TabBtn>

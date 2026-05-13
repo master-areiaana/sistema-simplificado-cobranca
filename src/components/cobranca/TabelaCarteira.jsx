@@ -17,10 +17,10 @@ const COLS_DEF = [
   { key: "juros",   label: "JUROS",      width: 64 },
   { key: "total",   label: "TOTAL",      width: 84 },
   { key: "status",  label: "STATUS",     width: 100 },
+  { key: "acao",    label: "AÇÃO A FAZER", width: 120 },
   { key: "enc",     label: "ENCAMINHAR", width: 84 },
   { key: "origem",  label: "ORIG.",      width: 44 },
   { key: "cat",     label: "CATEGORIA",  width: 80 },
-  { key: "saiuTel", label: "SAIU DO TEL.",width: 60 },
   { key: "contato", label: "DT. CONTATO",width: 78 },
   { key: "prom",    label: "PROMESSA",   width: 82 },
   { key: "sugest",  label: "SUGESTÃO",   width: 86 },
@@ -82,10 +82,10 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       case "juros":   return <td style={{ ...tdS(), color: "#eab308", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorJuros)}</td>;
       case "total":   return <td style={{ ...tdS(), fontWeight: 800, color: t.p, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorTotalDebito)}</td>;
       case "status":  return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10 }}><span onClick={() => onClickFilter && onClickFilter(g.statusConsolidado)} style={{ cursor: "pointer" }}>{g.statusConsolidado}</span></td>;
+      case "acao":    return <td style={{ ...tdS(), fontSize: 10, color: t.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.acaoAfazer || "—"}</td>;
       case "enc":     return <td style={tdS()} onClick={() => g.encaminharConsolidado && onClickFilter && onClickFilter(g.encaminharConsolidado)} style={{ ...tdS(), cursor: g.encaminharConsolidado ? "pointer" : "default" }}>{encBadge(g.encaminharConsolidado)}</td>;
       case "origem":  return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.origem))].map(o => <span key={o} style={{ display: "inline-block", fontSize: 8, background: o === "FINR1253" ? "#7c3aed22" : "#0369a122", color: o === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{o === "FINR1253" ? "TC" : "EB"}</span>)}</td>;
       case "cat":     return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.clientCategory).filter(Boolean))].map(cat => <div key={cat} style={{ marginBottom: 4 }}>{categoriaBadge(cat)}</div>)}</td>;
-      case "saiuTel": return <td style={{ ...tdS(), textAlign: "center" }}>{g.titulos.some(x => x.saiuTelefone) ? <span style={{ color: "#ef4444", fontWeight: 700, fontSize: 12 }}>✓</span> : "—"}</td>;
       case "contato": return <td style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtD(g.ultimoContato)}</td>;
       case "prom":    return <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>;
       case "sugest":  return (
@@ -137,7 +137,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                   });
                   return <CH key="sugest" label="SUGESTÃO" field="sugestaoLabel" data={sugestData} filters={fCart} setFilters={setFCart} />;
                 }
-                const fieldMap = { nrCli:"nrCli", nomeCli:"nomeCli", venc:"vencimento", atraso:"atrasoLabel", vOrig:"valorOriginal", total:"valorTotalDebito", status:"statusConsolidado", enc:"encaminharConsolidado", origem:"origem", cat:"categoria", saiuTel:"saiuTel", contato:"ultimoContato", prom:"dataPromessa", obs:"obsConsolidada" };
+                const fieldMap = { nrCli:"nrCli", nomeCli:"nomeCli", venc:"vencimento", atraso:"atrasoLabel", vOrig:"valorOriginal", total:"valorTotalDebito", status:"statusConsolidado", acao:"acaoAfazer", enc:"encaminharConsolidado", origem:"origem", cat:"categoria", contato:"ultimoContato", prom:"dataPromessa", obs:"obsConsolidada" };
                 const sortMap = { nrCli:"numero", nomeCli:"cliente", atraso:"atraso", vOrig:"valorOriginal", total:"valorTotalDebito" };
                 const field = fieldMap[c.key];
                 return field ? <CH key={c.key} label={c.label} field={field} data={makeColData(baseCart, field)} filters={fCart} setFilters={setFCart} sortKey={sortMap[c.key]} /> : <th key={c.key} style={thS(t)}>{c.label}</th>;
@@ -177,9 +177,9 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                         if (c.key === "juros") return <td key="juros" style={{ ...tdS(), color: "#eab308" }}>{fmtM(item.valorJuros)}</td>;
                         if (c.key === "total") return <td key="total" style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(item.valorTotalDebito)}</td>;
                         if (c.key === "status") return <td key="status" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
+                        if (c.key === "acao") return <td key="acao" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.acaoAfazer || "—"}</td>;
                         if (c.key === "enc") return <td key="enc" style={tdS()}>{encBadge(item.encaminhar)}</td>;
                         if (c.key === "cat") return <td key="cat" style={tdS()}>{item.clientCategory ? categoriaBadge(item.clientCategory) : "—"}</td>;
-                        if (c.key === "saiuTel") return <td key="saiuTel" style={{ ...tdS(), textAlign: "center" }}>{item.saiuTelefone ? <span style={{ color: "#ef4444", fontWeight: 700 }}>✓</span> : "—"}</td>;
                         return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.portador || "—"}</td>;
                       })}
                     </tr>

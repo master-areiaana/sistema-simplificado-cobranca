@@ -95,6 +95,7 @@ export default function Dashboard() {
   const [buscaCliente, setBuscaCliente] = useState(""); // busca rápida por nome/nº cliente
   const [buscaTitulo, setBuscaTitulo] = useState(""); // busca por número ou nome do título
   const [filtroSentinela, setFiltroSentinela] = useState(false); // atrasos críticos > 90 dias
+  const [filtroCategoria, setFiltroCategoria] = useState(""); // "" = todos, "Portador", "Imobiliário", "Parceiros", "Bancos"
 
   const [fCart, setFCart] = useState({});
   const [hiddenCols, setHiddenCols] = useState(new Set());
@@ -251,6 +252,8 @@ export default function Dashboard() {
       }
       // Filtro Atraso Sentinela: apenas atrasos críticos > 90 dias
       if (filtroSentinela && g.maiorAtraso <= 90) return false;
+      // Filtro por categoria: busca na categoria de qualquer título do cliente
+      if (filtroCategoria && !g.titulos.some((ti) => ti.clientCategory === filtroCategoria)) return false;
       // Esconder pagos por padrão (status Encerrado, Baixado ou resposta Confirmado)
       if (!showPaid) {
         const temPagamento = g.statusConsolidado === "Encerrado" || 
@@ -260,7 +263,7 @@ export default function Dashboard() {
       }
       return true;
     });
-  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente, buscaTitulo, filtroSentinela, showPaid]);
+  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente, buscaTitulo, filtroSentinela, filtroCategoria, showPaid]);
 
   // ── Sort + filtros ──
   const baseCart = useMemo(() => {
@@ -866,6 +869,16 @@ export default function Dashboard() {
                <input type="checkbox" checked={filtroSentinela} onChange={(e) => setFiltroSentinela(e.target.checked)} style={{ accentColor: "#ef4444", width: 16, height: 16 }} />
                🚨 Sentinela (+90d)
              </label>
+             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+               <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Categoria:</span>
+               <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}>
+                 <option value="">Todas</option>
+                 <option value="Portador">Portador</option>
+                 <option value="Imobiliário">Imobiliário</option>
+                 <option value="Parceiros">Parceiros</option>
+                 <option value="Bancos">Bancos</option>
+               </select>
+             </div>
              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span>
                <select value={filtroOrigem} onChange={(e) => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}>

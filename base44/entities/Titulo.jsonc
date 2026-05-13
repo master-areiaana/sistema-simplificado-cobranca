@@ -16,6 +16,16 @@
     "client_name": {
       "type": "string"
     },
+    "client_category": {
+      "type": "string",
+      "enum": [
+        "Portador",
+        "Imobili\u00e1rio",
+        "Parceiros",
+        "Bancos"
+      ],
+      "description": "Categoria do cliente"
+    },
     "doc_type": {
       "type": "string"
     },

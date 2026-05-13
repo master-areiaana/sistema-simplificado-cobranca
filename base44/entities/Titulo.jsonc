@@ -86,6 +86,10 @@
     "last_note": {
       "type": "string"
     },
+    "action_to_do": {
+      "type": "string",
+      "description": "A\u00e7\u00e3o a fazer (pr\u00f3ximo passo)"
+    },
     "contact_count": {
       "type": "number",
       "default": 0

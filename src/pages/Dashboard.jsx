@@ -94,6 +94,7 @@ export default function Dashboard() {
   const [filtroOrigem, setFiltroOrigem] = useState(""); // "" = todos, "FINR1253", "RPT_7007_CONS_CAR_EB"
   const [buscaCliente, setBuscaCliente] = useState(""); // busca rápida por nome/nº cliente
   const [buscaTitulo, setBuscaTitulo] = useState(""); // busca por número ou nome do título
+  const [filtroSentinela, setFiltroSentinela] = useState(false); // atrasos críticos > 90 dias
 
   const [fCart, setFCart] = useState({});
   const [hiddenCols, setHiddenCols] = useState(new Set());
@@ -248,6 +249,8 @@ export default function Dashboard() {
         );
         if (!temTituloMatch) return false;
       }
+      // Filtro Atraso Sentinela: apenas atrasos críticos > 90 dias
+      if (filtroSentinela && g.maiorAtraso <= 90) return false;
       // Esconder pagos por padrão (status Encerrado, Baixado ou resposta Confirmado)
       if (!showPaid) {
         const temPagamento = g.statusConsolidado === "Encerrado" || 
@@ -257,7 +260,7 @@ export default function Dashboard() {
       }
       return true;
     });
-  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente, buscaTitulo, showPaid]);
+  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente, buscaTitulo, filtroSentinela, showPaid]);
 
   // ── Sort + filtros ──
   const baseCart = useMemo(() => {
@@ -859,6 +862,10 @@ export default function Dashboard() {
          {(activeTab === "carteira" || activeTab === "verificacao" || activeTab === "protesto") &&
          <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
              <FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} />
+             <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer", fontSize: 11, fontWeight: 700, color: t.txt, whiteSpace: "nowrap" }}>
+               <input type="checkbox" checked={filtroSentinela} onChange={(e) => setFiltroSentinela(e.target.checked)} style={{ accentColor: "#ef4444", width: 16, height: 16 }} />
+               🚨 Sentinela (+90d)
+             </label>
              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span>
                <select value={filtroOrigem} onChange={(e) => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}>

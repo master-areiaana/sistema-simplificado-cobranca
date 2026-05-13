@@ -93,6 +93,7 @@ export default function Dashboard() {
   const [faixaAtraso, setFaixaAtraso] = useState(0); // 0 = todos
   const [filtroOrigem, setFiltroOrigem] = useState(""); // "" = todos, "FINR1253", "RPT_7007_CONS_CAR_EB"
   const [buscaCliente, setBuscaCliente] = useState(""); // busca rápida por nome/nº cliente
+  const [buscaTitulo, setBuscaTitulo] = useState(""); // busca por número ou nome do título
 
   const [fCart, setFCart] = useState({});
   const [hiddenCols, setHiddenCols] = useState(new Set());
@@ -234,10 +235,19 @@ export default function Dashboard() {
   // ── Aplicar filtro faixa + origem + busca (memoizado para reatividade) ──
   const groupedFiltrado = useMemo(() => {
     const busca = normText(buscaCliente);
+    const buscaTit = normText(buscaTitulo);
     return grouped.filter((g) => {
       if (faixaAtraso > 0 && g.maiorAtraso < faixaAtraso) return false;
       if (filtroOrigem && !g.titulos.some((ti) => ti.origem === filtroOrigem)) return false;
       if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente)) return false;
+      // Filtro por título: busca no número ou nome do título
+      if (buscaTit) {
+        const temTituloMatch = g.titulos.some((ti) => 
+          normText(ti.titulo || "").includes(buscaTit) || 
+          String(ti.titulo || "").includes(buscaTitulo)
+        );
+        if (!temTituloMatch) return false;
+      }
       // Esconder pagos por padrão (status Encerrado, Baixado ou resposta Confirmado)
       if (!showPaid) {
         const temPagamento = g.statusConsolidado === "Encerrado" || 
@@ -247,7 +257,7 @@ export default function Dashboard() {
       }
       return true;
     });
-  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente, showPaid]);
+  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente, buscaTitulo, showPaid]);
 
   // ── Sort + filtros ──
   const baseCart = useMemo(() => {
@@ -846,30 +856,43 @@ export default function Dashboard() {
         
 
         {/* FILTROS GLOBAIS — somente Carteira, Verificação e Protesto */}
-        {(activeTab === "carteira" || activeTab === "verificacao" || activeTab === "protesto") &&
-        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
-            <FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} />
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span>
-              <select value={filtroOrigem} onChange={(e) => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}>
-                <option value="">Todos</option>
-                <option value="FINR1253">Topcon (FINR1253)</option>
-                <option value="RPT_7007_CONS_CAR_EB">EB (RPT_7007)</option>
-              </select>
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}>
-              <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>🔍 Cliente:</span>
-              <input
-              type="text"
-              placeholder="Buscar por nome ou nº..."
-              value={buscaCliente}
-              onChange={(e) => setBuscaCliente(e.target.value)}
-              style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />
-            
-              {buscaCliente &&
-            <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
-            }
-            </div>
+         {(activeTab === "carteira" || activeTab === "verificacao" || activeTab === "protesto") &&
+         <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+             <FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} />
+             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+               <span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span>
+               <select value={filtroOrigem} onChange={(e) => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}>
+                 <option value="">Todos</option>
+                 <option value="FINR1253">Topcon (FINR1253)</option>
+                 <option value="RPT_7007_CONS_CAR_EB">EB (RPT_7007)</option>
+               </select>
+             </div>
+             <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}>
+               <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>📄 Título:</span>
+               <input
+               type="text"
+               placeholder="Buscar por nº ou nome..."
+               value={buscaTitulo}
+               onChange={(e) => setBuscaTitulo(e.target.value)}
+               style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />
+
+               {buscaTitulo &&
+             <button onClick={() => setBuscaTitulo("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
+             }
+             </div>
+             <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}>
+               <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>🔍 Cliente:</span>
+               <input
+               type="text"
+               placeholder="Buscar por nome ou nº..."
+               value={buscaCliente}
+               onChange={(e) => setBuscaCliente(e.target.value)}
+               style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />
+
+               {buscaCliente &&
+             <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
+             }
+             </div>
 
             {activeTab === "carteira" &&
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

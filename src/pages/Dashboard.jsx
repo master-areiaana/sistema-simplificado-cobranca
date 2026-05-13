@@ -102,6 +102,7 @@ export default function Dashboard() {
   const [fProt, setFProt] = useState({});
   const [kpiFilter, setKpiFilter] = useState(null); // "aCobrar" | "cobrado" | "cobHoje" | "faltando" | "pendVerif" | "pendProt" | null
   const [cleanupMsg, setCleanupMsg] = useState(null);
+  const [showPaid, setShowPaid] = useState(false);
 
   // ── Carregar dados do Base44 ──
   const loadData = useCallback(async () => {
@@ -237,9 +238,16 @@ export default function Dashboard() {
       if (faixaAtraso > 0 && g.maiorAtraso < faixaAtraso) return false;
       if (filtroOrigem && !g.titulos.some((ti) => ti.origem === filtroOrigem)) return false;
       if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente)) return false;
+      // Esconder pagos por padrão (status Encerrado, Baixado ou resposta Confirmado)
+      if (!showPaid) {
+        const temPagamento = g.statusConsolidado === "Encerrado" || 
+                             g.statusConsolidado === "Baixado" ||
+                             g.historicoCliente.some(h => h.motivo === "Confirmado");
+        if (temPagamento) return false;
+      }
       return true;
     });
-  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente]);
+  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente, showPaid]);
 
   // ── Sort + filtros ──
   const baseCart = useMemo(() => {
@@ -864,10 +872,15 @@ export default function Dashboard() {
             </div>
 
             {activeTab === "carteira" &&
-          <div style={{ position: "relative" }}>
-                <button onClick={() => setShowColMenu((x) => !x)} style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  ☰ Colunas {hiddenCols.size > 0 ? `(${hiddenCols.size} ocultas)` : ""}
-                </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer", fontSize: 11, fontWeight: 700, color: t.txt, whiteSpace: "nowrap" }}>
+                  <input type="checkbox" checked={showPaid} onChange={(e) => setShowPaid(e.target.checked)} style={{ accentColor: t.p, width: 16, height: 16 }} />
+                  👁️ Mostrar pagos
+                </label>
+                <div style={{ position: "relative" }}>
+                  <button onClick={() => setShowColMenu((x) => !x)} style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    ☰ Colunas {hiddenCols.size > 0 ? `(${hiddenCols.size} ocultas)` : ""}
+                  </button>
                 {showColMenu &&
             <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: "8px", zIndex: 300, minWidth: 200, boxShadow: "0 8px 24px rgba(0,0,0,.2)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
                     {[
@@ -885,7 +898,8 @@ export default function Dashboard() {
               )}
                     <button onClick={() => {setHiddenCols(new Set());setShowColMenu(false);}} style={{ gridColumn: "1/-1", marginTop: 4, background: t.p, color: "#fff", border: "none", borderRadius: 4, padding: "4px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Mostrar Todas</button>
                   </div>
-            }
+                }
+                </div>
               </div>
           }
           </div>

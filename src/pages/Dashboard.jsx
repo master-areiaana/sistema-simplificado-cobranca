@@ -215,7 +215,18 @@ export default function Dashboard() {
     });
     // Escolher melhor nomeCli: prefere nome com letras (texto real) ao invés de número/código
     map.forEach((g) => {
-      const cands = (g._nomes || []).filter(Boolean).map((s) => String(s).trim()).filter(Boolean);
+      // 1) Coleta candidatos: nomes do _nomes + nomes extraídos dos próprios títulos
+      const stripCode = (s) => {
+        const raw = String(s || "").trim();
+        if (!raw) return "";
+        // Remove prefixo "CODIGO/" ou "CODIGO -" se houver
+        const mm = raw.match(/^(\d{1,8})\s*[\/\-]\s*(.{2,})$/);
+        if (mm && /[A-Za-zÀ-ÿ]/.test(mm[2])) return mm[2].trim();
+        return raw;
+      };
+      const fromNomes = (g._nomes || []).map(stripCode).filter(Boolean);
+      const fromTitulos = (g.titulos || []).map((t) => stripCode(t && t.nomeCli)).filter(Boolean);
+      const cands = [...fromNomes, ...fromTitulos].map((s) => String(s).trim()).filter(Boolean);
       if (cands.length > 0) {
         // Critério: prefere nomes com letras (não-numérico); entre eles, pega o mais longo
         const comLetras = cands.filter((s) => /[A-Za-zÀ-ÿ]/.test(s));

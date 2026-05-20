@@ -135,7 +135,7 @@ export default function Dashboard() {
       const logicalKeys = new Map();
       for (const r of titulosUnicos) {
         const it = dbToItem(r);
-        const lk = [it.nrCli, it.tp, it.ser, it.titulo, it.seq, it.nfServico]
+        const lk = [it.nrCli, it.tp, it.titulo, it.seq]
           .map(v => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1"))
           .join("|");
         const prev = logicalKeys.get(lk);

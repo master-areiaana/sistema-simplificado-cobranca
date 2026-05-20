@@ -1109,6 +1109,69 @@ export default function Dashboard() {
             <KPI t={t} label="Débitos Críticos" color="#EF4444" value={fmtM(grouped.filter(g => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="acima 90 dias" />
           </div>
           <PrevisaoFluxo grouped={grouped} t={t} />
+          {/* ═══ TABELA DE CLIENTES PAGOS ═══ */}
+          {(() => {
+            const pagosArr = grouped.filter((g) => (
+              g.statusConsolidado === "Encerrado" ||
+              g.statusConsolidado === "Baixado" ||
+              g.statusConsolidado === "Pago Aguard. Baixa" ||
+              g.statusConsolidado === "Confirmado"
+            ));
+            const totalPagosVal = pagosArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0);
+            const totalPagosTit = pagosArr.reduce((s, g) => s + (g.qtdTitulos || 0), 0);
+            return (
+              <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "14px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: t.txt }}>💰 Clientes Pagos (Impacto no Caixa)</div>
+                  <div style={{ display: "flex", gap: 12, fontSize: 11, color: t.muted }}>
+                    <span><b style={{ color: "#10b981" }}>{pagosArr.length}</b> clientes</span>
+                    <span><b style={{ color: "#10b981" }}>{totalPagosTit}</b> títulos</span>
+                    <span>Total: <b style={{ color: "#10b981" }}>{fmtM(totalPagosVal)}</b></span>
+                  </div>
+                </div>
+                {pagosArr.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: "center", color: t.muted, fontSize: 12 }}>
+                    Nenhum cliente pago no momento.
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: t.th, color: t.muted, textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}>
+                          <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: `1px solid ${t.bor}` }}>N°</th>
+                          <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: `1px solid ${t.bor}` }}>Cliente</th>
+                          <th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Qtd. Títulos</th>
+                          <th style={{ padding: "8px 10px", textAlign: "right", borderBottom: `1px solid ${t.bor}` }}>Val. Original</th>
+                          <th style={{ padding: "8px 10px", textAlign: "right", borderBottom: `1px solid ${t.bor}` }}>Total Pago</th>
+                          <th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Último Contato</th>
+                          <th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagosArr
+                          .sort((a, b) => (b.valorTotalDebito || 0) - (a.valorTotalDebito || 0))
+                          .map((g) => (
+                          <tr key={g.clientKey} style={{ borderBottom: `1px solid ${t.bor}` }}>
+                            <td style={{ padding: "8px 10px", color: t.txt, fontWeight: 600 }}>{g.nrCli}</td>
+                            <td style={{ padding: "8px 10px", color: t.txt }}>{g.nomeCli}</td>
+                            <td style={{ padding: "8px 10px", textAlign: "center", color: t.txt }}>{g.qtdTitulos}</td>
+                            <td style={{ padding: "8px 10px", textAlign: "right", color: t.muted }}>{fmtM(g.valorOriginal)}</td>
+                            <td style={{ padding: "8px 10px", textAlign: "right", color: "#10b981", fontWeight: 700 }}>{fmtM(g.valorTotalDebito)}</td>
+                            <td style={{ padding: "8px 10px", textAlign: "center", color: t.muted }}>{g.ultimoContato ? fmtD(g.ultimoContato) : "—"}</td>
+                            <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                              <span style={{ background: "#10b98122", color: "#10b981", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700 }}>
+                                {g.statusConsolidado || "Pago"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
         }
       </main>

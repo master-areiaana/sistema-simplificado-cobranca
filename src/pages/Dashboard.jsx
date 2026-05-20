@@ -187,9 +187,22 @@ export default function Dashboard() {
   const grouped = useMemo(() => {
     const map = new Map();
     records.forEach((item) => {
-      const k = cliKey(item);
-      if (!map.has(k)) map.set(k, { clientKey: k, nrCli: item.nrCli, nomeCli: item.nomeCli, titulos: [] });
+      const k = String(item.nrCli || "").trim() || cliKey(item);
+      if (!map.has(k)) map.set(k, { clientKey: k, nrCli: item.nrCli, nomeCli: item.nomeCli, titulos: [], _nomes: [] });
+      map.get(k)._nomes.push(item.nomeCli);
       map.get(k).titulos.push(item);
+    });
+    // Escolher melhor nomeCli: prefere nome com letras (texto real) ao invés de número/código
+    map.forEach((g) => {
+      const cands = (g._nomes || []).filter(Boolean).map((s) => String(s).trim()).filter(Boolean);
+      if (cands.length > 0) {
+        // Critério: prefere nomes com letras (não-numérico); entre eles, pega o mais longo
+        const comLetras = cands.filter((s) => /[A-Za-zÀ-ÿ]/.test(s));
+        const pool = comLetras.length > 0 ? comLetras : cands;
+        pool.sort((a, b) => b.length - a.length);
+        g.nomeCli = pool[0];
+      }
+      delete g._nomes;
     });
     return Array.from(map.values()).map((g) => {
       const ts = g.titulos;

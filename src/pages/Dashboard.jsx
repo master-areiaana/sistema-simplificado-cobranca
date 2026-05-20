@@ -258,6 +258,7 @@ export default function Dashboard() {
       if (!showPaid) {
         const temPagamento = g.statusConsolidado === "Encerrado" || 
                              g.statusConsolidado === "Baixado" ||
+                             g.statusConsolidado === "Pago Aguard. Baixa" ||
                              g.historicoCliente.some(h => h.motivo === "Confirmado");
         if (temPagamento) return false;
       }

@@ -129,11 +129,26 @@ export default function Dashboard() {
         }
       }
       const titulosUnicos = Array.from(seenKeys.values());
+      // — DEDUPLICAÇÃO LÓGICA (cross-source) —
+      // Detecta o mesmo título importado de origens diferentes (ex: FINR1253 e RPT_7007_CONS_CAR_EB).
+      // Usa chave lógica sem o campo origem. Mantém o registro mais recente.
+      const logicalKeys = new Map();
+      for (const r of titulosUnicos) {
+        const it = dbToItem(r);
+        const lk = [it.nrCli, it.tp, it.ser, it.titulo, it.seq, it.nfServico]
+          .map(v => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1"))
+          .join("|");
+        const prev = logicalKeys.get(lk);
+        if (!prev || (r.updated_date || r.created_date) > (prev.updated_date || prev.created_date)) {
+          logicalKeys.set(lk, r);
+        }
+      }
+      const titulosFinais = Array.from(logicalKeys.values());
 
-      setRecords(titulosUnicos.map(dbToItem));
+      setRecords(titulosFinais.map(dbToItem));
       setEvents(evts || []);
-      const dupCount = (titulos || []).length - titulosUnicos.length;
-      setSyncMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${titulosUnicos.length} títulos carregados${dupCount > 0 ? ` (${dupCount} duplicatas ignoradas)` : ""}`);
+      const dupCount = (titulos || []).length - titulosFinais.length;
+      setSyncMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${titulosFinais.length} títulos carregados${dupCount > 0 ? ` (${dupCount} duplicatas ignoradas)` : ""}`);
     } catch (err) {
       setSyncMsg(`❌ ${err.message}`);
     } finally {

@@ -186,10 +186,31 @@ export default function Dashboard() {
   // ── Agrupamento por cliente ──
   const grouped = useMemo(() => {
     const map = new Map();
+    // Helper: extrai (codigo, nome) reais quando nomeCli vem no formato "CODIGO/NOME" ou "CODIGO - NOME"
+    function extractCliInfo(item) {
+      const rawNr = String(item.nrCli || "").trim();
+      const rawNome = String(item.nomeCli || "").trim();
+      // Padrão 1: nomeCli = "1234/EMPRESA LTDA" ou "1234 - EMPRESA"
+      const mSlash = rawNome.match(/^(\d{1,8})\s*[\/\-]\s*(.{2,})$/);
+      if (mSlash) {
+        const cod = mSlash[1];
+        const nome = mSlash[2].trim();
+        // Se o nome extraído contém letras, usar essa decomposição
+        if (/[A-Za-zÀ-ÿ]/.test(nome)) {
+          return { nrCli: cod, nomeCli: nome };
+        }
+      }
+      // Padrão 2: nomeCli puramente numérico → é o código real (nrCli atual é genérico/errado)
+      if (/^\d{2,8}$/.test(rawNome) && rawNome !== rawNr) {
+        return { nrCli: rawNome, nomeCli: "" };
+      }
+      return { nrCli: rawNr, nomeCli: rawNome };
+    }
     records.forEach((item) => {
-      const k = String(item.nrCli || "").trim() || cliKey(item);
-      if (!map.has(k)) map.set(k, { clientKey: k, nrCli: item.nrCli, nomeCli: item.nomeCli, titulos: [], _nomes: [] });
-      map.get(k)._nomes.push(item.nomeCli);
+      const info = extractCliInfo(item);
+      const k = info.nrCli || cliKey(item);
+      if (!map.has(k)) map.set(k, { clientKey: k, nrCli: info.nrCli, nomeCli: info.nomeCli, titulos: [], _nomes: [] });
+      map.get(k)._nomes.push(info.nomeCli);
       map.get(k).titulos.push(item);
     });
     // Escolher melhor nomeCli: prefere nome com letras (texto real) ao invés de número/código

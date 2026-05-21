@@ -48,6 +48,85 @@ function categoriaBadge(cat) {
   return <Badge label={cat} color={cores[cat] || "#64748b"} />;
 }
 
+function cleanText(v) {
+  return String(v ?? "").trim();
+}
+
+function hasLetters(v) {
+  return /[A-Za-zÀ-ÿ]/.test(cleanText(v));
+}
+
+function isGenericClientName(v) {
+  const s = cleanText(v);
+  if (!s) return true;
+  if (/^\d+$/.test(s)) return true;
+  if (/^cliente\s*\d+$/i.test(s)) return true;
+  return false;
+}
+
+function splitCodeAndName(v) {
+  const s = cleanText(v);
+  const m = s.match(/^(\d{1,10})\s*[\/\-–]\s*(.{2,})$/);
+  if (!m) return null;
+  const nome = cleanText(m[2]);
+  if (!hasLetters(nome)) return null;
+  return { nrCli: cleanText(m[1]), nomeCli: nome };
+}
+
+function getDisplayClient(g) {
+  const candidates = [];
+
+  const fromGroup = splitCodeAndName(g.nomeCli);
+  if (fromGroup) candidates.push(fromGroup);
+  if (!isGenericClientName(g.nomeCli) && hasLetters(g.nomeCli)) {
+    candidates.push({ nrCli: cleanText(g.nrCli), nomeCli: cleanText(g.nomeCli) });
+  }
+
+  for (const item of g.titulos || []) {
+    const fromItemName = splitCodeAndName(item.nomeCli);
+    if (fromItemName) candidates.push(fromItemName);
+
+    if (!isGenericClientName(item.nomeCli) && hasLetters(item.nomeCli)) {
+      candidates.push({ nrCli: cleanText(item.nrCli || g.nrCli), nomeCli: cleanText(item.nomeCli) });
+    }
+
+    const fromTitulo = splitCodeAndName(`${cleanText(item.titulo)}/${cleanText(item.seq)}`);
+    if (fromTitulo) candidates.push(fromTitulo);
+  }
+
+  const best = candidates
+    .filter(c => c.nomeCli && hasLetters(c.nomeCli) && !isGenericClientName(c.nomeCli))
+    .sort((a, b) => b.nomeCli.length - a.nomeCli.length)[0];
+
+  return {
+    nrCli: best?.nrCli || cleanText(g.nrCli),
+    nomeCli: best?.nomeCli || (!isGenericClientName(g.nomeCli) ? cleanText(g.nomeCli) : "—"),
+  };
+}
+
+function getOrigemLabel(origem) {
+  return origem === "FINR1253" ? "TC" : "EB";
+}
+
+function renderTituloDetalhe(item, grupo) {
+  const cliente = getDisplayClient(grupo);
+  const titulo = cleanText(item.titulo);
+  const seq = cleanText(item.seq);
+
+  // Quando a importação veio invertida, aparece algo como "60/ALLONDA" no lugar do título.
+  // Nesse caso, não repetimos o cliente na linha detalhada; mostramos o número do documento conhecido do grupo.
+  const tituloPareceCliente = splitCodeAndName(`${titulo}/${seq}`);
+  if (tituloPareceCliente) {
+    const doc = cleanText(grupo.nrCli);
+    return doc ? `${doc}/1` : "—";
+  }
+
+  if (titulo && seq) return `${titulo}/${seq}`;
+  if (titulo) return titulo;
+  if (cliente.nrCli && cleanText(item.nrCli) !== cliente.nrCli) return cleanText(item.nrCli);
+  return "—";
+}
+
 export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal, onEncaminharSugestao, hiddenCols, setHiddenCols, onClickFilter }) {
   const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
 
@@ -71,9 +150,10 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
 
   function renderCell(key, g) {
     const sugestao = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
+    const cliente = getDisplayClient(g);
     switch(key) {
-      case "nrCli":   return <td style={{ ...tdS(), color: t.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.nrCli}</td>;
-      case "nomeCli": return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.nomeCli}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(g.nomeCli)}>{(g.nomeCli && !/^\d+$/.test(g.nomeCli)) ? g.nomeCli : "—"}</b></td>;
+      case "nrCli":   return <td style={{ ...tdS(), color: t.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cliente.nrCli || g.nrCli}</td>;
+      case "nomeCli": return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cliente.nomeCli}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(cliente.nomeCli)}>{cliente.nomeCli}</b></td>;
       case "qtd":     return <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>;
       case "venc":    return <td style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtD(g.primeiroVencimento)}</td>;
       case "atraso":  return <td style={{ ...tdS(), color: g.maiorAtraso > 0 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>;
@@ -83,8 +163,8 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       case "total":   return <td style={{ ...tdS(), fontWeight: 800, color: t.p, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorTotalDebito)}</td>;
       case "status":  return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10 }}><span onClick={() => onClickFilter && onClickFilter(g.statusConsolidado)} style={{ cursor: "pointer" }}>{g.statusConsolidado}</span></td>;
       case "acao":    return <td style={{ ...tdS(), fontSize: 10, color: t.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.acaoAfazer || "—"}</td>;
-      case "enc":     return <td style={tdS()} onClick={() => g.encaminharConsolidado && onClickFilter && onClickFilter(g.encaminharConsolidado)} style={{ ...tdS(), cursor: g.encaminharConsolidado ? "pointer" : "default" }}>{encBadge(g.encaminharConsolidado)}</td>;
-      case "origem":  return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.origem))].map(o => <span key={o} style={{ display: "inline-block", fontSize: 8, background: o === "FINR1253" ? "#7c3aed22" : "#0369a122", color: o === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{o === "FINR1253" ? "TC" : "EB"}</span>)}</td>;
+      case "enc":     return <td onClick={() => g.encaminharConsolidado && onClickFilter && onClickFilter(g.encaminharConsolidado)} style={{ ...tdS(), cursor: g.encaminharConsolidado ? "pointer" : "default" }}>{encBadge(g.encaminharConsolidado)}</td>;
+      case "origem":  return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.origem))].map(o => <span key={o} style={{ display: "inline-block", fontSize: 8, background: o === "FINR1253" ? "#7c3aed22" : "#0369a122", color: o === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(o)}</span>)}</td>;
       case "cat":     return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.clientCategory).filter(Boolean))].map(cat => <div key={cat} style={{ marginBottom: 4 }}>{categoriaBadge(cat)}</div>)}</td>;
       case "contato": return <td style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtD(g.ultimoContato)}</td>;
       case "prom":    return <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>;
@@ -165,10 +245,11 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                   {open && g.titulos.map(item => (
                     <tr key={item.id} style={{ background: t.surf2 }}>
                       {vis.map((c) => {
+                        const cliente = getDisplayClient(g);
                         if (c.key === "check") return <td key="check" style={tdS()} />;
                         if (c.key === "expand") return <td key="expand" style={tdS()} />;
-                        if (c.key === "nrCli") return <td key="nrCli" style={{ ...tdS(), color: t.muted }}>{item.nrCli}</td>;
-                        if (c.key === "nomeCli") return <td key="nomeCli" style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.titulo}/{item.seq || "—"} · <span style={{ fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{item.origem === "FINR1253" ? "TC" : "EB"}</span></td>;
+                        if (c.key === "nrCli") return <td key="nrCli" style={{ ...tdS(), color: t.muted }}>{cliente.nrCli || item.nrCli}</td>;
+                        if (c.key === "nomeCli") return <td key="nomeCli" style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{renderTituloDetalhe(item, g)} · <span style={{ fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;
                         if (c.key === "qtd") return <td key="qtd" style={{ ...tdS(), textAlign: "center" }}>1</td>;
                         if (c.key === "venc") return <td key="venc" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
                         if (c.key === "atraso") return <td key="atraso" style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;

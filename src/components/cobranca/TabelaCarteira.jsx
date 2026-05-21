@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import ColHeader from "./ColHeader";
 import { Btn, PromBadge, ObsCell, Badge, SugestaoEncBadge } from "./UI";
 import { fmtM, fmtD, prioCor, sugestaoEncaminhamento } from "@/lib/cobranca";
@@ -127,8 +127,49 @@ function renderTituloDetalhe(item, grupo) {
   return "—";
 }
 
+function filterValue(g, field) {
+  const cliente = getDisplayClient(g);
+  const sugestao = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
+
+  switch (field) {
+    case "nrCli": return cliente.nrCli || g.nrCli || "(Vazio)";
+    case "nomeCli": return cliente.nomeCli || "(Vazio)";
+    case "qtd": return String(g.qtdTitulos ?? 0);
+    case "venc": return g.primeiroVencimento ? fmtD(g.primeiroVencimento) : "(Vazio)";
+    case "atraso": return g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—";
+    case "vOrig": return fmtM(g.valorOriginal);
+    case "multa": return fmtM(g.valorMulta);
+    case "juros": return fmtM(g.valorJuros);
+    case "total": return fmtM(g.valorTotalDebito);
+    case "status": return g.statusConsolidado || "(Vazio)";
+    case "acao": return g.acaoAfazer || "(Vazio)";
+    case "enc": return g.encaminharConsolidado || "Sem encaminhamento";
+    case "origem": return [...new Set((g.titulos || []).map(x => getOrigemLabel(x.origem)).filter(Boolean))].join(", ") || "(Vazio)";
+    case "cat": return [...new Set((g.titulos || []).map(x => x.clientCategory).filter(Boolean))].join(", ") || "(Vazio)";
+    case "contato": return g.ultimoContato ? fmtD(g.ultimoContato) : "(Vazio)";
+    case "prom": return g.dataPromessa ? fmtD(g.dataPromessa) : "(Vazio)";
+    case "sugest": return sugestao ? sugestao.label : "(Sem sugestão)";
+    case "obs": return g.obsConsolidada || "(Sem observação)";
+    default: return "";
+  }
+}
+
+function applyLocalFilters(arr, filters) {
+  return arr.filter((g) => {
+    for (const [field, vals] of Object.entries(filters)) {
+      if (!vals) continue;
+      if (vals.length === 0) return false;
+      const v = filterValue(g, field);
+      if (!vals.includes(v)) return false;
+    }
+    return true;
+  });
+}
+
 export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal, onEncaminharSugestao, hiddenCols, setHiddenCols, onClickFilter }) {
+  const [tableFilters, setTableFilters] = useState({});
   const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
+  const hasAnyTableFilter = hasAnyFilter(tableFilters);
 
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols.has(c.key));
 
@@ -139,14 +180,19 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   const vis = visibleCols;
   const colCount = vis.length;
 
-  // Célula clicável para filtro rápido
-  const clickable = (val, style, children) => (
-    <span
-      title={`Filtrar por: ${val}`}
-      onClick={() => onClickFilter && onClickFilter(val)}
-      style={{ cursor: onClickFilter ? "pointer" : "default", ...style }}
-    >{children || val}</span>
-  );
+  const filteredCart = useMemo(() => applyLocalFilters(sortedCart, tableFilters), [sortedCart, tableFilters]);
+  const filterBaseCart = useMemo(() => applyLocalFilters(baseCart, tableFilters), [baseCart, tableFilters]);
+  const headerData = useMemo(() => {
+    const source = baseCart?.length ? baseCart : sortedCart;
+    return Object.fromEntries(
+      COLS_DEF.map(c => [c.key, source.map(g => ({ [c.key]: filterValue(g, c.key) }))])
+    );
+  }, [baseCart, sortedCart]);
+
+  function clearAllFilters() {
+    setTableFilters({});
+    setFCart && setFCart({});
+  }
 
   function renderCell(key, g) {
     const sugestao = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
@@ -189,10 +235,10 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
 
   return (
     <div>
-      {hasAnyFilter(fCart) && (
+      {(hasAnyFilter(fCart) || hasAnyTableFilter) && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
           <span style={{ fontSize: 11, color: t.p }}>🔍 Filtros ativos</span>
-          <button onClick={() => setFCart({})} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
+          <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
         </div>
       )}
 
@@ -204,31 +250,19 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
           <thead style={{ position: "sticky", top: 0, zIndex: 20 }}>
             <tr>
               {vis.map(c => {
-                if (c.key === "check") return <th key="check" style={{ ...thS(t), textAlign: "center", width: 32 }}><input type="checkbox" checked={selected.size === sortedCart.length && sortedCart.length > 0} onChange={toggleAll} style={{ cursor: "pointer" }} /></th>;
+                if (c.key === "check") return <th key="check" style={{ ...thS(t), textAlign: "center", width: 32 }}><input type="checkbox" checked={selected.size === filteredCart.length && filteredCart.length > 0} onChange={toggleAll} style={{ cursor: "pointer" }} /></th>;
                 if (c.key === "expand") return <th key="expand" style={thS(t)} />;
                 if (c.key === "acoes") return <th key="acoes" style={thS(t)}>AÇÕES</th>;
-                if (c.key === "qtd") return <th key="qtd" style={thS(t)}>QTD.</th>;
-                if (c.key === "multa") return <th key="multa" style={thS(t)}>MULTA</th>;
-                if (c.key === "juros") return <th key="juros" style={thS(t)}>JUROS</th>;
-                if (c.key === "sugest") {
-                  const sugestData = baseCart.map(g => {
-                    const s = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
-                    return { sugestaoLabel: s ? s.label : "(Sem sugestão)" };
-                  });
-                  return <CH key="sugest" label="SUGESTÃO" field="sugestaoLabel" data={sugestData} filters={fCart} setFilters={setFCart} />;
-                }
-                const fieldMap = { nrCli:"nrCli", nomeCli:"nomeCli", venc:"vencimento", atraso:"atrasoLabel", vOrig:"valorOriginal", total:"valorTotalDebito", status:"statusConsolidado", acao:"acaoAfazer", enc:"encaminharConsolidado", origem:"origem", cat:"categoria", contato:"ultimoContato", prom:"dataPromessa", obs:"obsConsolidada" };
                 const sortMap = { nrCli:"numero", nomeCli:"cliente", atraso:"atraso", vOrig:"valorOriginal", total:"valorTotalDebito" };
-                const field = fieldMap[c.key];
-                return field ? <CH key={c.key} label={c.label} field={field} data={makeColData(baseCart, field)} filters={fCart} setFilters={setFCart} sortKey={sortMap[c.key]} /> : <th key={c.key} style={thS(t)}>{c.label}</th>;
+                return <CH key={c.key} label={c.label} field={c.key} data={headerData[c.key] || []} filters={tableFilters} setFilters={setTableFilters} sortKey={sortMap[c.key]} />;
               })}
             </tr>
           </thead>
           <tbody>
-            {sortedCart.length === 0 && (
+            {filteredCart.length === 0 && (
               <tr><td colSpan={colCount} style={{ textAlign: "center", padding: 44, color: t.muted, background: t.surf }}>Nenhum resultado. Verifique os filtros.</td></tr>
             )}
-            {sortedCart.map((g, i) => {
+            {filteredCart.map((g, i) => {
               const open = !!openCli[g.clientKey], isSel = selected.has(g.clientKey);
               const leftClr = g.encaminharConsolidado === "verificacao" ? "#3b82f6" : g.encaminharConsolidado === "protesto" ? "#ef4444" : prioCor(g.prioridadeCliente);
               const rowBg = isSel ? (isDark ? "rgba(232,119,34,.15)" : "rgba(232,119,34,.07)") : (i % 2 === 0 ? t.surf : t.alt);
@@ -271,8 +305,8 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
           </tbody>
         </table>
         <div style={{ padding: "8px 12px", borderTop: `1px solid ${t.bor}`, fontSize: 11, color: t.muted, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span><b style={{ color: t.txt }}>{sortedCart.length}</b> de {baseCart.length} clientes</span>
-          {hasAnyFilter(fCart) && <button onClick={() => setFCart({})} style={{ background: "none", border: `1px solid ${t.p}`, color: t.p, borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕ Limpar filtros</button>}
+          <span><b style={{ color: t.txt }}>{filteredCart.length}</b> de {baseCart.length} clientes</span>
+          {(hasAnyFilter(fCart) || hasAnyTableFilter) && <button onClick={clearAllFilters} style={{ background: "none", border: `1px solid ${t.p}`, color: t.p, borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕ Limpar filtros</button>}
         </div>
       </div>
     </div>

@@ -7,7 +7,8 @@ export const STATUS_OPC = ["Não Contatado","Em Cobrança","Sem Retorno","Promet
 export const ENCAMINHAR_OPC = [
   {value:"",label:"Sem encaminhamento"},
   {value:"verificacao",label:"→ Verificar Pagamento"},
-  {value:"protesto",label:"→ Solicitar Protesto"}
+  {value:"protesto",label:"→ Solicitar Protesto"},
+  {value:"assessoria",label:"→ Encaminhar para Assessoria"}
 ];
 export const CONTATO_OPC = ["Ligação","WhatsApp","E-mail","Presencial","Mensagem Interna"];
 export const VERIF_RESP = ["Confirmado","Não localizado","Baixado","Erro","Duplicidade","Devolver para cobrança"];
@@ -118,218 +119,137 @@ export function calcFin(valor, venc) {
 }
 
 // Normaliza um campo de chave: maiúsculas, sem espaços, sem pontos, sem zeros à esquerda numéricos
-function normKey(v) {
-  const s = String(v ?? "").trim().toUpperCase().replace(/\s+/g, "").replace(/\./g, "");
-  // Remove zeros à esquerda de campos que são puramente numéricos (ex: "001234" → "1234")
-  return s.replace(/^0+(\d+)$/, "$1");
+export function keyPart(v) {
+  return String(v ?? "")
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/\./g, "")
+    .replace(/^0+(\d+)$/, "$1");
 }
 
-export function buildId(b) {
-  return [
-    normKey(b.origem),
-    normKey(b.nrCli),
-    normKey(b.tp),
-    normKey(b.ser),
-    normKey(b.titulo),
-    normKey(b.seq),
-    normKey(b.nfServico),
-  ].join("|");
+export function buildId({ origem, nrCli, tp, titulo, seq }) {
+  return [origem, nrCli, tp, titulo, seq].map(keyPart).join("|");
 }
 
-export function buildItem(base) {
-  const venc = dateISO(base.vencimento), fin = calcFin(base.valor, venc);
-  // Normalizar campos da chave da mesma forma que buildId para garantir consistência no banco
-  const nrCliNorm = String(base.nrCli || "").replace(/\./g, "").trim().replace(/^0+(\d+)$/, "$1");
-  const tituloNorm = String(base.titulo || "").trim().toUpperCase().replace(/^0+(\d+)$/, "$1");
-  const seqNorm = String(base.seq || "").trim().toUpperCase().replace(/^0+(\d+)$/, "$1");
-  const nfServicoNorm = String(base.nfServico || "").trim().toUpperCase().replace(/^0+(\d+)$/, "$1");
-  const tpNorm = String(base.tp || "").trim().toUpperCase();
-  const serNorm = String(base.ser || "").trim().toUpperCase();
+export function cliKey(item) {
+  return `${String(item.nrCli || "").trim()}||${normText(item.nomeCli || "")}`;
+}
+
+export function buildItem(o) {
+  const f = calcFin(o.valorOriginal, o.vencimento);
   return {
-    id: buildId({ ...base, nrCli: nrCliNorm, titulo: tituloNorm, seq: seqNorm, nfServico: nfServicoNorm, tp: tpNorm, ser: serNorm }),
-    origem: base.origem || "FINR1253",
-    nrCli: nrCliNorm,
-    nomeCli: String(base.nomeCli || "").trim(),
-    titulo: tituloNorm,
-    seq: seqNorm,
-    nfServico: nfServicoNorm,
-    tp: tpNorm,
-    ser: serNorm,
-    emissao: dateISO(base.emissao),
-    vencimento: venc,
-    ...fin,
-    portador: String(base.portador || "").trim(),
-    status: base.status || "Não Contatado",
-    motivo: base.motivo || "",
-    encaminhar: base.encaminhar || "",
-    tipoContato: base.tipoContato || "",
-    solicitanteProtesto: base.solicitanteProtesto || "",
-    dataContato: base.dataContato || "",
-    dataPromessa: base.dataPromessa || "",
-    obs: base.obs || "",
-    qtd: Number(base.qtd || 0),
+    ...o,
+    id: buildId(o),
+    valorOriginal: f.valorOriginal,
+    valorMulta: f.valorMulta,
+    valorJuros: f.valorJuros,
+    valorTotalDebito: f.valorTotalDebito,
+    diasAtraso: f.diasAtraso,
+    status: o.status || "Não Contatado",
+    encaminhar: o.encaminhar || "",
+    dataContato: o.dataContato || "",
+    dataPromessa: o.dataPromessa || "",
+    obs: o.obs || "",
+    qtd: o.qtd || 0,
+    clientCategory: o.clientCategory || ""
   };
-}
-
-export function cliKey(i) {
-  return `${String(i.nrCli || "").trim()}||${normText(i.nomeCli || "")}`;
-}
-
-// ── Parse FINR1253 ──
-function rowTxt(row, max = 50) {
-  return row.slice(0, max).map(v => String(v ?? "").trim()).filter(Boolean).join(" ").trim();
-}
-function getHMap(row) {
-  // normText já remove acentos, pontos e normaliza espaços
-  // "NÚMERO" → "NUMERO", "NF Serviço" → "NF SERVICO", "NF de Serviço" → "NF DE SERVICO"
-  const h = (row || []).map(c => normText(c));
-  // fi: acha o índice da primeira coluna cujo nome (com ou sem espaços) bate em algum alias
-  const fi = al => h.findIndex(x => {
-    const xSem = x.replace(/\s/g, "");
-    return al.some(a => x === a || xSem === a.replace(/\s/g, ""));
-  });
-  return {
-    tp:       fi(["TP", "TIPO", "TPDOC", "TP DOC", "TIPO DOC", "TIPO DOCUMENTO"]),
-    ser:      fi(["SER", "SERIE", "SERIE DOC"]),
-    numero:   fi(["NUMERO", "NUM", "NR", "NDOC", "N DOC", "NUMERODOC", "NUMERO DOC", "NUMERODOCUMENTO", "NUMERO DOCUMENTO"]),
-    seq:      fi(["SEQ", "SEQUENCIA", "SEQ DOC", "SEQUENCIA DOC"]),
-    nfServico:fi(["NF SERVICO", "NFSERVICO", "NF DE SERVICO", "NFDESERVICO", "NFSERV", "NF SERV", "NF"]),
-    vencto:   fi(["VENCTO", "VENCIMENTO", "DT VENC", "DTVENC", "DTVENCIMENTO", "DATA VENC", "DATA VENCIMENTO", "DT VENCIMENTO"]),
-    // FINR1253: Receb.Prc é a coluna que alimenta o KPI Val. Original
-    recebPrc: fi(["RECEB PRC", "RECEBPRC", "VLRECEB", "VL RECEB", "RECEB.PRC", "RECEBER PRC", "RECEBERPRC"]),
-    portador: fi(["PORTADOR", "BANCO", "PORT", "PORTADOR COBR", "BANCO COBR"])
-  };
-}
-function isH1253(row) {
-  const m = getHMap(row);
-  // Exige número e vencimento como mínimo obrigatório
-  // Mais: precisa de pelo menos 1 dos outros campos financeiros/sequência
-  if (m.numero < 0 || m.vencto < 0) return false;
-  const extras = [m.seq >= 0, m.recebPrc >= 0, m.tp >= 0, m.ser >= 0].filter(Boolean).length;
-  return extras >= 1;
-}
-function findCL(row) {
-  for (const c of row || []) { const s = String(c ?? "").trim(); if (s.toUpperCase().includes("CLIENTE:")) return s; }
-  return "";
-}
-function parseCli(txt) {
-  let s = String(txt || "").trim();
-  const pi = s.toUpperCase().indexOf("CLIENTE:"); if (pi >= 0) s = s.slice(pi + 8).trim();
-  const pc = s.toUpperCase().indexOf("CPF/CNPJ:"); const bloco = pc >= 0 ? s.slice(0, pc).trim() : s;
-  const _mCli = bloco.match(/^\s*(\d{1,8})\s*[-–\/]\s*(.+)$/) || bloco.match(/^\s*(\d{1,8})\s{2,}(.+)$/); if (_mCli) return { numeroCliente: _mCli[1].replace(/\./g, "").trim(), nomeCliente: _mCli[2].trim() }; const ps = bloco.indexOf(" - ");
-  return ps >= 0 ? { numeroCliente: bloco.slice(0, ps).replace(/\./g, "").trim(), nomeCliente: bloco.slice(ps + 3).trim() } : { numeroCliente: "", nomeCliente: bloco };
-}
-
-export function parseRows1253(matrix) {
-  const lc = matrix.findIndex(r => isH1253(r)); if (lc < 0) return [];
-  const map = getHMap(matrix[lc]); 
-  let cN = "", cNome = ""; 
-  const itens = [];
-  let totalRecebPrc = 0;
-  
-  // Log do mapeamento detectado
-  console.log("📋 FINR1253 Coluna Receb.Prc:", map.recebPrc >= 0 ? "✅ Detectada" : "❌ NÃO ENCONTRADA");
-  
-  for (let i = lc + 1; i < matrix.length; i++) {
-    const row = matrix[i] || [], txt = rowTxt(row); 
-    if (!txt) continue;
-    
-    const cl = findCL(row);
-    if (cl) { const p = parseCli(cl); cN = p.numeroCliente; cNome = p.nomeCliente; continue; }
-    if (txt.toUpperCase().includes("TOTAL CLIENTE") || txt.toUpperCase().includes("CONTATO:")) continue;
-    if (!cN) continue;
-    
-    const nd = String(row[map.numero] ?? "").trim();
-    const sq = map.seq >= 0 ? String(row[map.seq] ?? "").trim() : "";
-    
-    // FINR1253: SEMPRE usar Receb.Prc (não buscar Valor Original, Saldo ou outra coluna)
-    const recebPrc = map.recebPrc >= 0 ? row[map.recebPrc] : "";
-    
-    if (!nd || String(recebPrc ?? "").trim() === "") continue;
-    
-    // Acumular total para debug
-    const valNumero = Number(recebPrc ?? 0);
-    if (isFinite(valNumero)) totalRecebPrc += valNumero;
-    
-    itens.push(buildItem({ 
-      origem: "FINR1253", 
-      nrCli: cN, 
-      nomeCli: cNome, 
-      tp: map.tp >= 0 ? row[map.tp] : "", 
-      ser: map.ser >= 0 ? row[map.ser] : "", 
-      titulo: nd, 
-      seq: sq, 
-      nfServico: map.nfServico >= 0 ? row[map.nfServico] : "", 
-      emissao: "", 
-      vencimento: map.vencto >= 0 ? row[map.vencto] : "", 
-      valor: recebPrc,
-      portador: map.portador >= 0 ? row[map.portador] : "" 
-    }));
-  }
-  
-  const seen = new Set(), out = [];
-  for (const x of itens) { 
-    if (!seen.has(x.id) && x.nrCli && x.titulo) { 
-      seen.add(x.id); 
-      out.push(x); 
-    } 
-  }
-  
-  console.log(`📊 FINR1253 Parser — ${itens.length} linhas lidas | ${out.length} títulos únicos | Total Receb.Prc = R$ ${totalRecebPrc.toFixed(2).replace(".", ",")}`);
-  return out;
-}
-
-export function parseRows7007(rows) {
-  const itens = rows.map(r => buildItem({
-    origem: "RPT_7007_CONS_CAR_EB",
-    tp: pick(r, ["Tipo Documento"]),
-    ser: pick(r, ["Série", "Serie"]),
-    titulo: pick(r, ["Numero Documento"]),
-    seq: pick(r, ["Sequência", "Sequencia"]),
-    nrCli: pick(r, ["Código Cliente", "Codigo Cliente"]),
-    nomeCli: pick(r, ["Razão Social", "Razao Social"]),
-    emissao: pick(r, ["Data Emissão", "Data Emissao"]),
-    vencimento: pick(r, ["Data Vencimento"]),
-    valor: pick(r, ["Valor Total"]),
-    portador: `Vendedor: ${String(pick(r, ["Vendedor"]) || "").trim()}`
-  }));
-  const seen = new Set(), out = [];
-  for (const x of itens) { if (!seen.has(x.id) && x.nrCli && x.titulo) { seen.add(x.id); out.push(x); } }
-  return out;
 }
 
 export function dbToItem(r) {
-  const item = buildItem({
-    origem: r.source, nrCli: r.client_code, nomeCli: r.client_name,
-    tp: r.doc_type, ser: r.serie, titulo: r.title_number, seq: r.seq,
-    nfServico: r.nf_servico, emissao: r.issue_date, vencimento: r.due_date,
-    valor: r.original_value, portador: r.portador,
+  return buildItem({
+    _dbId: r.id,
+    origem: r.source,
+    nrCli: r.client_code,
+    nomeCli: r.client_name,
+    tp: r.doc_type,
+    ser: r.serie,
+    titulo: r.title_number,
+    seq: r.seq,
+    nfServico: r.nf_servico,
+    emissao: r.issue_date,
+    vencimento: r.due_date,
+    valorOriginal: r.original_value,
+    portador: r.portador,
     status: r.current_status || "Não Contatado",
-    motivo: r.current_motive || "",
-    encaminhar: r.workflow_status && r.workflow_status !== "normal" ? r.workflow_status : "",
+    encaminhar: r.workflow_status || "",
     tipoContato: r.current_contact_type || "",
-    solicitanteProtesto: r.protest_requested_by || "",
     dataContato: r.last_contact_date || "",
     dataPromessa: r.promise_date || "",
     obs: r.last_note || "",
     qtd: r.contact_count || 0,
+    solicitanteProtesto: r.protest_requested_by || "",
+    clientCategory: r.client_category || ""
   });
-  item._dbId = r.id; // preserve DB id for updates
-  return item;
 }
 
-export function dlCsv(fn, rows) {
-  const esc = v => { const s = String(v ?? ""); return (s.includes(";") || s.includes('"') || s.includes("\n")) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const csv = rows.map(r => r.map(esc).join(";")).join("\n");
-  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob), a = document.createElement("a");
-  a.href = url; a.download = fn; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+export function parseRows1253(rows) {
+  let headerIdx = rows.findIndex((r) => r.some((c) => String(c).toUpperCase().includes("NOMCLI")));
+  if (headerIdx < 0) headerIdx = 0;
+  const h = rows[headerIdx].map((c) => String(c || "").trim().toUpperCase());
+  const col = (name) => h.findIndex((x) => x === name || x.includes(name));
+  const idx = {
+    codfil: col("CODFIL"), numtit: col("NUMTIT"), codcli: col("CODCLI"), cnpj: col("CNPJ"),
+    dtemis: col("DTEMIS"), dtvenc: col("DTVENC"), vlrorig: col("VLRORIG"), saldo: col("SLDTTT"),
+    juros: col("JUROS"), atualizado: col("ATUALIZADO"), numnota: col("NUMNOTA"), nomcli: col("NOMCLI"),
+    cep: col("CEP"), end: col("ENDERECO"), numero: col("NUMERO"), bairro: col("BAIRRO"), cidade: col("CIDADE"), estado: col("ESTADO"),
+    fone1: col("FONE1"), fone2: col("FONE2"), email: col("E_MAIL")
+  };
+  const out = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    const nome = r[idx.nomcli];
+    const titulo = r[idx.numtit];
+    const valor = r[idx.saldo] || r[idx.vlrorig];
+    if (!nome || !titulo || num(valor) <= 0) continue;
+    out.push(buildItem({
+      origem: "FINR1253",
+      nrCli: String(r[idx.codcli] || "").trim(),
+      nomeCli: String(nome).trim(),
+      tp: "TC",
+      titulo: String(titulo).trim(),
+      seq: "",
+      nfServico: String(r[idx.numnota] || "").trim(),
+      emissao: dateISO(r[idx.dtemis]),
+      vencimento: dateISO(r[idx.dtvenc]),
+      valorOriginal: num(valor),
+      portador: "TC"
+    }));
+  }
+  return out;
 }
 
-export function openPrint(title, headers, rows) {
-  const th = headers.map(h => `<th>${h}</th>`).join("");
-  const tb = rows.map(r => `<tr>${r.map(c => `<td>${String(c ?? "").replace(/</g, "&lt;")}</td>`).join("")}</tr>`).join("");
-  const w = window.open("", "_blank"); if (!w) return;
-  w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>body{font-family:Arial,sans-serif;padding:20px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#eee;font-weight:700}th,td{border:1px solid #ccc;padding:6px 8px}tr:nth-child(even){background:#f9f9f9}@media print{@page{margin:1cm}}</style></head><body><h1>${title}</h1><p>Emitido em ${new Date().toLocaleString("pt-BR")} — ${rows.length} registros</p><table><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table></body></html>`);
-  w.document.close(); w.focus(); setTimeout(() => w.print(), 400);
+export function parseRows7007(rows) {
+  const out = [];
+  for (const row of rows) {
+    const nome = pick(row, ["NOMCLI", "Cliente", "CLIENTE", "Nome Cliente"]);
+    const nrCli = pick(row, ["CODCLI", "Cliente", "Cod Cliente", "Nº"]);
+    const titulo = pick(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "N"]);
+    const seq = pick(row, ["SEQ", "Parcela", "Seq"]);
+    const valor = pick(row, ["SLDTTT", "SALDO", "Valor", "Val. Orig", "Valor Original"]);
+    const venc = pick(row, ["DTVENC", "Vencimento", "VENCTO", "Data Vencimento"]);
+    if (!nome || !titulo || num(valor) <= 0) continue;
+    out.push(buildItem({
+      origem: "RPT_7007_CONS_CAR_EB",
+      nrCli: String(nrCli || "").trim(),
+      nomeCli: String(nome).trim(),
+      tp: "EB",
+      titulo: String(titulo).trim(),
+      seq: String(seq || "").trim(),
+      vencimento: dateISO(venc),
+      valorOriginal: num(valor),
+      portador: "EB"
+    }));
+  }
+  return out;
+}
+
+export function dlCsv(name, rows) {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Dados");
+  XLSX.writeFile(wb, name);
+}
+
+export function openPrint() {
+  window.print();
 }

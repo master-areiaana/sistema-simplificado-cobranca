@@ -73,7 +73,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     const sugestao = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
     switch(key) {
       case "nrCli":   return <td style={{ ...tdS(), color: t.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.nrCli}</td>;
-      case "nomeCli": return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.nomeCli}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(g.nomeCli)}>{g.nomeCli}</b></td>;
+      case "nomeCli": return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.nomeCli}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(g.nomeCli)}>{(g.nomeCli && !/^\d+$/.test(g.nomeCli)) ? g.nomeCli : (g.nrCli ? ("Cliente " + g.nrCli) : "—")}</b></td>;
       case "qtd":     return <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>;
       case "venc":    return <td style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtD(g.primeiroVencimento)}</td>;
       case "atraso":  return <td style={{ ...tdS(), color: g.maiorAtraso > 0 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>;

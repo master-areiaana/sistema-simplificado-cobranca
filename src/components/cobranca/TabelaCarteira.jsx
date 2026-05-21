@@ -226,7 +226,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
   const hasAnyTableFilter = hasAnyFilter(tableFilters);
 
-  const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols.has(c.key));
+  const visibleCols = COLS_DEF.filter(c => !["acao", "sugest"].includes(c.key) && (c.fixed || !hiddenCols.has(c.key)));
 
   const CH = (props) => (
     <ColHeader {...props} t={t} sortCfg={scCart} onSort={handleSort} />

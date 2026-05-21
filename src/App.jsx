@@ -1,66 +1,90 @@
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, Link, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import PageNotFound from './lib/PageNotFound';
 // Add page imports here
 import Dashboard from './pages/Dashboard';
 import Assessoria from './pages/AssessoriaCentralLite';
 
-function AcessoAssessoria() {
+function AssessoriaTabInjector() {
   const location = useLocation();
-  const isAssessoria = location.pathname === "/assessoria";
-  const [pendentes, setPendentes] = useState(0);
 
   useEffect(() => {
+    if (location.pathname !== "/") return;
+
+    let mounted = true;
+    let tabEl = null;
+
     const readCount = () => {
       try {
         const count = Number(localStorage.getItem("sc_assessoria_unread_count") || "0");
-        setPendentes(Number.isFinite(count) ? count : 0);
+        return Number.isFinite(count) ? count : 0;
       } catch {
-        setPendentes(0);
+        return 0;
       }
     };
-    readCount();
-    const id = setInterval(readCount, 2500);
-    window.addEventListener("storage", readCount);
-    return () => {
-      clearInterval(id);
-      window.removeEventListener("storage", readCount);
+
+    const styleTab = (el, count) => {
+      el.textContent = `⚖️ Assessoria${count > 0 ? ` 🔴 ${count}` : ""}`;
+      el.style.border = "none";
+      el.style.borderRadius = "0";
+      el.style.padding = "10px 16px";
+      el.style.fontSize = "12px";
+      el.style.fontWeight = "800";
+      el.style.cursor = "pointer";
+      el.style.background = count > 0 ? "#ef4444" : "#f97316";
+      el.style.color = "#fff";
+      el.style.minHeight = "40px";
+      el.style.display = "inline-flex";
+      el.style.alignItems = "center";
+      el.style.justifyContent = "center";
+      el.style.whiteSpace = "nowrap";
+      el.style.boxShadow = "none";
     };
-  }, []);
 
-  const label = isAssessoria ? "← Sistema Interno" : `⚖️ Assessoria${pendentes > 0 ? ` 🔴 ${pendentes}` : ""}`;
+    const inject = () => {
+      if (!mounted || location.pathname !== "/") return;
+      const buttons = Array.from(document.querySelectorAll("button"));
+      const impacto = buttons.find(btn => (btn.textContent || "").includes("Impacto no Caixa"));
+      const tabs = impacto?.parentElement;
+      if (!tabs) return;
 
-  return (
-    <div style={{ position: "fixed", top: 74, right: 24, zIndex: 9999, display: "flex", gap: 8 }}>
-      <Link
-        to={isAssessoria ? "/" : "/assessoria"}
-        style={{
-          background: isAssessoria ? "#111827" : pendentes > 0 ? "#ef4444" : "#f97316",
-          color: "#fff",
-          textDecoration: "none",
-          borderRadius: 8,
-          padding: "8px 12px",
-          fontSize: 12,
-          fontWeight: 800,
-          boxShadow: "0 8px 24px rgba(0,0,0,.18)",
-          border: "1px solid rgba(255,255,255,.35)"
-        }}
-        title={isAssessoria ? "Voltar para o sistema interno" : "Acessar aba/portal da assessoria"}
-      >
-        {label}
-      </Link>
-    </div>
-  );
+      let btn = document.getElementById("tab-assessoria-interno");
+      if (!btn) {
+        btn = document.createElement("button");
+        btn.id = "tab-assessoria-interno";
+        btn.type = "button";
+        btn.onclick = () => { window.location.href = "/assessoria"; };
+        tabs.appendChild(btn);
+      }
+      tabEl = btn;
+      styleTab(btn, readCount());
+    };
+
+    const interval = setInterval(inject, 600);
+    const updateCount = () => { if (tabEl) styleTab(tabEl, readCount()); };
+    window.addEventListener("storage", updateCount);
+    inject();
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      window.removeEventListener("storage", updateCount);
+      const btn = document.getElementById("tab-assessoria-interno");
+      if (btn) btn.remove();
+    };
+  }, [location.pathname]);
+
+  return null;
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClientInstance}>
       <Router>
-        <AcessoAssessoria />
+        <AssessoriaTabInjector />
         <Routes>
           {/* Add your page Route elements here */}
           <Route path="/" element={<Dashboard />} />

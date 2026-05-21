@@ -7,6 +7,7 @@ import PageNotFound from './lib/PageNotFound';
 // Add page imports here
 import Dashboard from './pages/Dashboard';
 import Assessoria from './pages/AssessoriaCentralLite';
+import CorrecoesGlobais from './components/cobranca/CorrecoesGlobais';
 
 function AssessoriaTabInjector() {
   const location = useLocation();
@@ -99,6 +100,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClientInstance}>
       <Router>
+        <CorrecoesGlobais />
         <AssessoriaTabInjector />
         <Routes>
           {/* Add your page Route elements here */}

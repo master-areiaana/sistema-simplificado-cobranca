@@ -230,7 +230,7 @@ export default function Dashboard() {
       if (cands.length > 0) {
         // Critério: prefere nomes com letras (não-numérico); entre eles, pega o mais longo
         const comLetras = cands.filter((s) => /[A-Za-zÀ-ÿ]/.test(s));
-        const pool = comLetras.length > 0 ? comLetras : cands;
+        const pool = comLetras; if (pool.length === 0) { g.nomeCli = ""; g.nomeCliInvalido = true; delete g._nomes; return; }
         pool.sort((a, b) => b.length - a.length);
         g.nomeCli = pool[0];
       }

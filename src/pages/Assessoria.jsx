@@ -32,6 +32,25 @@ function statusColor(status) {
   return "#64748b";
 }
 
+function sameTitleEvent(e, item) {
+  const byId = e.titulo_id && item.id && String(e.titulo_id) === String(item.id);
+  const byClient = String(e.client_code || "").trim() === String(item.nrCli || "").trim() && normText(e.client_name || "") === normText(item.nomeCli || "");
+  return byId || byClient;
+}
+
+function eventDateLabel(e) {
+  const d = e.event_date || e.created_date;
+  return d ? fmtD(String(d).slice(0, 10)) : "—";
+}
+
+function eventKindLabel(e) {
+  if (e.event_type === "CHAT_ASSESSORIA") return "Chat";
+  if (e.event_type === "ASSESSORIA") return "Retorno Assessoria";
+  if (e.event_subtype === "RETORNO_ASSESSORIA") return "Retorno Assessoria";
+  if (e.event_type === "COBRANCA") return "Cobrança";
+  return e.event_type || "Histórico";
+}
+
 export default function Assessoria() {
   const [users, setUsers] = useState(() => loadUsers());
   const [session, setSession] = useState(() => {
@@ -45,6 +64,8 @@ export default function Assessoria() {
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("");
   const [formById, setFormById] = useState({});
+  const [chatById, setChatById] = useState({});
+  const [openItemId, setOpenItemId] = useState(null);
   const [newUser, setNewUser] = useState({ nome: "", usuario: "", senha: "", perfil: "assessoria" });
   const [adminPass, setAdminPass] = useState("");
   const [showAdmin, setShowAdmin] = useState(false);
@@ -58,9 +79,10 @@ export default function Assessoria() {
         base44.entities.Titulo.filter({ active: true }, "client_name", 3000),
         base44.entities.ChargeEvent.list("-created_date", 3000)
       ]);
-      setRecords((titulos || []).map(dbToItem).filter(x => x.encaminhar === "assessoria"));
+      const emAssessoria = (titulos || []).map(dbToItem).filter(x => x.encaminhar === "assessoria");
+      setRecords(emAssessoria);
       setEvents(evts || []);
-      setMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${titulos?.length || 0} títulos lidos, ${((titulos || []).map(dbToItem).filter(x => x.encaminhar === "assessoria")).length} em assessoria`);
+      setMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${emAssessoria.length} título(s) em assessoria`);
     } catch (err) {
       setMsg(`❌ Erro ao carregar dados: ${err.message}`);
     } finally {
@@ -73,18 +95,26 @@ export default function Assessoria() {
   const assessoria = useMemo(() => {
     const b = normText(busca);
     return records.filter(r => {
-      if (b && !normText(`${r.nrCli} ${r.nomeCli} ${r.titulo} ${r.seq}`).includes(b)) return false;
+      const histTxt = events.filter(e => sameTitleEvent(e, r)).map(e => `${e.status || ""} ${e.note || ""} ${e.event_user || ""}`).join(" ");
+      if (b && !normText(`${r.nrCli} ${r.nomeCli} ${r.titulo} ${r.seq} ${histTxt}`).includes(b)) return false;
       if (statusFiltro && r.status !== statusFiltro) return false;
       return true;
     }).sort((a, b2) => (b2.valorTotalDebito || 0) - (a.valorTotalDebito || 0));
-  }, [records, busca, statusFiltro]);
+  }, [records, events, busca, statusFiltro]);
 
   const resumo = useMemo(() => ({
     clientes: new Set(assessoria.map(r => `${r.nrCli}|${normText(r.nomeCli)}`)).size,
     titulos: assessoria.length,
     total: assessoria.reduce((s, r) => s + (r.valorTotalDebito || 0), 0),
     vencidos: assessoria.filter(r => r.diasAtraso > 0).length,
-  }), [assessoria]);
+    semRetorno: assessoria.filter(r => !events.some(e => sameTitleEvent(e, r) && (e.event_type === "ASSESSORIA" || e.event_type === "CHAT_ASSESSORIA"))).length,
+  }), [assessoria, events]);
+
+  function historicoDoTitulo(item) {
+    return events
+      .filter(e => sameTitleEvent(e, item))
+      .sort((a, b) => String(b.event_date || b.created_date || "").localeCompare(String(a.event_date || a.created_date || "")));
+  }
 
   function doLogin(e) {
     e.preventDefault();
@@ -118,7 +148,7 @@ export default function Assessoria() {
         event_subtype: "RETORNO_ASSESSORIA",
         event_date: hojeISO,
         status: frm.status,
-        motive: "assessoria",
+        motive: frm.devolver ? "devolver_carteira" : "assessoria",
         contact_type: frm.tipo || null,
         promise_date: frm.promessa || null,
         note: frm.obs,
@@ -127,7 +157,7 @@ export default function Assessoria() {
       if (item._dbId) {
         await base44.entities.Titulo.update(item._dbId, {
           current_status: frm.status,
-          current_motive: "assessoria",
+          current_motive: frm.devolver ? "devolver_carteira" : "assessoria",
           current_contact_type: frm.tipo || null,
           promise_date: frm.promessa || null,
           last_contact_date: hojeISO,
@@ -138,10 +168,34 @@ export default function Assessoria() {
         });
       }
       updateLocalForm(item.id, { obs: "" });
-      setMsg("✅ Retorno salvo. A empresa já consegue visualizar no histórico.");
+      setMsg("✅ Retorno salvo e registrado no histórico do título.");
       await loadData();
     } catch (err) {
       setMsg(`❌ Erro ao salvar retorno: ${err.message}`);
+    }
+  }
+
+  async function enviarChat(item) {
+    const text = (chatById[item.id] || "").trim();
+    if (!text) { alert("Digite uma mensagem para registrar no chat do título."); return; }
+    try {
+      await base44.entities.ChargeEvent.create({
+        titulo_id: item.id,
+        client_code: item.nrCli,
+        client_name: item.nomeCli,
+        event_type: "CHAT_ASSESSORIA",
+        event_subtype: isEmpresa ? "EMPRESA_PARA_ASSESSORIA" : "ASSESSORIA_PARA_EMPRESA",
+        event_date: hojeISO,
+        status: item.status || "Em Cobrança",
+        motive: "chat_assessoria",
+        note: text,
+        event_user: session?.nome || session?.usuario || "Usuário"
+      });
+      setChatById(p => ({ ...p, [item.id]: "" }));
+      setMsg("✅ Mensagem registrada no chat do título.");
+      await loadData();
+    } catch (err) {
+      setMsg(`❌ Erro ao enviar mensagem: ${err.message}`);
     }
   }
 
@@ -184,7 +238,7 @@ export default function Assessoria() {
       <header style={{ background: "#fff", borderBottom: "1px solid #ddd", padding: "14px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 50 }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: 4 }}>SISTEMA DE COBRANÇA</div>
-          <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>Portal da Assessoria</div>
+          <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>Central de Assessoria · Acompanhamento por título · {session.nome}</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <a href="/" style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #ddd", textDecoration: "none", color: "#111", background: "#fff", fontSize: 12, fontWeight: 700 }}>← Sistema interno</a>
@@ -195,10 +249,11 @@ export default function Assessoria() {
       </header>
 
       <main style={{ padding: 18 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(160px, 1fr))", gap: 12, marginBottom: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(150px, 1fr))", gap: 12, marginBottom: 14 }}>
           <Card label="Clientes" value={resumo.clientes} />
           <Card label="Títulos" value={resumo.titulos} />
           <Card label="Vencidos" value={resumo.vencidos} color="#ef4444" />
+          <Card label="Sem retorno" value={resumo.semRetorno} color="#f59e0b" />
           <Card label="Saldo em Assessoria" value={fmtM(resumo.total)} color="#f97316" />
         </div>
 
@@ -220,7 +275,7 @@ export default function Assessoria() {
 
         <section style={{ background: "#fff", border: "1px solid #ddd", borderRadius: 12, padding: 12, marginBottom: 14, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, fontWeight: 800 }}>Filtros</span>
-          <input placeholder="Buscar por cliente, nº ou título..." value={busca} onChange={e => setBusca(e.target.value)} style={{ flex: 1, minWidth: 260, padding: 9, border: "1px solid #ddd", borderRadius: 8 }} />
+          <input placeholder="Buscar por cliente, nº, título, mensagem ou responsável..." value={busca} onChange={e => setBusca(e.target.value)} style={{ flex: 1, minWidth: 260, padding: 9, border: "1px solid #ddd", borderRadius: 8 }} />
           <select value={statusFiltro} onChange={e => setStatusFiltro(e.target.value)} style={{ padding: 9, border: "1px solid #ddd", borderRadius: 8 }}>
             <option value="">Todos os status</option>
             <option>Não Contatado</option><option>Em Cobrança</option><option>Sem Retorno</option><option>Prometeu Pagar</option><option>Pago Aguard. Baixa</option><option>Encerrado</option><option>Incobrável</option><option>SEM CONTATO</option>
@@ -229,48 +284,74 @@ export default function Assessoria() {
 
         {msg && <div style={{ marginBottom: 10, fontSize: 12, color: msg.startsWith("❌") ? "#dc2626" : "#16a34a" }}>{msg}</div>}
 
-        <div style={{ background: "#fff", border: "1px solid #ddd", borderRadius: 12, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead style={{ background: "#eee", color: "#333", textTransform: "uppercase", fontSize: 10 }}>
-              <tr>
-                <th style={th}>Processo/Título</th><th style={th}>Saldo</th><th style={th}>Carteira/Credor</th><th style={th}>CNPJ/CPF</th><th style={th}>Devedor</th><th style={th}>Status</th><th style={th}>Vencimento</th><th style={th}>Obs./Retorno</th><th style={th}>Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assessoria.length === 0 && <tr><td colSpan="9" style={{ padding: 26, textAlign: "center", color: "#777" }}>Nenhum título encaminhado para assessoria.</td></tr>}
-              {assessoria.map(item => {
-                const frm = formById[item.id] || {};
-                return (
-                  <tr key={item.id} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={td}>{item.titulo}{item.seq ? `/${item.seq}` : ""}</td>
-                    <td style={{ ...td, fontWeight: 800 }}>{fmtM(item.valorTotalDebito)}</td>
-                    <td style={td}>{item.nrCli} | {item.portador || item.tp || item.origem}</td>
-                    <td style={td}>—</td>
-                    <td style={{ ...td, fontWeight: 700 }}>{item.nomeCli}</td>
-                    <td style={td}><span style={{ background: `${statusColor(item.status)}22`, color: statusColor(item.status), padding: "4px 7px", borderRadius: 8, fontWeight: 800 }}>{item.status}</span></td>
-                    <td style={td}>{fmtD(item.vencimento)}<br/><small style={{ color: item.diasAtraso > 0 ? "#ef4444" : "#666" }}>{item.diasAtraso > 0 ? `${item.diasAtraso} dias` : "em dia"}</small></td>
-                    <td style={{ ...td, minWidth: 280 }}>
-                      <div style={{ display: "grid", gap: 6 }}>
+        <div style={{ display: "grid", gap: 12 }}>
+          {assessoria.length === 0 && <div style={{ background: "#fff", border: "1px solid #ddd", borderRadius: 12, padding: 26, textAlign: "center", color: "#777" }}>Nenhum título encaminhado para assessoria.</div>}
+          {assessoria.map(item => {
+            const frm = formById[item.id] || {};
+            const hist = historicoDoTitulo(item);
+            const isOpen = openItemId === item.id;
+            return (
+              <section key={item.id} style={{ background: "#fff", border: "1px solid #ddd", borderLeft: `5px solid ${statusColor(item.status)}`, borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "120px 130px 1fr 140px 120px 120px auto", gap: 8, alignItems: "center", padding: 12, borderBottom: "1px solid #eee" }}>
+                  <div><small style={muted}>Processo/Título</small><br/><b>{item.titulo}{item.seq ? `/${item.seq}` : ""}</b></div>
+                  <div><small style={muted}>Saldo</small><br/><b>{fmtM(item.valorTotalDebito)}</b></div>
+                  <div><small style={muted}>Devedor</small><br/><b>{item.nomeCli}</b><br/><span style={muted}>{item.nrCli} · {item.portador || item.tp || item.origem}</span></div>
+                  <div><small style={muted}>Status</small><br/><span style={{ background: `${statusColor(item.status)}22`, color: statusColor(item.status), padding: "4px 7px", borderRadius: 8, fontWeight: 800 }}>{item.status}</span></div>
+                  <div><small style={muted}>Vencimento</small><br/>{fmtD(item.vencimento)}<br/><span style={{ color: item.diasAtraso > 0 ? "#ef4444" : "#666", fontSize: 11 }}>{item.diasAtraso > 0 ? `${item.diasAtraso} dias` : "em dia"}</span></div>
+                  <div><small style={muted}>Registros</small><br/><b>{hist.length}</b></div>
+                  <button onClick={() => setOpenItemId(isOpen ? null : item.id)} style={{ border: 0, borderRadius: 8, padding: "8px 10px", background: isOpen ? "#111827" : "#f97316", color: "#fff", fontWeight: 800, cursor: "pointer" }}>{isOpen ? "Fechar" : "Acompanhar"}</button>
+                </div>
+
+                {isOpen && (
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(340px, 1fr) minmax(320px, .9fr)", gap: 14, padding: 14 }}>
+                    <div>
+                      <h3 style={{ margin: "0 0 10px" }}>Retorno da assessoria / ação no título</h3>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                         <select value={frm.status || ""} onChange={e => updateLocalForm(item.id, { status: e.target.value })} style={inp}><option value="">Status do retorno...</option><option>SEM CONTATO</option><option>INCOBRÁVEL</option><option>Em Cobrança</option><option>Prometeu Pagar</option><option>Pago Aguard. Baixa</option><option>Encerrado</option></select>
-                        <input type="date" value={frm.promessa || ""} onChange={e => updateLocalForm(item.id, { promessa: e.target.value })} style={inp} />
-                        <textarea rows={2} placeholder="Observação da assessoria..." value={frm.obs || ""} onChange={e => updateLocalForm(item.id, { obs: e.target.value })} style={{ ...inp, resize: "vertical" }} />
-                        <label style={{ fontSize: 11 }}><input type="checkbox" checked={!!frm.devolver} onChange={e => updateLocalForm(item.id, { devolver: e.target.checked })} /> Devolver para carteira da empresa</label>
+                        <input type="date" value={frm.promessa || ""} onChange={e => updateLocalForm(item.id, { promessa: e.target.value, status: e.target.value ? "Prometeu Pagar" : frm.status })} style={inp} />
                       </div>
-                    </td>
-                    <td style={td}><button onClick={() => salvarRetorno(item)} style={{ border: 0, background: "#f97316", color: "#fff", borderRadius: 8, padding: "8px 10px", fontWeight: 800, cursor: "pointer" }}>Salvar retorno</button></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      <textarea rows={3} placeholder="Observação/ação da assessoria..." value={frm.obs || ""} onChange={e => updateLocalForm(item.id, { obs: e.target.value })} style={{ ...inp, resize: "vertical", marginTop: 8 }} />
+                      <label style={{ display: "block", fontSize: 11, marginTop: 8 }}><input type="checkbox" checked={!!frm.devolver} onChange={e => updateLocalForm(item.id, { devolver: e.target.checked })} /> Devolver para carteira da empresa</label>
+                      <button onClick={() => salvarRetorno(item)} style={{ marginTop: 10, border: 0, background: "#f97316", color: "#fff", borderRadius: 8, padding: "9px 12px", fontWeight: 800, cursor: "pointer" }}>Salvar retorno no histórico</button>
+
+                      <h3 style={{ margin: "18px 0 10px" }}>Chat empresa ↔ assessoria</h3>
+                      <textarea rows={3} placeholder={isEmpresa ? "Mensagem da empresa para a assessoria..." : "Mensagem da assessoria para a empresa..."} value={chatById[item.id] || ""} onChange={e => setChatById(p => ({ ...p, [item.id]: e.target.value }))} style={{ ...inp, resize: "vertical" }} />
+                      <button onClick={() => enviarChat(item)} style={{ marginTop: 8, border: 0, background: "#0ea5e9", color: "#fff", borderRadius: 8, padding: "9px 12px", fontWeight: 800, cursor: "pointer" }}>Enviar mensagem e registrar</button>
+                    </div>
+
+                    <div>
+                      <h3 style={{ margin: "0 0 10px" }}>Histórico completo do título</h3>
+                      <div style={{ maxHeight: 390, overflowY: "auto", display: "grid", gap: 8, paddingRight: 4 }}>
+                        {hist.length === 0 && <div style={{ color: "#777", fontSize: 12 }}>Ainda não existe histórico para este título.</div>}
+                        {hist.map((e, idx) => {
+                          const isChat = e.event_type === "CHAT_ASSESSORIA";
+                          const fromEmpresa = e.event_subtype === "EMPRESA_PARA_ASSESSORIA";
+                          return (
+                            <div key={`${e.id || idx}-${idx}`} style={{ border: "1px solid #eee", borderLeft: `4px solid ${isChat ? (fromEmpresa ? "#0ea5e9" : "#f97316") : statusColor(e.status)}`, borderRadius: 10, padding: 9, background: isChat ? "#f8fafc" : "#fff" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#666", marginBottom: 4 }}>
+                                <b style={{ color: "#111" }}>{eventKindLabel(e)}</b>
+                                <span>{eventDateLabel(e)}</span>
+                              </div>
+                              <div style={{ fontSize: 12 }}><b>{e.event_user || "Usuário"}</b>{e.status ? ` · ${e.status}` : ""}</div>
+                              {e.promise_date && <div style={{ fontSize: 12, color: "#f59e0b" }}>Promessa: {fmtD(e.promise_date)}</div>}
+                              {e.note && <div style={{ marginTop: 5, whiteSpace: "pre-wrap", fontSize: 12 }}>{e.note}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       </main>
     </div>
   );
 }
 
-const th = { padding: "9px 8px", textAlign: "left", borderBottom: "1px solid #ddd", whiteSpace: "nowrap" };
-const td = { padding: "9px 8px", verticalAlign: "top" };
+const muted = { color: "#666", fontSize: 11 };
 const inp = { width: "100%", padding: 7, border: "1px solid #ddd", borderRadius: 7, boxSizing: "border-box", fontSize: 12 };
 
 function Card({ label, value, color = "#111" }) {

@@ -1,7 +1,22 @@
-import { STATUS_OPC, ENCAMINHAR_OPC, CONTATO_OPC, fmtM, fmtD, hojeISO } from "@/lib/cobranca";
+import { STATUS_OPC, ENCAMINHAR_OPC, CONTATO_OPC, fmtD, hojeISO } from "@/lib/cobranca";
+import { statusAutomaticoCobranca } from "@/lib/rankingConfianca";
 import { Btn, Inp, Sl, Lbl } from "./UI";
 
 export default function ModalCobranca({ title, frm, setFrm, onSave, onClose, info, t, isDark }) {
+  function atualizarEncaminhamento(value) {
+    setFrm(x => {
+      const next = { ...x, encaminhar: value };
+      return { ...next, status: statusAutomaticoCobranca(next) };
+    });
+  }
+
+  function atualizarPromessa(value) {
+    setFrm(x => {
+      const next = { ...x, dataPromessa: value };
+      return { ...next, status: statusAutomaticoCobranca(next) };
+    });
+  }
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.8)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: t.surf, borderRadius: 12, padding: 24, width: 500, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", border: `2px solid ${t.p}`, boxShadow: "0 20px 60px rgba(0,0,0,.5)" }}>
@@ -15,15 +30,18 @@ export default function ModalCobranca({ title, frm, setFrm, onSave, onClose, inf
             <Lbl t={t}>Status</Lbl>
             <Sl t={t} value={frm.status} onChange={e => setFrm(x => ({ ...x, status: e.target.value }))}>
               <option value="">Selecionar...</option>
-              {STATUS_OPC.map(s => <option key={s}>{s}</option>)}
+              {[...new Set([...STATUS_OPC, "Promessa ativa", "Promessa vencida / cobrança necessária", "Pagamento confirmado", "Cliente não confiável / ação necessária", "Enviado para assessoria", "Enviado para gestão", "Em verificação"])].map(s => <option key={s}>{s}</option>)}
             </Sl>
+            <div style={{ fontSize: 10, color: t.muted, marginTop: 4 }}>
+              O status é sugerido automaticamente quando informar promessa ou encaminhamento, mas pode ser ajustado manualmente.
+            </div>
           </div>
           <div>
             <Lbl t={t}>Encaminhar para</Lbl>
             <div style={{ display: "grid", gap: 6 }}>
               {ENCAMINHAR_OPC.map(op => (
                 <label key={op.value} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, border: `2px solid ${frm.encaminhar === op.value ? t.p : t.bor}`, cursor: "pointer", background: frm.encaminhar === op.value ? (isDark ? "rgba(232,119,34,.12)" : "rgba(232,119,34,.07)") : t.surf2 }}>
-                  <input type="radio" name="enc" value={op.value} checked={frm.encaminhar === op.value} onChange={() => setFrm(x => ({ ...x, encaminhar: op.value }))} style={{ accentColor: t.p }} />
+                  <input type="radio" name="enc" value={op.value} checked={frm.encaminhar === op.value} onChange={() => atualizarEncaminhamento(op.value)} style={{ accentColor: t.p }} />
                   <span style={{ fontSize: 13, fontWeight: 600, color: frm.encaminhar === op.value ? t.p : t.txt }}>{op.label}</span>
                 </label>
               ))}
@@ -41,6 +59,11 @@ export default function ModalCobranca({ title, frm, setFrm, onSave, onClose, inf
               🔍 O cliente aparecerá na aba Verificar Pagamento.
             </div>
           )}
+          {frm.encaminhar === "assessoria" && (
+            <div style={{ background: "rgba(249,115,22,.08)", borderRadius: 8, padding: 10, border: "1px solid #f97316", fontSize: 11, color: "#f97316", fontWeight: 600 }}>
+              ⚖️ O título será enviado para a Assessoria e ficará disponível para acompanhamento no chat/histórico do título.
+            </div>
+          )}
           <div>
             <Lbl t={t}>Tipo de Contato</Lbl>
             <Sl t={t} value={frm.tipo} onChange={e => setFrm(x => ({ ...x, tipo: e.target.value }))}>
@@ -50,7 +73,7 @@ export default function ModalCobranca({ title, frm, setFrm, onSave, onClose, inf
           </div>
           <div>
             <Lbl t={t}>Data Promessa</Lbl>
-            <Inp t={t} type="date" value={frm.dataPromessa} onChange={e => setFrm(x => ({ ...x, dataPromessa: e.target.value }))} />
+            <Inp t={t} type="date" value={frm.dataPromessa} onChange={e => atualizarPromessa(e.target.value)} />
           </div>
           <div style={{ fontSize: 11, color: t.muted, background: isDark ? "rgba(232,119,34,.1)" : "rgba(232,119,34,.06)", padding: "6px 10px", borderRadius: 6, border: `1px solid ${t.p}44` }}>
             📅 Data do contato registrada automaticamente como hoje ({fmtD(hojeISO)})

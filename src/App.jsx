@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import PageNotFound from './lib/PageNotFound';
 // Add page imports here
 import Dashboard from './pages/Dashboard';
-import Assessoria from './pages/Assessoria';
+import Assessoria from './pages/AssessoriaCentralLite';
 
 function AcessoAssessoria() {
   const location = useLocation();

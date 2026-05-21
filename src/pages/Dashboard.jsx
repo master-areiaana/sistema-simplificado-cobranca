@@ -979,10 +979,10 @@ export default function Dashboard() {
 
             {activeTab === "carteira" &&
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer", fontSize: 11, fontWeight: 700, color: t.txt, whiteSpace: "nowrap" }} className="hidden">
-                  <input type="checkbox" checked={showPaid} onChange={(e) => setShowPaid(e.target.checked)} style={{ accentColor: t.p, width: 16, height: 16 }} />
-                  👁️ Mostrar pagos
-                </label>
+                
+
+
+            
                 <div style={{ position: "relative" }}>
                   <button onClick={() => setShowColMenu((x) => !x)} style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                     ☰ Colunas {hiddenCols.size > 0 ? `(${hiddenCols.size} ocultas)` : ""}

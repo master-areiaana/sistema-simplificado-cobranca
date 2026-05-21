@@ -26,22 +26,37 @@ function AssessoriaTabInjector() {
       }
     };
 
+    const readTheme = () => {
+      try { return localStorage.getItem("sc_theme") || "dark"; } catch { return "dark"; }
+    };
+
     const styleTab = (el, count) => {
-      el.textContent = `⚖️ Assessoria${count > 0 ? ` 🔴 ${count}` : ""}`;
+      const dark = readTheme() === "dark";
+      const txt = dark ? "#f0f0f0" : "#1a1a1a";
+      const border = dark ? "#333" : "#ddd";
+
+      el.innerHTML = `<span>⚖️ Assessoria</span>${count > 0 ? `<span style="background:#ef4444;color:#fff;border-radius:999px;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;padding:0 5px;margin-left:6px;">${count}</span>` : ""}`;
+      el.style.position = "relative";
       el.style.border = "none";
+      el.style.borderBottom = "3px solid transparent";
       el.style.borderRadius = "0";
       el.style.padding = "10px 16px";
-      el.style.fontSize = "12px";
-      el.style.fontWeight = "800";
+      el.style.fontSize = "10.5px";
+      el.style.fontWeight = "700";
       el.style.cursor = "pointer";
-      el.style.background = count > 0 ? "#ef4444" : "#f97316";
-      el.style.color = "#fff";
+      el.style.background = "transparent";
+      el.style.color = txt;
       el.style.minHeight = "40px";
       el.style.display = "inline-flex";
       el.style.alignItems = "center";
       el.style.justifyContent = "center";
       el.style.whiteSpace = "nowrap";
       el.style.boxShadow = "none";
+      el.style.flexShrink = "0";
+      el.style.lineHeight = "1.3";
+      el.style.transition = "all 0.2s ease";
+      el.style.outline = "none";
+      el.style.borderColor = border;
     };
 
     const inject = () => {

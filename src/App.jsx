@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 // Add page imports here
 import Dashboard from './pages/Dashboard';
+import Assessoria from './pages/Assessoria';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Routes>
           {/* Add your page Route elements here */}
           <Route path="/" element={<Dashboard />} />
+          <Route path="/assessoria" element={<Assessoria />} />
           <Route path="*" element={<PageNotFound />} />
         </Routes>
       </Router>

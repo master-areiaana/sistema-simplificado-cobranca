@@ -112,15 +112,15 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const [titulos, evts] = await Promise.all([
-        base44.entities.Titulo.filter({ active: true }, "client_name", 2000),
-        base44.entities.ChargeEvent.list("-created_date", 2000)
-      ]);
+      base44.entities.Titulo.filter({ active: true }, "client_name", 2000),
+      base44.entities.ChargeEvent.list("-created_date", 2000)]
+      );
 
       // ── DEDUPLICAÇÃO DEFENSIVA ──
       // Usar dbToItem para garantir que a chave seja gerada com os mesmos critérios de
       // normalização (maiúsculas, sem zeros à esquerda, sem pontos, sem espaços).
       const seenKeys = new Map();
-      for (const r of (titulos || [])) {
+      for (const r of titulos || []) {
         const asItem = dbToItem(r);
         const key = asItem.id; // buildId já normalizado via dbToItem → buildItem → buildId
         const existing = seenKeys.get(key);
@@ -135,9 +135,9 @@ export default function Dashboard() {
       const logicalKeys = new Map();
       for (const r of titulosUnicos) {
         const it = dbToItem(r);
-        const lk = [it.nrCli, it.tp, it.titulo, it.seq]
-          .map(v => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1"))
-          .join("|");
+        const lk = [it.nrCli, it.tp, it.titulo, it.seq].
+        map((v) => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1")).
+        join("|");
         const prev = logicalKeys.get(lk);
         if (!prev || (r.updated_date || r.created_date) > (prev.updated_date || prev.created_date)) {
           logicalKeys.set(lk, r);
@@ -232,7 +232,7 @@ export default function Dashboard() {
       if (cands.length > 0) {
         // Critério: prefere nomes com letras (não-numérico); entre eles, pega o mais longo
         const comLetras = cands.filter((s) => /[A-Za-zÀ-ÿ]/.test(s));
-        const pool = comLetras; if (pool.length === 0) { if (!g.nomeCli) g.nomeCli = ""; g.nomeCliInvalido = true; delete g._nomes; return; }
+        const pool = comLetras;if (pool.length === 0) {if (!g.nomeCli) g.nomeCli = "";g.nomeCliInvalido = true;delete g._nomes;return;}
         pool.sort((a, b) => b.length - a.length);
         g.nomeCli = pool[0];
       }
@@ -306,9 +306,9 @@ export default function Dashboard() {
       if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente)) return false;
       // Filtro por título: busca no número ou nome do título
       if (buscaTit) {
-        const temTituloMatch = g.titulos.some((ti) => 
-          normText(ti.titulo || "").includes(buscaTit) || 
-          String(ti.titulo || "").includes(buscaTitulo)
+        const temTituloMatch = g.titulos.some((ti) =>
+        normText(ti.titulo || "").includes(buscaTit) ||
+        String(ti.titulo || "").includes(buscaTitulo)
         );
         if (!temTituloMatch) return false;
       }
@@ -318,10 +318,10 @@ export default function Dashboard() {
       if (filtroCategoria && !g.titulos.some((ti) => ti.clientCategory === filtroCategoria)) return false;
       // Esconder pagos por padrão (status Encerrado, Baixado ou resposta Confirmado)
       if (!showPaid) {
-        const temPagamento = g.statusConsolidado === "Encerrado" || 
-                             g.statusConsolidado === "Baixado" ||
-                             g.statusConsolidado === "Pago Aguard. Baixa" ||
-                             g.historicoCliente.some(h => h.motivo === "Confirmado");
+        const temPagamento = g.statusConsolidado === "Encerrado" ||
+        g.statusConsolidado === "Baixado" ||
+        g.statusConsolidado === "Pago Aguard. Baixa" ||
+        g.historicoCliente.some((h) => h.motivo === "Confirmado");
         if (temPagamento) return false;
       }
       return true;
@@ -377,8 +377,8 @@ export default function Dashboard() {
     reduce((s, e) => s + (e.total_value || 0), 0);
     // Clientes devolvidos para a carteira (resposta de verificação ou protesto ainda não recontatados hoje)
     const clientesComResposta = grouped.filter((g) => {
-      const temResposta = g.historicoCliente.some(h =>
-        h.subtype?.startsWith("RESP_VERIF") || h.subtype?.startsWith("RESP_PROT")
+      const temResposta = g.historicoCliente.some((h) =>
+      h.subtype?.startsWith("RESP_VERIF") || h.subtype?.startsWith("RESP_PROT")
       );
       const workflow = g.encaminharConsolidado;
       // Devolvido = tem resposta E saiu do fluxo (workflow normal) E não foi contatado hoje
@@ -469,10 +469,10 @@ export default function Dashboard() {
   // Seguro: nunca apaga ChargeEvents, apenas Titulos duplicados (active=true ou false).
   async function limparDuplicatasBanco() {
     setCleanupMsg("⏳ Verificando duplicatas no banco...");
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const allTitulos = await base44.entities.Titulo.list("client_name", 5000);
     const byKey = new Map();
-    for (const r of (allTitulos || [])) {
+    for (const r of allTitulos || []) {
       // CRÍTICO: usar dbToItem para garantir a MESMA normalização que a importação usa
       const asItem = dbToItem(r);
       const key = asItem.id;
@@ -502,7 +502,7 @@ export default function Dashboard() {
   }
 
   // ── IMPORTAÇÃO ──
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   async function syncImport(source, imported, fileName) {
     try {
@@ -531,14 +531,14 @@ export default function Dashboard() {
       // OU se não há nenhum registro existente ainda (primeira importação).
       const existCount = existMap.size;
       const importCount = imported.length;
-      const isCarteirCompleta = existCount === 0 || (importCount >= existCount * 0.5);
+      const isCarteirCompleta = existCount === 0 || importCount >= existCount * 0.5;
 
-      let ins = 0, upd = 0, deact = 0, baixados = 0;
+      let ins = 0,upd = 0,deact = 0,baixados = 0;
       let valorBaixado = 0;
 
-      const DELAY = 1000;       // 1s entre batches de updates
-      const BATCH_UPDATE = 3;   // updates individuais: 3 por vez
-      const BULK_SIZE = 20;     // novos registros: bulkCreate de 20 por vez
+      const DELAY = 1000; // 1s entre batches de updates
+      const BATCH_UPDATE = 3; // updates individuais: 3 por vez
+      const BULK_SIZE = 20; // novos registros: bulkCreate de 20 por vez
       const BATCH_BAIXA = 2;
 
       // Separar novos de existentes
@@ -565,8 +565,8 @@ export default function Dashboard() {
           workflow_status: old?.workflow_status || "normal",
           updated_by: "Importação"
         };
-        if (old) toUpdate.push({ dbId: old.id, payload });
-        else toCreate.push(payload);
+        if (old) toUpdate.push({ dbId: old.id, payload });else
+        toCreate.push(payload);
       }
 
       // 1a. Novos registros: bulkCreate em lotes de BULK_SIZE (muito mais eficiente)
@@ -639,22 +639,22 @@ export default function Dashboard() {
 
   async function importarArquivo(e) {
     const file = e.target.files?.[0];if (!file) return;
-    
+
     // Validar formato do arquivo
     const nomeArq = file.name.toLowerCase();
     const tipoMime = file.type.toLowerCase();
     const extensoesValidas = [".csv", ".xlsx", ".xls"];
     const mimeValidos = ["text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
-    
-    const temExtensaoValida = extensoesValidas.some(ext => nomeArq.endsWith(ext));
-    const temMimeValido = mimeValidos.some(mime => tipoMime.includes(mime)) || tipoMime === "";
-    
+
+    const temExtensaoValida = extensoesValidas.some((ext) => nomeArq.endsWith(ext));
+    const temMimeValido = mimeValidos.some((mime) => tipoMime.includes(mime)) || tipoMime === "";
+
     if (!temExtensaoValida && !temMimeValido) {
       setImportStatus({ ok: false, msg: "❌ Formato de arquivo não permitido. Envie um arquivo CSV, XLSX ou XLS." });
       e.target.value = "";
       return;
     }
-    
+
     setImportStatus(null);
     setIsImporting(true);
     const buf = await file.arrayBuffer();
@@ -679,7 +679,7 @@ export default function Dashboard() {
     try {
       if (isCobrCsv(cleanRows)) {
         // CSV de clientes cobrados: atualiza status dos títulos existentes
-        let atualizados = 0,naoEncontrados = 0, csvIdx = 0;
+        let atualizados = 0,naoEncontrados = 0,csvIdx = 0;
         for (const row of cleanRows) {
           const nrCli = String(row["Nº"] || row["Nr"] || row["N"] || "").trim();
           const nomeCli = String(row["Cliente"] || "").trim();
@@ -789,13 +789,13 @@ export default function Dashboard() {
           setIsImporting(false);
           return;
         }
-        
+
         // Log para debug FINR1253
         if (source === "FINR1253") {
           const totalValorPorParsing = imported.reduce((s, x) => s + (x.valorOriginal || 0), 0);
           console.log(`💰 FINR1253 Debug: ${imported.length} títulos, valor total parser = ${fmtM(totalValorPorParsing)}`);
         }
-        
+
         const r = await syncImport(source, imported, file.name);
         const baixaMsg = r?.baixados > 0 ? ` | ${r.baixados} baixados (${fmtM(r.valorBaixado)} lançado no Impacto no Caixa)` : "";
         const parcialMsg = r?.isCarteirCompleta === false ? " ⚠️ Planilha parcial detectada — baixa automática não aplicada." : "";
@@ -835,7 +835,7 @@ export default function Dashboard() {
           <button onClick={() => setIsDark((x) => !x)} style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{isDark ? "☀️" : "🌙"}</button>
           <Btn t={t} sm onClick={() => setEmailModal(true)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📧 Enviar PDF</Btn>
           <Btn t={t} sm onClick={() => exportarPDFExecutivo({ grouped, filteredCart: sortedCart, dash, faixaAtraso, filtroOrigem, hojeISO })} style={{ background: "#0369a1", border: "none", color: "#fff" }}>📊 Baixar Relatório</Btn>
-          <Btn t={t} sm onClick={() => { if (window.confirm("⚠️ AÇÃO IRREVERSÍVEL\n\nIsso vai remover PERMANENTEMENTE duplicatas físicas do banco de dados, mantendo apenas o registro mais recente por título.\n\nEssa ação não pode ser desfeita. Use apenas para manutenção.\n\nDeseja continuar?")) limparDuplicatasBanco(); }} style={{ background: "#64748b", border: "none", color: "#fff" }} title="Remover duplicatas do banco (irreversível)">🧹 Limpar BD</Btn>
+          <Btn t={t} sm onClick={() => {if (window.confirm("⚠️ AÇÃO IRREVERSÍVEL\n\nIsso vai remover PERMANENTEMENTE duplicatas físicas do banco de dados, mantendo apenas o registro mais recente por título.\n\nEssa ação não pode ser desfeita. Use apenas para manutenção.\n\nDeseja continuar?")) limparDuplicatasBanco();}} style={{ background: "#64748b", border: "none", color: "#fff" }} title="Remover duplicatas do banco (irreversível)">🧹 Limpar BD</Btn>
           <Btn t={t} sm onClick={() => fileRef.current?.click()} disabled={isImporting} style={{ background: isImporting ? "#ccc" : t.p, border: "none", color: isImporting ? "#999" : "#fff", cursor: isImporting ? "not-allowed" : "pointer" }}>⬆️ {isImporting ? "Importando..." : "Importar"}</Btn>
         </div>
       </header>
@@ -869,41 +869,41 @@ export default function Dashboard() {
         </div>
 
         {/* DASHBOARD KPIs — Carteira Geral */}
-        {activeTab === "carteira" && (
-          <>
+        {activeTab === "carteira" &&
+        <>
             <div className="kpi-container kpi-container-8">
               <KPI t={t} label="Total em Aberto" color="#F59E0B" value={fmtM(dash.vTot)} sub="com multa/juros" />
-              <KPI t={t} label="A Cobrar" color="#EF4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => setKpiFilter(p => p === "aCobrar" ? null : "aCobrar")} active={kpiFilter === "aCobrar"} />
-              <KPI t={t} label="Cobrado" color="#10B981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => setKpiFilter(p => p === "cobrado" ? null : "cobrado")} active={kpiFilter === "cobrado"} />
-              <KPI t={t} label="Cobrados Hoje" color="#FBBF24" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} onClick={() => setKpiFilter(p => p === "cobHoje" ? null : "cobHoje")} active={kpiFilter === "cobHoje"} />
-              <KPI t={t} label="Faltam Cobrar" color="#EF4444" value={dash.faltando} sub="sem contato hoje" onClick={() => setKpiFilter(p => p === "faltando" ? null : "faltando")} active={kpiFilter === "faltando"} />
+              <KPI t={t} label="A Cobrar" color="#EF4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => setKpiFilter((p) => p === "aCobrar" ? null : "aCobrar")} active={kpiFilter === "aCobrar"} />
+              <KPI t={t} label="Cobrado" color="#10B981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => setKpiFilter((p) => p === "cobrado" ? null : "cobrado")} active={kpiFilter === "cobrado"} />
+              <KPI t={t} label="Cobrados Hoje" color="#FBBF24" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} onClick={() => setKpiFilter((p) => p === "cobHoje" ? null : "cobHoje")} active={kpiFilter === "cobHoje"} />
+              <KPI t={t} label="Faltam Cobrar" color="#EF4444" value={dash.faltando} sub="sem contato hoje" onClick={() => setKpiFilter((p) => p === "faltando" ? null : "faltando")} active={kpiFilter === "faltando"} />
               <KPI t={t} label="Nº Clientes" color="#6B7280" value={dash.numCli} sub="ativos" />
               <KPI t={t} label="Nº Títulos" color="#6B7280" value={dash.numTit} sub="ativos" />
               <KPI t={t} label="Val. Original" color="#10B981" value={fmtM(dash.vOrig)} sub="sem multa/juros" />
             </div>
-            {kpiFilter && (
-              <div style={{ textAlign: "center", marginBottom: 12 }}>
+            {kpiFilter &&
+          <div style={{ textAlign: "center", marginBottom: 12 }}>
                 <button onClick={() => setKpiFilter(null)} style={{ background: t.p, border: "none", borderRadius: 6, padding: "6px 14px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 11 }}>✕ Limpar Filtro</button>
               </div>
-            )}
+          }
           </>
-        )}
+        }
 
         {/* KPIs Verificação */}
-        {activeTab === "verificacao" && (
-          <div className="kpi-container kpi-container-2">
+        {activeTab === "verificacao" &&
+        <div className="kpi-container kpi-container-2">
             <KPI t={t} label="Pendentes de Verificação" color="#3B82F6" value={verifLista.length} sub="aguardando resposta" />
             <KPI t={t} label="Valor em Verificação" color="#3B82F6" value={fmtM(verifLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a validar" />
           </div>
-        )}
+        }
 
         {/* KPIs Protesto */}
-         {activeTab === "protesto" && (
-           <div className="kpi-container kpi-container-2">
+         {activeTab === "protesto" &&
+        <div className="kpi-container kpi-container-2">
              <KPI t={t} label="Pendentes de Aprovação" color="#EF4444" value={protestoLista.length} sub="aguardando gestor" />
              <KPI t={t} label="Valor em Protesto" color="#EF4444" value={fmtM(protestoLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a autorizar" />
            </div>
-         )}
+        }
 
 
 
@@ -926,9 +926,9 @@ export default function Dashboard() {
 
         {/* FILTROS GLOBAIS — somente Carteira, Verificação e Protesto */}
          {(activeTab === "carteira" || activeTab === "verificacao" || activeTab === "protesto") &&
-         <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
              <FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} />
-             <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer", fontSize: 11, fontWeight: 700, color: t.txt, whiteSpace: "nowrap" }}>
+             <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer", fontSize: 11, fontWeight: 700, color: t.txt, whiteSpace: "nowrap" }} className="hidden">
                <input type="checkbox" checked={filtroSentinela} onChange={(e) => setFiltroSentinela(e.target.checked)} style={{ accentColor: "#ef4444", width: 16, height: 16 }} />
                🚨 Sentinela (+90d)
              </label>
@@ -953,33 +953,33 @@ export default function Dashboard() {
              <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}>
                <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>📄 Título:</span>
                <input
-               type="text"
-               placeholder="Buscar por nº ou nome..."
-               value={buscaTitulo}
-               onChange={(e) => setBuscaTitulo(e.target.value)}
-               style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />
+              type="text"
+              placeholder="Buscar por nº ou nome..."
+              value={buscaTitulo}
+              onChange={(e) => setBuscaTitulo(e.target.value)}
+              style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />
 
                {buscaTitulo &&
-             <button onClick={() => setBuscaTitulo("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
-             }
+            <button onClick={() => setBuscaTitulo("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
+            }
              </div>
              <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}>
                <span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>🔍 Cliente:</span>
                <input
-               type="text"
-               placeholder="Buscar por nome ou nº..."
-               value={buscaCliente}
-               onChange={(e) => setBuscaCliente(e.target.value)}
-               style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />
+              type="text"
+              placeholder="Buscar por nome ou nº..."
+              value={buscaCliente}
+              onChange={(e) => setBuscaCliente(e.target.value)}
+              style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />
 
                {buscaCliente &&
-             <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
-             }
+            <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>
+            }
              </div>
 
             {activeTab === "carteira" &&
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer", fontSize: 11, fontWeight: 700, color: t.txt, whiteSpace: "nowrap" }}>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer", fontSize: 11, fontWeight: 700, color: t.txt, whiteSpace: "nowrap" }} className="hidden">
                   <input type="checkbox" checked={showPaid} onChange={(e) => setShowPaid(e.target.checked)} style={{ accentColor: t.p, width: 16, height: 16 }} />
                   👁️ Mostrar pagos
                 </label>
@@ -988,23 +988,23 @@ export default function Dashboard() {
                     ☰ Colunas {hiddenCols.size > 0 ? `(${hiddenCols.size} ocultas)` : ""}
                   </button>
                 {showColMenu &&
-            <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: "8px", zIndex: 300, minWidth: 200, boxShadow: "0 8px 24px rgba(0,0,0,.2)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+              <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: "8px", zIndex: 300, minWidth: 200, boxShadow: "0 8px 24px rgba(0,0,0,.2)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
                     {[
-              { key: "nrCli", label: "Nº" }, { key: "nomeCli", label: "CLIENTE" }, { key: "qtd", label: "QTD." },
-              { key: "venc", label: "VENCIMENTO" }, { key: "atraso", label: "ATRASO" }, { key: "vOrig", label: "VAL. ORIG" },
-              { key: "multa", label: "MULTA" }, { key: "juros", label: "JUROS" }, { key: "total", label: "TOTAL" },
-              { key: "status", label: "STATUS" }, { key: "enc", label: "ENCAMINHAR" }, { key: "origem", label: "ORIG." },
-              { key: "contato", label: "DT. CONTATO" }, { key: "prom", label: "PROMESSA" },
-              { key: "sugest", label: "SUGESTÃO" }, { key: "obs", label: "OBSERVAÇÃO" }].
-              map((c) =>
-              <label key={c.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: hiddenCols.has(c.key) ? t.surf2 : "transparent" }}>
+                { key: "nrCli", label: "Nº" }, { key: "nomeCli", label: "CLIENTE" }, { key: "qtd", label: "QTD." },
+                { key: "venc", label: "VENCIMENTO" }, { key: "atraso", label: "ATRASO" }, { key: "vOrig", label: "VAL. ORIG" },
+                { key: "multa", label: "MULTA" }, { key: "juros", label: "JUROS" }, { key: "total", label: "TOTAL" },
+                { key: "status", label: "STATUS" }, { key: "enc", label: "ENCAMINHAR" }, { key: "origem", label: "ORIG." },
+                { key: "contato", label: "DT. CONTATO" }, { key: "prom", label: "PROMESSA" },
+                { key: "sugest", label: "SUGESTÃO" }, { key: "obs", label: "OBSERVAÇÃO" }].
+                map((c) =>
+                <label key={c.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: hiddenCols.has(c.key) ? t.surf2 : "transparent" }}>
                         <input type="checkbox" checked={!hiddenCols.has(c.key)} onChange={() => setHiddenCols((p) => {const n = new Set(p);n.has(c.key) ? n.delete(c.key) : n.add(c.key);return n;})} style={{ accentColor: t.p }} />
                         {c.label}
                       </label>
-              )}
+                )}
                     <button onClick={() => {setHiddenCols(new Set());setShowColMenu(false);}} style={{ gridColumn: "1/-1", marginTop: 4, background: t.p, color: "#fff", border: "none", borderRadius: 4, padding: "4px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Mostrar Todas</button>
                   </div>
-                }
+              }
                 </div>
               </div>
           }
@@ -1119,10 +1119,10 @@ export default function Dashboard() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* KPIs Produtividade */}
             <div className="kpi-container kpi-container-4">
-              <KPI t={t} label="Total de Contatos" color="#3B82F6" value={events.filter(e => e.event_type === "COBRANCA").length} sub="no período" />
-              <KPI t={t} label="Promessas Obtidas" color="#FBBF24" value={events.filter(e => e.status === "Prometeu Pagar").length} sub="confirmadas" />
-              <KPI t={t} label="Pagamentos Confirmados" color="#10B981" value={events.filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado").length} sub="verificados" />
-              <KPI t={t} label="Taxa de Sucesso" color="#A78BFA" value={`${events.length > 0 ? ((events.filter(e => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Prometeu Pagar").length / events.length) * 100).toFixed(1) : 0}%`} sub="conversão" />
+              <KPI t={t} label="Total de Contatos" color="#3B82F6" value={events.filter((e) => e.event_type === "COBRANCA").length} sub="no período" />
+              <KPI t={t} label="Promessas Obtidas" color="#FBBF24" value={events.filter((e) => e.status === "Prometeu Pagar").length} sub="confirmadas" />
+              <KPI t={t} label="Pagamentos Confirmados" color="#10B981" value={events.filter((e) => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado").length} sub="verificados" />
+              <KPI t={t} label="Taxa de Sucesso" color="#A78BFA" value={`${events.length > 0 ? (events.filter((e) => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Prometeu Pagar").length / events.length * 100).toFixed(1) : 0}%`} sub="conversão" />
             </div>
             
             {/* Sub-abas internas */}
@@ -1150,20 +1150,20 @@ export default function Dashboard() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* KPIs Fluxo */}
           <div className="kpi-container kpi-container-4">
-            <KPI t={t} label="Previsão 30 Dias" color="#3B82F6" value={fmtM(grouped.filter(g => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="próximo mês" />
-            <KPI t={t} label="Previsão 60 Dias" color="#FBBF24" value={fmtM(grouped.filter(g => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 60 dias" />
-            <KPI t={t} label="Previsão 90 Dias" color="#A78BFA" value={fmtM(grouped.filter(g => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 90 dias" />
-            <KPI t={t} label="Débitos Críticos" color="#EF4444" value={fmtM(grouped.filter(g => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="acima 90 dias" />
+            <KPI t={t} label="Previsão 30 Dias" color="#3B82F6" value={fmtM(grouped.filter((g) => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="próximo mês" />
+            <KPI t={t} label="Previsão 60 Dias" color="#FBBF24" value={fmtM(grouped.filter((g) => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 60 dias" />
+            <KPI t={t} label="Previsão 90 Dias" color="#A78BFA" value={fmtM(grouped.filter((g) => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 90 dias" />
+            <KPI t={t} label="Débitos Críticos" color="#EF4444" value={fmtM(grouped.filter((g) => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="acima 90 dias" />
           </div>
           <PrevisaoFluxo grouped={grouped} t={t} />
           {/* ═══ TABELA DE CLIENTES PAGOS ═══ */}
           {(() => {
-            const pagosArr = grouped.filter((g) => (
-              g.statusConsolidado === "Encerrado" ||
-              g.statusConsolidado === "Baixado" ||
-              g.statusConsolidado === "Pago Aguard. Baixa" ||
-              g.statusConsolidado === "Confirmado"
-            ));
+            const pagosArr = grouped.filter((g) =>
+            g.statusConsolidado === "Encerrado" ||
+            g.statusConsolidado === "Baixado" ||
+            g.statusConsolidado === "Pago Aguard. Baixa" ||
+            g.statusConsolidado === "Confirmado"
+            );
             const totalPagosVal = pagosArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0);
             const totalPagosTit = pagosArr.reduce((s, g) => s + (g.qtdTitulos || 0), 0);
             return (
@@ -1176,12 +1176,12 @@ export default function Dashboard() {
                     <span>Total: <b style={{ color: "#10b981" }}>{fmtM(totalPagosVal)}</b></span>
                   </div>
                 </div>
-                {pagosArr.length === 0 ? (
-                  <div style={{ padding: 24, textAlign: "center", color: t.muted, fontSize: 12 }}>
+                {pagosArr.length === 0 ?
+                <div style={{ padding: 24, textAlign: "center", color: t.muted, fontSize: 12 }}>
                     Nenhum cliente pago no momento.
-                  </div>
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
+                  </div> :
+
+                <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                       <thead>
                         <tr style={{ background: t.th, color: t.muted, textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}>
@@ -1195,10 +1195,10 @@ export default function Dashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {pagosArr
-                          .sort((a, b) => (b.valorTotalDebito || 0) - (a.valorTotalDebito || 0))
-                          .map((g) => (
-                          <tr key={g.clientKey} style={{ borderBottom: `1px solid ${t.bor}` }}>
+                        {pagosArr.
+                      sort((a, b) => (b.valorTotalDebito || 0) - (a.valorTotalDebito || 0)).
+                      map((g) =>
+                      <tr key={g.clientKey} style={{ borderBottom: `1px solid ${t.bor}` }}>
                             <td style={{ padding: "8px 10px", color: t.txt, fontWeight: 600 }}>{g.nrCli}</td>
                             <td style={{ padding: "8px 10px", color: t.txt }}>{g.nomeCli}</td>
                             <td style={{ padding: "8px 10px", textAlign: "center", color: t.txt }}>{g.qtdTitulos}</td>
@@ -1211,13 +1211,13 @@ export default function Dashboard() {
                               </span>
                             </td>
                           </tr>
-                        ))}
+                      )}
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
-            );
+                }
+              </div>);
+
           })()}
         </div>
         }

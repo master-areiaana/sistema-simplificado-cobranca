@@ -216,7 +216,7 @@ function parseCli(txt) {
   let s = String(txt || "").trim();
   const pi = s.toUpperCase().indexOf("CLIENTE:"); if (pi >= 0) s = s.slice(pi + 8).trim();
   const pc = s.toUpperCase().indexOf("CPF/CNPJ:"); const bloco = pc >= 0 ? s.slice(0, pc).trim() : s;
-  const ps = bloco.indexOf(" - ");
+  const _mCli = bloco.match(/^\s*(\d{1,8})\s*[-–\/]\s*(.+)$/) || bloco.match(/^\s*(\d{1,8})\s{2,}(.+)$/); if (_mCli) return { numeroCliente: _mCli[1].replace(/\./g, "").trim(), nomeCliente: _mCli[2].trim() }; const ps = bloco.indexOf(" - ");
   return ps >= 0 ? { numeroCliente: bloco.slice(0, ps).replace(/\./g, "").trim(), nomeCliente: bloco.slice(ps + 3).trim() } : { numeroCliente: "", nomeCliente: bloco };
 }
 

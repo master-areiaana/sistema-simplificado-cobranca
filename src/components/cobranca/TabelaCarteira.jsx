@@ -127,6 +127,34 @@ function renderTituloDetalhe(item, grupo) {
   return "—";
 }
 
+function itemFilterValue(item, grupo, field) {
+  const cliente = getDisplayClient(grupo);
+  const sugestao = sugestaoEncaminhamento(Number(item.diasAtraso || 0), Number(item.valorTotalDebito || 0));
+
+  switch (field) {
+    case "nrCli": return cliente.nrCli || item.nrCli || "(Vazio)";
+    case "nomeCli": return cliente.nomeCli || "(Vazio)";
+    case "qtd": return "1";
+    case "venc": return item.vencimento ? fmtD(item.vencimento) : "(Vazio)";
+    case "atraso": return item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—";
+    case "vOrig": return fmtM(item.valorOriginal);
+    case "multa": return fmtM(item.valorMulta);
+    case "juros": return fmtM(item.valorJuros);
+    case "total": return fmtM(item.valorTotalDebito);
+    case "status": return item.status || "(Vazio)";
+    case "acao": return item.acaoAfazer || "(Vazio)";
+    case "enc": return item.encaminhar || "Sem encaminhamento";
+    case "origem": return getOrigemLabel(item.origem) || "(Vazio)";
+    case "cat": return item.clientCategory || "(Vazio)";
+    case "contato": return item.dataContato ? fmtD(item.dataContato) : "(Vazio)";
+    case "prom": return item.dataPromessa ? fmtD(item.dataPromessa) : "(Vazio)";
+    case "sugest": return sugestao ? sugestao.label : "(Sem sugestão)";
+    case "obs": return item.obs || grupo.obsConsolidada || item.portador || "(Sem observação)";
+    case "titulo": return renderTituloDetalhe(item, grupo);
+    default: return "";
+  }
+}
+
 function filterValue(g, field) {
   const cliente = getDisplayClient(g);
   const sugestao = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
@@ -154,16 +182,43 @@ function filterValue(g, field) {
   }
 }
 
+function valuesForFilter(g, field) {
+  const values = [filterValue(g, field)];
+  for (const item of g.titulos || []) values.push(itemFilterValue(item, g, field));
+  return [...new Set(values.map(v => v == null || v === "" ? "(Vazio)" : String(v)))];
+}
+
+function matchesAllFiltersByValues(valuesMap, filters) {
+  for (const [field, vals] of Object.entries(filters)) {
+    if (!vals) continue;
+    if (vals.length === 0) return false;
+    const values = valuesMap(field);
+    if (!values.some(v => vals.includes(v))) return false;
+  }
+  return true;
+}
+
+function groupMatchesFilters(g, filters) {
+  return matchesAllFiltersByValues((field) => valuesForFilter(g, field), filters);
+}
+
+function itemMatchesFilters(item, grupo, filters) {
+  return matchesAllFiltersByValues((field) => [itemFilterValue(item, grupo, field)], filters);
+}
+
+function visibleTitlesForGroup(g, filters) {
+  const hasActiveFilter = Object.values(filters).some(v => v !== null && v !== undefined);
+  if (!hasActiveFilter) return g.titulos || [];
+
+  const matchedItems = (g.titulos || []).filter(item => itemMatchesFilters(item, g, filters));
+  if (matchedItems.length > 0) return matchedItems;
+
+  // Se o filtro bateu no resumo do cliente, mas não em um título específico, mantém os títulos visíveis.
+  return g.titulos || [];
+}
+
 function applyLocalFilters(arr, filters) {
-  return arr.filter((g) => {
-    for (const [field, vals] of Object.entries(filters)) {
-      if (!vals) continue;
-      if (vals.length === 0) return false;
-      const v = filterValue(g, field);
-      if (!vals.includes(v)) return false;
-    }
-    return true;
-  });
+  return arr.filter((g) => groupMatchesFilters(g, filters));
 }
 
 export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, makeColData, fieldVal, applyExcelFilter, setNegModal, onEncaminharSugestao, hiddenCols, setHiddenCols, onClickFilter }) {
@@ -181,11 +236,13 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   const colCount = vis.length;
 
   const filteredCart = useMemo(() => applyLocalFilters(sortedCart, tableFilters), [sortedCart, tableFilters]);
-  const filterBaseCart = useMemo(() => applyLocalFilters(baseCart, tableFilters), [baseCart, tableFilters]);
   const headerData = useMemo(() => {
     const source = baseCart?.length ? baseCart : sortedCart;
     return Object.fromEntries(
-      COLS_DEF.map(c => [c.key, source.map(g => ({ [c.key]: filterValue(g, c.key) }))])
+      COLS_DEF.map(c => [
+        c.key,
+        source.flatMap(g => valuesForFilter(g, c.key).map(value => ({ [c.key]: value })))
+      ])
     );
   }, [baseCart, sortedCart]);
 
@@ -266,6 +323,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
               const open = !!openCli[g.clientKey], isSel = selected.has(g.clientKey);
               const leftClr = g.encaminharConsolidado === "verificacao" ? "#3b82f6" : g.encaminharConsolidado === "protesto" ? "#ef4444" : prioCor(g.prioridadeCliente);
               const rowBg = isSel ? (isDark ? "rgba(232,119,34,.15)" : "rgba(232,119,34,.07)") : (i % 2 === 0 ? t.surf : t.alt);
+              const titulosVisiveis = visibleTitlesForGroup(g, tableFilters);
               return (
                 <React.Fragment key={g.clientKey}>
                   <tr style={{ background: rowBg, borderLeft: `4px solid ${leftClr}` }}>
@@ -276,7 +334,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                       return React.cloneElement(renderCell(c.key, g), { key: c.key });
                     })}
                   </tr>
-                  {open && g.titulos.map(item => (
+                  {open && titulosVisiveis.map(item => (
                     <tr key={item.id} style={{ background: t.surf2 }}>
                       {vis.map((c) => {
                         const cliente = getDisplayClient(g);

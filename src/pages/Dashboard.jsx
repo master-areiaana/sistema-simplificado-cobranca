@@ -186,23 +186,25 @@ export default function Dashboard() {
   // ── Agrupamento por cliente ──
   const grouped = useMemo(() => {
     const map = new Map();
-    // Helper: extrai (codigo, nome) reais quando nomeCli vem no formato "CODIGO/NOME" ou "CODIGO - NOME"
+    // Helper: extrai apenas o NOME real do cliente a partir de item.nomeCli.
+    // IMPORTANTE: nunca substitui item.nrCli por um número encontrado em nomeCli — esse número
+    // costuma ser o número do título/documento, e usá-lo como código do cliente quebra o
+    // agrupamento (criando grupos genéricos tipo "Cliente 1600", "Cliente 1605"). O nrCli
+    // sempre vem do dado original do registro.
     function extractCliInfo(item) {
       const rawNr = String(item.nrCli || "").trim();
       const rawNome = String(item.nomeCli || "").trim();
-      // Padrão 1: nomeCli = "1234/EMPRESA LTDA" ou "1234 - EMPRESA"
+      // Padrão "CODIGO/NOME" ou "CODIGO - NOME" → usa apenas a parte do NOME; mantém nrCli original
       const mSlash = rawNome.match(/^(\d{1,8})\s*[\/\-]\s*(.{2,})$/);
       if (mSlash) {
-        const cod = mSlash[1];
         const nome = mSlash[2].trim();
-        // Se o nome extraído contém letras, usar essa decomposição
         if (/[A-Za-zÀ-ÿ]/.test(nome)) {
-          return { nrCli: cod, nomeCli: nome };
+          return { nrCli: rawNr, nomeCli: nome };
         }
       }
-      // Padrão 2: nomeCli puramente numérico → é o código real (nrCli atual é genérico/errado)
-      if (/^\d{2,8}$/.test(rawNome) && rawNome !== rawNr) {
-        return { nrCli: rawNome, nomeCli: "" };
+      // nomeCli puramente numérico não é um nome real do cliente → descarta o nome
+      if (/^\d{2,8}$/.test(rawNome)) {
+        return { nrCli: rawNr, nomeCli: "" };
       }
       return { nrCli: rawNr, nomeCli: rawNome };
     }
@@ -230,7 +232,7 @@ export default function Dashboard() {
       if (cands.length > 0) {
         // Critério: prefere nomes com letras (não-numérico); entre eles, pega o mais longo
         const comLetras = cands.filter((s) => /[A-Za-zÀ-ÿ]/.test(s));
-        const pool = comLetras; if (pool.length === 0) { g.nomeCli = ""; g.nomeCliInvalido = true; delete g._nomes; return; }
+        const pool = comLetras; if (pool.length === 0) { if (!g.nomeCli) g.nomeCli = ""; g.nomeCliInvalido = true; delete g._nomes; return; }
         pool.sort((a, b) => b.length - a.length);
         g.nomeCli = pool[0];
       }

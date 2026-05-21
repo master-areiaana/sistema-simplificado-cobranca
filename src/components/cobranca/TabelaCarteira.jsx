@@ -226,7 +226,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
   const hasAnyTableFilter = hasAnyFilter(tableFilters);
 
-  const visibleCols = COLS_DEF.filter(c => !["acao", "sugest"].includes(c.key) && (c.fixed || !hiddenCols.has(c.key)));
+  const visibleCols = COLS_DEF.filter(c => !["expand", "acao", "sugest"].includes(c.key) && (c.fixed || !hiddenCols.has(c.key)));
 
   const CH = (props) => (
     <ColHeader {...props} t={t} sortCfg={scCart} onSort={handleSort} />
@@ -308,7 +308,6 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
             <tr>
               {vis.map(c => {
                 if (c.key === "check") return <th key="check" style={{ ...thS(t), textAlign: "center", width: 32 }}><input type="checkbox" checked={selected.size === filteredCart.length && filteredCart.length > 0} onChange={toggleAll} style={{ cursor: "pointer" }} /></th>;
-                if (c.key === "expand") return <th key="expand" style={thS(t)} />;
                 if (c.key === "acoes") return <th key="acoes" style={thS(t)}>AÇÕES</th>;
                 const sortMap = { nrCli:"numero", nomeCli:"cliente", atraso:"atraso", vOrig:"valorOriginal", total:"valorTotalDebito" };
                 return <CH key={c.key} label={c.label} field={c.key} data={headerData[c.key] || []} filters={tableFilters} setFilters={setTableFilters} sortKey={sortMap[c.key]} />;
@@ -320,43 +319,18 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
               <tr><td colSpan={colCount} style={{ textAlign: "center", padding: 44, color: t.muted, background: t.surf }}>Nenhum resultado. Verifique os filtros.</td></tr>
             )}
             {filteredCart.map((g, i) => {
-              const open = !!openCli[g.clientKey], isSel = selected.has(g.clientKey);
+              const isSel = selected.has(g.clientKey);
               const leftClr = g.encaminharConsolidado === "verificacao" ? "#3b82f6" : g.encaminharConsolidado === "protesto" ? "#ef4444" : prioCor(g.prioridadeCliente);
               const rowBg = isSel ? (isDark ? "rgba(232,119,34,.15)" : "rgba(232,119,34,.07)") : (i % 2 === 0 ? t.surf : t.alt);
-              const titulosVisiveis = visibleTitlesForGroup(g, tableFilters);
               return (
                 <React.Fragment key={g.clientKey}>
                   <tr style={{ background: rowBg, borderLeft: `4px solid ${leftClr}` }}>
                     {vis.map(c => {
                       if (c.key === "check") return <td key="check" style={{ ...tdS(), textAlign: "center" }}><input type="checkbox" checked={isSel} onChange={() => toggleSel(g.clientKey)} style={{ cursor: "pointer", accentColor: t.p }} /></td>;
-                      if (c.key === "expand") return <td key="expand" style={tdS()}><button onClick={() => setOpenCli(p => ({ ...p, [g.clientKey]: !p[g.clientKey] }))} style={{ background: "transparent", border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 4, cursor: "pointer", padding: "1px 5px", fontSize: 11 }}>{open ? "−" : "+"}</button></td>;
                       if (c.key === "acoes") return <td key="acoes" style={tdS()}><div style={{ display: "flex", gap: 3 }}><Btn t={t} sm onClick={() => { setModal(g); setForm({ ...emptyForm(), status: g.statusConsolidado || "", encaminhar: g.encaminharConsolidado || "", tipo: g.titulos[0]?.tipoContato || "", dataPromessa: g.dataPromessa || "", obs: g.obsConsolidada || "" }); }}>✏️</Btn><Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn>{setNegModal && <Btn t={t} sm onClick={() => setNegModal(g)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>🤝</Btn>}</div></td>;
                       return React.cloneElement(renderCell(c.key, g), { key: c.key });
                     })}
                   </tr>
-                  {open && titulosVisiveis.map(item => (
-                    <tr key={item.id} style={{ background: t.surf2 }}>
-                      {vis.map((c) => {
-                        const cliente = getDisplayClient(g);
-                        if (c.key === "check") return <td key="check" style={tdS()} />;
-                        if (c.key === "expand") return <td key="expand" style={tdS()} />;
-                        if (c.key === "nrCli") return <td key="nrCli" style={{ ...tdS(), color: t.muted }}>{cliente.nrCli || item.nrCli}</td>;
-                        if (c.key === "nomeCli") return <td key="nomeCli" style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{renderTituloDetalhe(item, g)} · <span style={{ fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;
-                        if (c.key === "qtd") return <td key="qtd" style={{ ...tdS(), textAlign: "center" }}>1</td>;
-                        if (c.key === "venc") return <td key="venc" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
-                        if (c.key === "atraso") return <td key="atraso" style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;
-                        if (c.key === "vOrig") return <td key="vOrig" style={tdS()}>{fmtM(item.valorOriginal)}</td>;
-                        if (c.key === "multa") return <td key="multa" style={{ ...tdS(), color: "#f97316" }}>{fmtM(item.valorMulta)}</td>;
-                        if (c.key === "juros") return <td key="juros" style={{ ...tdS(), color: "#eab308" }}>{fmtM(item.valorJuros)}</td>;
-                        if (c.key === "total") return <td key="total" style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(item.valorTotalDebito)}</td>;
-                        if (c.key === "status") return <td key="status" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
-                        if (c.key === "acao") return <td key="acao" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.acaoAfazer || "—"}</td>;
-                        if (c.key === "enc") return <td key="enc" style={tdS()}>{encBadge(item.encaminhar)}</td>;
-                        if (c.key === "cat") return <td key="cat" style={tdS()}>{item.clientCategory ? categoriaBadge(item.clientCategory) : "—"}</td>;
-                        return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.portador || "—"}</td>;
-                      })}
-                    </tr>
-                  ))}
                 </React.Fragment>
               );
             })}

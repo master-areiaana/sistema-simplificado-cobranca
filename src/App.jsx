@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Link, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import PageNotFound from './lib/PageNotFound';
 // Add page imports here
 import Dashboard from './pages/Dashboard';
@@ -10,13 +11,34 @@ import Assessoria from './pages/Assessoria';
 function AcessoAssessoria() {
   const location = useLocation();
   const isAssessoria = location.pathname === "/assessoria";
+  const [pendentes, setPendentes] = useState(0);
+
+  useEffect(() => {
+    const readCount = () => {
+      try {
+        const count = Number(localStorage.getItem("sc_assessoria_unread_count") || "0");
+        setPendentes(Number.isFinite(count) ? count : 0);
+      } catch {
+        setPendentes(0);
+      }
+    };
+    readCount();
+    const id = setInterval(readCount, 2500);
+    window.addEventListener("storage", readCount);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("storage", readCount);
+    };
+  }, []);
+
+  const label = isAssessoria ? "← Sistema Interno" : `⚖️ Assessoria${pendentes > 0 ? ` 🔴 ${pendentes}` : ""}`;
 
   return (
     <div style={{ position: "fixed", top: 74, right: 24, zIndex: 9999, display: "flex", gap: 8 }}>
       <Link
         to={isAssessoria ? "/" : "/assessoria"}
         style={{
-          background: isAssessoria ? "#111827" : "#f97316",
+          background: isAssessoria ? "#111827" : pendentes > 0 ? "#ef4444" : "#f97316",
           color: "#fff",
           textDecoration: "none",
           borderRadius: 8,
@@ -28,7 +50,7 @@ function AcessoAssessoria() {
         }}
         title={isAssessoria ? "Voltar para o sistema interno" : "Acessar aba/portal da assessoria"}
       >
-        {isAssessoria ? "← Sistema Interno" : "⚖️ Assessoria"}
+        {label}
       </Link>
     </div>
   );

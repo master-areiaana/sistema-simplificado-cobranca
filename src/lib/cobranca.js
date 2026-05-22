@@ -48,7 +48,7 @@ export function dateISO(v) {
     return p ? new Date(p.y, p.m - 1, p.d).toISOString().slice(0, 10) : "";
   }
   const s = String(v).trim();
-  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+.*)?$/);
   if (br) return `${br[3]}-${br[2]}-${br[1]}`;
   const d = new Date(s);
   return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
@@ -101,8 +101,29 @@ export function normText(v) {
   return String(v ?? "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, "").replace(/\s+/g, " ");
 }
 
+function normHeader(v) {
+  return String(v ?? "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^\uFEFF/, "")
+    .replace(/[^A-Z0-9]/g, "");
+}
+
 export function pick(row, names) {
   for (const n of names) if (row[n] != null && String(row[n]).trim() !== "") return row[n];
+  return "";
+}
+
+function pickFlex(row, names) {
+  const wanted = names.map(normHeader);
+  for (const [k, v] of Object.entries(row || {})) {
+    const nk = normHeader(k);
+    if (wanted.some((w) => nk === w || nk.includes(w) || w.includes(nk))) {
+      if (v != null && String(v).trim() !== "") return v;
+    }
+  }
   return "";
 }
 
@@ -183,34 +204,76 @@ export function dbToItem(r) {
 }
 
 export function parseRows1253(rows) {
-  let headerIdx = rows.findIndex((r) => r.some((c) => String(c).toUpperCase().includes("NOMCLI")));
-  if (headerIdx < 0) headerIdx = 0;
-  const h = rows[headerIdx].map((c) => String(c || "").trim().toUpperCase());
-  const col = (name) => h.findIndex((x) => x === name || x.includes(name));
-  const idx = {
-    codfil: col("CODFIL"), numtit: col("NUMTIT"), codcli: col("CODCLI"), cnpj: col("CNPJ"),
-    dtemis: col("DTEMIS"), dtvenc: col("DTVENC"), vlrorig: col("VLRORIG"), saldo: col("SLDTTT"),
-    juros: col("JUROS"), atualizado: col("ATUALIZADO"), numnota: col("NUMNOTA"), nomcli: col("NOMCLI"),
-    cep: col("CEP"), end: col("ENDERECO"), numero: col("NUMERO"), bairro: col("BAIRRO"), cidade: col("CIDADE"), estado: col("ESTADO"),
-    fone1: col("FONE1"), fone2: col("FONE2"), email: col("E_MAIL")
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const aliases = {
+    codfil: ["CODFIL", "FILIAL", "COD FIL", "COD. FILIAL"],
+    numtit: ["NUMTIT", "NUM TIT", "NUM. TIT", "N TITULO", "TITULO", "TÍTULO", "NUMERO TITULO", "NÚMERO TÍTULO"],
+    codcli: ["CODCLI", "COD CLI", "COD. CLI", "CLIENTE", "CODIGO CLIENTE", "CÓDIGO CLIENTE"],
+    dtemis: ["DTEMIS", "DT EMIS", "EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA EMISSÃO"],
+    dtvenc: ["DTVENC", "DT VENC", "VENCIMENTO", "DATA VENCIMENTO", "VENCTO"],
+    vlrorig: ["VLRORIG", "VLR ORIG", "VALOR ORIGINAL", "VLORIG", "ORIGINAL"],
+    saldo: ["SLDTTT", "SALDO", "SALDO TOTAL", "VALOR SALDO", "VLR SALDO", "TOTAL"],
+    juros: ["JUROS", "JURO"],
+    atualizado: ["ATUALIZADO", "VALOR ATUALIZADO"],
+    numnota: ["NUMNOTA", "NUM NOTA", "NF", "NOTA", "NOTA FISCAL", "NFSE"],
+    nomcli: ["NOMCLI", "NOM CLI", "NOME CLIENTE", "NOME DO CLIENTE", "CLIENTE", "RAZAO SOCIAL", "RAZÃO SOCIAL", "NOME"],
+    cep: ["CEP"],
+    end: ["ENDERECO", "ENDEREÇO", "LOGRADOURO"],
+    numero: ["NUMERO", "NÚMERO", "NR"],
+    bairro: ["BAIRRO"],
+    cidade: ["CIDADE", "MUNICIPIO", "MUNICÍPIO"],
+    estado: ["ESTADO", "UF"],
+    fone1: ["FONE1", "FONE 1", "TELEFONE", "TEL"],
+    fone2: ["FONE2", "FONE 2", "CELULAR"],
+    email: ["E_MAIL", "EMAIL", "E-MAIL"]
   };
+
+  const findCol = (headers, names) => {
+    const normalizedNames = names.map(normHeader).filter(Boolean);
+    return headers.findIndex((header) => normalizedNames.some((name) => header === name || header.includes(name) || name.includes(header)));
+  };
+
+  let headerIdx = rows.findIndex((r) => {
+    const headers = (r || []).map(normHeader);
+    const hasClient = findCol(headers, aliases.nomcli) >= 0;
+    const hasTitle = findCol(headers, aliases.numtit) >= 0;
+    const hasValue = findCol(headers, [...aliases.saldo, ...aliases.vlrorig, ...aliases.atualizado]) >= 0;
+    return hasClient && hasTitle && hasValue;
+  });
+
+  if (headerIdx < 0) {
+    headerIdx = rows.findIndex((r) => (r || []).map(normHeader).some((c) => c.includes("NOMCLI") || c.includes("NOMECLIENTE") || c.includes("RAZAOSOCIAL")));
+  }
+
+  if (headerIdx < 0) return [];
+
+  const h = (rows[headerIdx] || []).map(normHeader);
+  const idx = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, findCol(h, names)]));
   const out = [];
+
   for (let i = headerIdx + 1; i < rows.length; i++) {
-    const r = rows[i];
-    const nome = r[idx.nomcli];
-    const titulo = r[idx.numtit];
-    const valor = r[idx.saldo] || r[idx.vlrorig];
-    if (!nome || !titulo || num(valor) <= 0) continue;
+    const r = rows[i] || [];
+    const get = (key) => idx[key] >= 0 ? r[idx[key]] : "";
+    const nome = get("nomcli");
+    const titulo = get("numtit");
+    const valor = get("saldo") || get("atualizado") || get("vlrorig");
+    const nomeTxt = String(nome || "").trim();
+    const tituloTxt = String(titulo || "").trim();
+
+    if (!nomeTxt || !tituloTxt || num(valor) <= 0) continue;
+    if (["TOTAL", "TOTAIS", "SUBTOTAL"].includes(normHeader(nomeTxt)) || ["TOTAL", "TOTAIS", "SUBTOTAL"].includes(normHeader(tituloTxt))) continue;
+
     out.push(buildItem({
       origem: "FINR1253",
-      nrCli: String(r[idx.codcli] || "").trim(),
-      nomeCli: String(nome).trim(),
+      nrCli: String(get("codcli") || "").trim(),
+      nomeCli: nomeTxt,
       tp: "TC",
-      titulo: String(titulo).trim(),
+      titulo: tituloTxt,
       seq: "",
-      nfServico: String(r[idx.numnota] || "").trim(),
-      emissao: dateISO(r[idx.dtemis]),
-      vencimento: dateISO(r[idx.dtvenc]),
+      nfServico: String(get("numnota") || "").trim(),
+      emissao: dateISO(get("dtemis")),
+      vencimento: dateISO(get("dtvenc")),
       valorOriginal: num(valor),
       portador: "TC"
     }));
@@ -221,12 +284,12 @@ export function parseRows1253(rows) {
 export function parseRows7007(rows) {
   const out = [];
   for (const row of rows) {
-    const nome = pick(row, ["NOMCLI", "Cliente", "CLIENTE", "Nome Cliente"]);
-    const nrCli = pick(row, ["CODCLI", "Cliente", "Cod Cliente", "Nº"]);
-    const titulo = pick(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "N"]);
-    const seq = pick(row, ["SEQ", "Parcela", "Seq"]);
-    const valor = pick(row, ["SLDTTT", "SALDO", "Valor", "Val. Orig", "Valor Original"]);
-    const venc = pick(row, ["DTVENC", "Vencimento", "VENCTO", "Data Vencimento"]);
+    const nome = pick(row, ["NOMCLI", "Cliente", "CLIENTE", "Nome Cliente"]) || pickFlex(row, ["NOMCLI", "Nome Cliente", "Cliente", "Razão Social"]);
+    const nrCli = pick(row, ["CODCLI", "Cliente", "Cod Cliente", "Nº"]) || pickFlex(row, ["CODCLI", "Cod Cliente", "Código Cliente", "Nº"]);
+    const titulo = pick(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "N"]) || pickFlex(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "Número Título", "N"]);
+    const seq = pick(row, ["SEQ", "Parcela", "Seq"]) || pickFlex(row, ["SEQ", "Parcela"]);
+    const valor = pick(row, ["SLDTTT", "SALDO", "Valor", "Val. Orig", "Valor Original"]) || pickFlex(row, ["SLDTTT", "Saldo", "Valor", "Valor Original"]);
+    const venc = pick(row, ["DTVENC", "Vencimento", "VENCTO", "Data Vencimento"]) || pickFlex(row, ["DTVENC", "Vencimento", "Vencto", "Data Vencimento"]);
     if (!nome || !titulo || num(valor) <= 0) continue;
     out.push(buildItem({
       origem: "RPT_7007_CONS_CAR_EB",

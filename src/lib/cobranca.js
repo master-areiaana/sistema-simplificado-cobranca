@@ -120,11 +120,11 @@ function normToken(v) {
     .replace(/[^A-Z0-9]/g, "");
 }
 
-const DOC_TOKENS = new Set(["NF", "NFE", "NFSE", "FAT", "TC", "EB", "CTE", "DUP", "DUPL", "DUPLICATA", "TITULO", "PARCELA"]);
+const DOC_TOKENS = new Set(["NF", "NFE", "NFSE", "FAT", "TC", "EB", "CTE", "DUP", "DUPL", "DUPLICATA", "TITULO", "PARCELA", "REC"]);
 
 function isDocToken(v) {
   const n = normToken(v);
-  return DOC_TOKENS.has(n) || /^NF\d*$/.test(n) || /^NFE\d*$/.test(n) || /^FAT\d*$/.test(n);
+  return DOC_TOKENS.has(n) || /^NF\d*$/.test(n) || /^NFE\d*$/.test(n) || /^FAT\d*$/.test(n) || /^REC\d*$/.test(n);
 }
 
 function isValidClientName(v) {
@@ -237,8 +237,197 @@ export function dbToItem(r) {
   });
 }
 
+function cleanClientCode(v) {
+  return String(v ?? "").replace(/\D/g, "").trim();
+}
+
+function cellText(row, idx) {
+  return String((row || [])[idx] ?? "").trim();
+}
+
+function joinedRow(row) {
+  return (row || []).map((c) => String(c ?? "").trim()).filter(Boolean).join(" ");
+}
+
+function parseClienteLinha(row) {
+  const raw = joinedRow(row);
+  const m = raw.match(/Cliente\s*:?\s*([\d\.]+)\s*[-–]\s*(.*?)(?:\s*[-–]\s*CPF\/?CNPJ\s*:?\s*([\d\.\/\-]+))?\s*$/i);
+  if (!m) return null;
+  const nome = String(m[2] || "").replace(/\s*CPF\/?CNPJ\s*:?\s*.*/i, "").replace(/\s+Tel\.?\s*:.*/i, "").trim();
+  return {
+    nrCli: cleanClientCode(m[1]),
+    nomeCli: nome,
+    cpfCnpj: String(m[3] || "").trim(),
+    telefone: "",
+    contato: ""
+  };
+}
+
+function parseTotalCliente(row) {
+  const raw = joinedRow(row);
+  const telMatch = raw.match(/Tel\.?\s*:?\s*([^\s].*?)(?:\s+Contato\s*:|$)/i);
+  const contatoMatch = raw.match(/Contato\s*:?\s*(.+)$/i);
+  const telefoneCelula = cellText(row, 1).replace(/^Tel\.?\s*:?\s*/i, "").trim();
+  const contatoCelula = cellText(row, 7).replace(/^Contato\s*:?\s*/i, "").trim();
+  return {
+    telefone: telefoneCelula || String(telMatch?.[1] || "").trim(),
+    contato: contatoCelula || String(contatoMatch?.[1] || "").trim()
+  };
+}
+
+function buildFinrItemFromDetail({ row, client, idx }) {
+  const get = (key, fallbackIdx) => {
+    const pos = idx?.[key];
+    return pos >= 0 ? row[pos] : row[fallbackIdx];
+  };
+
+  const tp = String(get("tp", 0) || "").trim().toUpperCase();
+  const titulo = String(get("titulo", 7) || get("numero", 2) || "").trim();
+  const seq = String(get("seq", 3) || "").trim();
+  const receber = get("receber", 11);
+  const calculada = get("calculada", 10);
+  const recebPrc = get("recebprc", 9);
+  const valor = num(receber) > 0 ? receber : num(calculada) > 0 ? calculada : recebPrc;
+
+  if (!client || !isValidClientName(client.nomeCli) || !isDocToken(tp) || !titulo || num(valor) <= 0) return null;
+
+  return buildItem({
+    origem: "FINR1253",
+    nrCli: client.nrCli,
+    nomeCli: client.nomeCli,
+    cpfCnpj: client.cpfCnpj || "",
+    telefone: client.telefone || "",
+    contato: client.contato || "",
+    tp,
+    ser: String(get("ser", 1) || "").trim(),
+    titulo,
+    seq,
+    nfServico: String(get("nfservico", 4) || "").trim(),
+    operacao: String(get("operacao", 5) || "").trim(),
+    emissao: "",
+    vencimento: dateISO(get("vencto", 6)),
+    valorOriginal: num(valor),
+    valorCalculado: num(calculada),
+    valorReceber: num(receber),
+    acrescimo: num(get("acrescimo", 8)),
+    atrasoRelatorio: num(get("atraso", 12)),
+    uteis: String(get("uteis", 13) || "").trim(),
+    portador: String(get("portador", 14) || "").trim()
+  });
+}
+
+function headerIndexMap(row) {
+  const h = (row || []).map(normHeader);
+  const find = (...names) => {
+    const wanted = names.map(normHeader);
+    return h.findIndex((header) => wanted.some((name) => header === name || header.includes(name) || name.includes(header)));
+  };
+  return {
+    codcliente: find("CODIGOCLIENTE", "CODCLIENTE", "CODCLI"),
+    nomecliente: find("NOMECLIENTE", "CLIENTE", "NOMCLI", "RAZAOSOCIAL"),
+    cpfcnpj: find("CPFCNPJ", "CPF", "CNPJ"),
+    telefone: find("TELEFONE", "TEL", "FONE"),
+    contato: find("CONTATO"),
+    tp: find("TP", "TIPO"),
+    ser: find("SER", "SERIE"),
+    numero: find("NUMERO", "NUMTIT", "NUMTITULO"),
+    seq: find("SEQ", "SEQUENCIA"),
+    nfservico: find("NFSERVICO", "NFSERVICO", "NFSE", "NF"),
+    operacao: find("OPERACAO"),
+    vencto: find("VENCTO", "VENCIMENTO", "DTVENC"),
+    titulo: find("TITULO", "NUMTIT"),
+    acrescimo: find("ACRESCIMO"),
+    recebprc: find("RECEBPRC", "RECEBPRCIAL", "RECEBPARC"),
+    calculada: find("CALCULADA", "VALORCALCULADO"),
+    receber: find("RECEBER", "VALORRECEBER", "SALDO", "SLDTTT"),
+    atraso: find("ATRASO"),
+    uteis: find("UTEIS", "DIASUTEIS"),
+    portador: find("PORTADOR")
+  };
+}
+
+function parseRows1253Tratada(rows) {
+  let idx = null;
+  const out = [];
+
+  for (const row of rows || []) {
+    const first = normHeader(cellText(row, 0));
+    const candidateIdx = headerIndexMap(row);
+    const isHeader = candidateIdx.nomecliente >= 0 && candidateIdx.tp >= 0 && (candidateIdx.receber >= 0 || candidateIdx.calculada >= 0 || candidateIdx.recebprc >= 0);
+    if (isHeader) { idx = candidateIdx; continue; }
+    if (!idx) continue;
+    if (!cellText(row, idx.codcliente) && !cellText(row, idx.nomecliente)) continue;
+    if (["CLIENTE", "TOTALCLIENTE", "TOTALEMPRESAS", "DATAHORAEMISSAO"].some((x) => first.startsWith(x))) continue;
+
+    const client = {
+      nrCli: cleanClientCode(cellText(row, idx.codcliente)),
+      nomeCli: cellText(row, idx.nomecliente),
+      cpfCnpj: cellText(row, idx.cpfcnpj),
+      telefone: cellText(row, idx.telefone),
+      contato: cellText(row, idx.contato)
+    };
+    const item = buildFinrItemFromDetail({ row, client, idx });
+    if (item) out.push(item);
+  }
+
+  return out;
+}
+
+function parseRows1253Blocos(rows) {
+  const out = [];
+  let client = null;
+  let pendentes = [];
+
+  const flushClient = (dadosTotal = {}) => {
+    if (!client) { pendentes = []; return; }
+    client = { ...client, ...dadosTotal };
+    for (const row of pendentes) {
+      const item = buildFinrItemFromDetail({ row, client, idx: null });
+      if (item) out.push(item);
+    }
+    pendentes = [];
+  };
+
+  for (const row of rows || []) {
+    const first = cellText(row, 0);
+    const firstNorm = normHeader(first);
+    const raw = joinedRow(row);
+    if (!raw) continue;
+    if (firstNorm.startsWith("TOTALEMPRESAS") || firstNorm.startsWith("DATAHORAEMISSAO")) continue;
+
+    if (firstNorm.startsWith("CLIENTE")) {
+      flushClient();
+      client = parseClienteLinha(row);
+      continue;
+    }
+
+    if (firstNorm.startsWith("TOTALCLIENTE")) {
+      flushClient(parseTotalCliente(row));
+      client = null;
+      continue;
+    }
+
+    if (client && isDocToken(first)) {
+      pendentes.push(row);
+    }
+  }
+
+  flushClient();
+  return out;
+}
+
 export function parseRows1253(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const hasBlockPattern = rows.some((r) => normHeader(cellText(r, 0)).startsWith("CLIENTE"))
+    && rows.some((r) => normHeader(cellText(r, 0)).startsWith("TOTALCLIENTE"));
+  if (hasBlockPattern) {
+    const parsedBlocks = parseRows1253Blocos(rows);
+    if (parsedBlocks.length > 0) return parsedBlocks;
+  }
+
+  const parsedTreated = parseRows1253Tratada(rows);
+  if (parsedTreated.length > 0) return parsedTreated;
 
   const aliases = {
     codfil: ["CODFIL", "FILIAL", "COD FIL", "COD. FILIAL"],

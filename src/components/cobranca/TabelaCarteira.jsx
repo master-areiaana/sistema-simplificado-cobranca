@@ -47,7 +47,9 @@ function categoriaBadge(cat) {
 
 function isGenericClientName(v) {
   const s = cleanText(v);
-  return !s || /^\d+$/.test(s) || /^cliente\s*\d+$/i.test(s);
+  const n = s.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
+  const termosQueNaoSaoCliente = new Set(["NFE", "NF", "FAT", "TC", "EB", "NFSE", "CTE", "DUP", "DUPL", "TITULO", "PARCELA"]);
+  return !s || s === "—" || /^\d+$/.test(s) || /^cliente\s*\d+$/i.test(s) || termosQueNaoSaoCliente.has(n);
 }
 
 function splitCodeAndName(v) {
@@ -55,7 +57,7 @@ function splitCodeAndName(v) {
   const m = s.match(/^(\d{1,10})\s*[\/\-–]\s*(.{2,})$/);
   if (!m) return null;
   const nome = cleanText(m[2]);
-  if (!hasLetters(nome)) return null;
+  if (!hasLetters(nome) || isGenericClientName(nome)) return null;
   return { nrCli: cleanText(m[1]), nomeCli: nome };
 }
 
@@ -68,8 +70,6 @@ function getDisplayClient(g) {
     const fromItemName = splitCodeAndName(item.nomeCli);
     if (fromItemName) candidates.push(fromItemName);
     if (!isGenericClientName(item.nomeCli) && hasLetters(item.nomeCli)) candidates.push({ nrCli: cleanText(item.nrCli || g.nrCli), nomeCli: cleanText(item.nomeCli) });
-    const fromTitulo = splitCodeAndName(`${cleanText(item.titulo)}/${cleanText(item.seq)}`);
-    if (fromTitulo) candidates.push(fromTitulo);
   }
   const best = candidates.filter(c => c.nomeCli && hasLetters(c.nomeCli) && !isGenericClientName(c.nomeCli)).sort((a, b) => b.nomeCli.length - a.nomeCli.length)[0];
   return { nrCli: best?.nrCli || cleanText(g.nrCli), nomeCli: best?.nomeCli || (!isGenericClientName(g.nomeCli) ? cleanText(g.nomeCli) : "—") };
@@ -267,9 +267,10 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                     <tr key={item.id} style={{ background: t.surf2 }}>
                       {vis.map(c => {
                         const cliente = getDisplayClient(g);
+                        const tituloDetalhe = renderTituloDetalhe(item, g);
                         if (c.key === "check" || c.key === "expand") return <td key={c.key} style={tdS()} />;
-                        if (c.key === "nrCli") return <td key="nrCli" style={{ ...tdS(), color: t.muted }}>{cliente.nrCli || item.nrCli}</td>;
-                        if (c.key === "nomeCli") return <td key="nomeCli" style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{renderTituloDetalhe(item, g)} · <span style={{ fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;
+                        if (c.key === "nrCli") return <td key="nrCli" style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tituloDetalhe}</td>;
+                        if (c.key === "nomeCli") return <td key="nomeCli" style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cliente.nomeCli}>{cliente.nomeCli || "—"}</td>;
                         if (c.key === "qtd") return <td key="qtd" style={{ ...tdS(), textAlign: "center" }}>1</td>;
                         if (c.key === "venc") return <td key="venc" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
                         if (c.key === "atraso") return <td key="atraso" style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;

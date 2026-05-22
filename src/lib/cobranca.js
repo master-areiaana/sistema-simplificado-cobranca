@@ -111,17 +111,51 @@ function normHeader(v) {
     .replace(/[^A-Z0-9]/g, "");
 }
 
+function normToken(v) {
+  return String(v ?? "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+const DOC_TOKENS = new Set(["NF", "NFE", "NFSE", "FAT", "TC", "EB", "CTE", "DUP", "DUPL", "DUPLICATA", "TITULO", "PARCELA"]);
+
+function isDocToken(v) {
+  const n = normToken(v);
+  return DOC_TOKENS.has(n) || /^NF\d*$/.test(n) || /^NFE\d*$/.test(n) || /^FAT\d*$/.test(n);
+}
+
+function isValidClientName(v) {
+  const s = String(v ?? "").trim();
+  if (!s || isDocToken(s) || /^\d+$/.test(s)) return false;
+  return /[A-Za-zÀ-ÿ]/.test(s) && s.replace(/[^A-Za-zÀ-ÿ]/g, "").length >= 3;
+}
+
+function isValidClientCode(v) {
+  const s = String(v ?? "").trim();
+  return /^\d{1,10}$/.test(s.replace(/\D/g, "")) && !isDocToken(s);
+}
+
+function firstValid(row, names, validator) {
+  for (const n of names) {
+    if (row[n] != null && String(row[n]).trim() !== "" && (!validator || validator(row[n]))) return row[n];
+  }
+  return "";
+}
+
 export function pick(row, names) {
   for (const n of names) if (row[n] != null && String(row[n]).trim() !== "") return row[n];
   return "";
 }
 
-function pickFlex(row, names) {
+function pickFlex(row, names, validator = null) {
   const wanted = names.map(normHeader);
   for (const [k, v] of Object.entries(row || {})) {
     const nk = normHeader(k);
     if (wanted.some((w) => nk === w || nk.includes(w) || w.includes(nk))) {
-      if (v != null && String(v).trim() !== "") return v;
+      if (v != null && String(v).trim() !== "" && (!validator || validator(v))) return v;
     }
   }
   return "";
@@ -209,7 +243,7 @@ export function parseRows1253(rows) {
   const aliases = {
     codfil: ["CODFIL", "FILIAL", "COD FIL", "COD. FILIAL"],
     numtit: ["NUMTIT", "NUM TIT", "NUM. TIT", "N TITULO", "TITULO", "TÍTULO", "NUMERO TITULO", "NÚMERO TÍTULO"],
-    codcli: ["CODCLI", "COD CLI", "COD. CLI", "CLIENTE", "CODIGO CLIENTE", "CÓDIGO CLIENTE"],
+    codcli: ["CODCLI", "COD CLI", "COD. CLI", "CODIGO CLIENTE", "CÓDIGO CLIENTE", "CODCLIENTE"],
     dtemis: ["DTEMIS", "DT EMIS", "EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA EMISSÃO"],
     dtvenc: ["DTVENC", "DT VENC", "VENCIMENTO", "DATA VENCIMENTO", "VENCTO"],
     vlrorig: ["VLRORIG", "VLR ORIG", "VALOR ORIGINAL", "VLORIG", "ORIGINAL"],
@@ -217,7 +251,7 @@ export function parseRows1253(rows) {
     juros: ["JUROS", "JURO"],
     atualizado: ["ATUALIZADO", "VALOR ATUALIZADO"],
     numnota: ["NUMNOTA", "NUM NOTA", "NF", "NOTA", "NOTA FISCAL", "NFSE"],
-    nomcli: ["NOMCLI", "NOM CLI", "NOME CLIENTE", "NOME DO CLIENTE", "CLIENTE", "RAZAO SOCIAL", "RAZÃO SOCIAL", "NOME"],
+    nomcli: ["NOMCLI", "NOM CLI", "NOME CLIENTE", "NOME DO CLIENTE", "RAZAO SOCIAL", "RAZÃO SOCIAL", "NOME", "CLIENTE"],
     cep: ["CEP"],
     end: ["ENDERECO", "ENDEREÇO", "LOGRADOURO"],
     numero: ["NUMERO", "NÚMERO", "NR"],
@@ -261,12 +295,13 @@ export function parseRows1253(rows) {
     const nomeTxt = String(nome || "").trim();
     const tituloTxt = String(titulo || "").trim();
 
-    if (!nomeTxt || !tituloTxt || num(valor) <= 0) continue;
+    if (!isValidClientName(nomeTxt) || !tituloTxt || isDocToken(tituloTxt) || num(valor) <= 0) continue;
     if (["TOTAL", "TOTAIS", "SUBTOTAL"].includes(normHeader(nomeTxt)) || ["TOTAL", "TOTAIS", "SUBTOTAL"].includes(normHeader(tituloTxt))) continue;
 
+    const codCli = get("codcli");
     out.push(buildItem({
       origem: "FINR1253",
-      nrCli: String(get("codcli") || "").trim(),
+      nrCli: isValidClientCode(codCli) ? String(codCli).replace(/\D/g, "").trim() : "",
       nomeCli: nomeTxt,
       tp: "TC",
       titulo: tituloTxt,
@@ -284,16 +319,19 @@ export function parseRows1253(rows) {
 export function parseRows7007(rows) {
   const out = [];
   for (const row of rows) {
-    const nome = pick(row, ["NOMCLI", "Cliente", "CLIENTE", "Nome Cliente"]) || pickFlex(row, ["NOMCLI", "Nome Cliente", "Cliente", "Razão Social"]);
-    const nrCli = pick(row, ["CODCLI", "Cliente", "Cod Cliente", "Nº"]) || pickFlex(row, ["CODCLI", "Cod Cliente", "Código Cliente", "Nº"]);
-    const titulo = pick(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "N"]) || pickFlex(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "Número Título", "N"]);
+    const nome = firstValid(row, ["NOMCLI", "Nome Cliente", "NOME CLIENTE", "Razão Social", "RAZAO SOCIAL", "CLIENTE", "Cliente"], isValidClientName)
+      || pickFlex(row, ["NOMCLI", "Nome Cliente", "Razão Social", "Cliente"], isValidClientName);
+    const nrCli = firstValid(row, ["CODCLI", "Cod Cliente", "Código Cliente", "CODIGO CLIENTE", "Nº Cliente", "N Cliente", "Cliente Código"], isValidClientCode)
+      || pickFlex(row, ["CODCLI", "Cod Cliente", "Código Cliente", "Nº Cliente"], isValidClientCode);
+    const titulo = firstValid(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "Número Título", "N", "Nº Título"], (v) => !isDocToken(v))
+      || pickFlex(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "Número Título"], (v) => !isDocToken(v));
     const seq = pick(row, ["SEQ", "Parcela", "Seq"]) || pickFlex(row, ["SEQ", "Parcela"]);
     const valor = pick(row, ["SLDTTT", "SALDO", "Valor", "Val. Orig", "Valor Original"]) || pickFlex(row, ["SLDTTT", "Saldo", "Valor", "Valor Original"]);
     const venc = pick(row, ["DTVENC", "Vencimento", "VENCTO", "Data Vencimento"]) || pickFlex(row, ["DTVENC", "Vencimento", "Vencto", "Data Vencimento"]);
-    if (!nome || !titulo || num(valor) <= 0) continue;
+    if (!isValidClientName(nome) || !titulo || isDocToken(titulo) || num(valor) <= 0) continue;
     out.push(buildItem({
       origem: "RPT_7007_CONS_CAR_EB",
-      nrCli: String(nrCli || "").trim(),
+      nrCli: String(nrCli || "").replace(/\D/g, "").trim(),
       nomeCli: String(nome).trim(),
       tp: "EB",
       titulo: String(titulo).trim(),

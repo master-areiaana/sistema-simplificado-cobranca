@@ -48,7 +48,7 @@ function categoriaBadge(cat) {
 function isGenericClientName(v) {
   const s = cleanText(v);
   const n = s.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
-  const termosQueNaoSaoCliente = new Set(["NFE", "NF", "FAT", "TC", "EB", "NFSE", "CTE", "DUP", "DUPL", "TITULO", "PARCELA"]);
+  const termosQueNaoSaoCliente = new Set(["NFE", "NF", "FAT", "TC", "EB", "NFSE", "CTE", "DUP", "DUPL", "DUPLICATA", "TITULO", "PARCELA"]);
   return !s || s === "—" || /^\d+$/.test(s) || /^cliente\s*\d+$/i.test(s) || termosQueNaoSaoCliente.has(n);
 }
 
@@ -75,6 +75,11 @@ function getDisplayClient(g) {
   return { nrCli: best?.nrCli || cleanText(g.nrCli), nomeCli: best?.nomeCli || (!isGenericClientName(g.nomeCli) ? cleanText(g.nomeCli) : "—") };
 }
 
+function hasValidDisplayClient(g) {
+  const cliente = getDisplayClient(g);
+  return !!cliente.nomeCli && cliente.nomeCli !== "—" && !isGenericClientName(cliente.nomeCli) && hasLetters(cliente.nomeCli);
+}
+
 function getOrigemLabel(origem) {
   return origem === "FINR1253" ? "TC" : "EB";
 }
@@ -89,7 +94,7 @@ function renderTituloDetalhe(item, grupo) {
     return doc ? `${doc}/1` : "—";
   }
   if (titulo && seq) return `${titulo}/${seq}`;
-  if (titulo) return titulo;
+  if (titulo && !isGenericClientName(titulo)) return titulo;
   if (cliente.nrCli && cleanText(item.nrCli) !== cliente.nrCli) return cleanText(item.nrCli);
   return "—";
 }
@@ -187,11 +192,13 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   const CH = (props) => <ColHeader {...props} t={t} sortCfg={scCart} onSort={handleSort} />;
   const vis = visibleCols;
   const colCount = vis.length;
-  const filteredCart = useMemo(() => applyLocalFilters(sortedCart, tableFilters), [sortedCart, tableFilters]);
+  const validBaseCart = useMemo(() => (baseCart || []).filter(hasValidDisplayClient), [baseCart]);
+  const validSortedCart = useMemo(() => (sortedCart || []).filter(hasValidDisplayClient), [sortedCart]);
+  const filteredCart = useMemo(() => applyLocalFilters(validSortedCart, tableFilters), [validSortedCart, tableFilters]);
   const headerData = useMemo(() => {
-    const source = baseCart?.length ? baseCart : sortedCart;
+    const source = validBaseCart?.length ? validBaseCart : validSortedCart;
     return Object.fromEntries(COLS_DEF.map(c => [c.key, source.flatMap(g => valuesForFilter(g, c.key).map(value => ({ [c.key]: value })))]));
-  }, [baseCart, sortedCart]);
+  }, [validBaseCart, validSortedCart]);
 
   function clearAllFilters() {
     setTableFilters({});
@@ -296,7 +303,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
           </tbody>
         </table>
         <div style={{ padding: "8px 12px", borderTop: `1px solid ${t.bor}`, fontSize: 11, color: t.muted, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span><b style={{ color: t.txt }}>{filteredCart.length}</b> de {baseCart.length} clientes</span>
+          <span><b style={{ color: t.txt }}>{filteredCart.length}</b> de {validBaseCart.length} clientes válidos</span>
           {(hasAnyFilter(fCart) || hasAnyTableFilter) && <button onClick={clearAllFilters} style={{ background: "none", border: `1px solid ${t.p}`, color: t.p, borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕ Limpar filtros</button>}
         </div>
       </div>

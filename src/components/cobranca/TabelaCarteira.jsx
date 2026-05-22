@@ -18,7 +18,7 @@ const COLS_DEF = [
   { key: "status", label: "STATUS", width: 100 },
   { key: "acao", label: "AÇÃO A FAZER", width: 120 },
   { key: "enc", label: "ENCAMINHAR", width: 84 },
-  { key: "origem", label: "ORIG.", width: 44 },
+  { key: "origem", label: "ORIG.", width: 52 },
   { key: "cat", label: "CATEGORIA", width: 80 },
   { key: "contato", label: "DT. CONTATO", width: 78 },
   { key: "prom", label: "PROMESSA", width: 82 },
@@ -31,6 +31,7 @@ const thS = (t) => ({ background: t.th, padding: "7px 8px", textAlign: "left", f
 const tdS = (ex = {}) => ({ padding: "6px 8px", borderBottom: "1px solid #0002", fontSize: 11, ...ex });
 const cleanText = (v) => String(v ?? "").trim();
 const hasLetters = (v) => /[A-Za-zÀ-ÿ]/.test(cleanText(v));
+const normSimple = (v) => cleanText(v).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
 
 function encBadge(enc) {
   if (enc === "verificacao") return <Badge label="→ Verificar" color="#3b82f6" />;
@@ -47,9 +48,9 @@ function categoriaBadge(cat) {
 
 function isGenericClientName(v) {
   const s = cleanText(v);
-  const n = s.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
-  const termosQueNaoSaoCliente = new Set(["NFE", "NF", "FAT", "TC", "EB", "NFSE", "CTE", "DUP", "DUPL", "DUPLICATA", "TITULO", "PARCELA"]);
-  return !s || s === "—" || /^\d+$/.test(s) || /^cliente\s*\d+$/i.test(s) || termosQueNaoSaoCliente.has(n);
+  const n = normSimple(s);
+  const termosQueNaoSaoCliente = new Set(["NFE", "NF", "FAT", "REC", "TC", "EB", "NFSE", "CTE", "DUP", "DUPL", "DUPLICATA", "TITULO", "PARCELA", "TOTAL", "TOTALEMPRESAS", "TOTALCLIENTE", "DATAHORAEMISSAO"]);
+  return !s || s === "—" || /^\d+$/.test(s) || /^cliente\s*\d+$/i.test(s) || termosQueNaoSaoCliente.has(n) || n.startsWith("TOTALEMPRESAS") || n.startsWith("TOTALCLIENTE") || n.startsWith("DATAHORAEMISSAO");
 }
 
 function splitCodeAndName(v) {
@@ -75,13 +76,67 @@ function getDisplayClient(g) {
   return { nrCli: best?.nrCli || cleanText(g.nrCli), nomeCli: best?.nomeCli || (!isGenericClientName(g.nomeCli) ? cleanText(g.nomeCli) : "—") };
 }
 
+function isLegacyOrInvalidFinr1253Title(item) {
+  if (!item || item.origem !== "FINR1253") return false;
+  const tp = normSimple(item.tp);
+  const portador = normSimple(item.portador);
+  const nome = normSimple(item.nomeCli);
+  const titulo = normSimple(item.titulo);
+  const numero = normSimple(item.numero);
+  const nfServico = normSimple(item.nfServico);
+
+  return (
+    tp === "TC" ||
+    portador === "TC" ||
+    nome.startsWith("TOTALEMPRESAS") ||
+    titulo.startsWith("TOTALEMPRESAS") ||
+    numero.startsWith("TOTALEMPRESAS") ||
+    nfServico.startsWith("TOTALEMPRESAS") ||
+    nome.startsWith("TOTALCLIENTE") ||
+    titulo.startsWith("TOTALCLIENTE") ||
+    nome.startsWith("DATAHORAEMISSAO") ||
+    titulo.startsWith("DATAHORAEMISSAO")
+  );
+}
+
+function sanitizeGroup(g) {
+  const titulos = (g.titulos || []).filter((item) => !isLegacyOrInvalidFinr1253Title(item));
+  if (!titulos.length) return null;
+
+  const vencimentos = titulos.map((x) => x.vencimento).filter(Boolean).sort();
+  const dataContatos = titulos.map((x) => x.dataContato || "").filter(Boolean).sort();
+  const promessas = titulos.map((x) => x.dataPromessa || "").filter(Boolean).sort();
+
+  return {
+    ...g,
+    titulos,
+    valorOriginal: titulos.reduce((s, x) => s + Number(x.valorOriginal || 0), 0),
+    valorMulta: titulos.reduce((s, x) => s + Number(x.valorMulta || 0), 0),
+    valorJuros: titulos.reduce((s, x) => s + Number(x.valorJuros || 0), 0),
+    valorTotalDebito: titulos.reduce((s, x) => s + Number(x.valorTotalDebito || 0), 0),
+    maiorAtraso: titulos.reduce((m, x) => Math.max(m, Number(x.diasAtraso || 0)), 0),
+    qtdTitulos: titulos.length,
+    qtdTotal: titulos.reduce((s, x) => s + Number(x.qtd || 0), 0),
+    ultimoContato: dataContatos.slice(-1)[0] || "",
+    dataPromessa: promessas.slice(-1)[0] || "",
+    primeiroVencimento: vencimentos[0] || "",
+    statusConsolidado: titulos.map((x) => x.status).filter(Boolean).sort().slice(-1)[0] || g.statusConsolidado || "Não Contatado",
+    obsConsolidada: titulos.map((x) => x.obs).filter(Boolean).slice(-1)[0] || "",
+    encaminharConsolidado: titulos.map((x) => x.encaminhar).filter(Boolean).slice(-1)[0] || "",
+  };
+}
+
+function sanitizeCart(arr) {
+  return (arr || []).map(sanitizeGroup).filter(Boolean);
+}
+
 function hasValidDisplayClient(g) {
   const cliente = getDisplayClient(g);
   return !!cliente.nomeCli && cliente.nomeCli !== "—" && !isGenericClientName(cliente.nomeCli) && hasLetters(cliente.nomeCli);
 }
 
 function getOrigemLabel(origem) {
-  return origem === "FINR1253" ? "TC" : "EB";
+  return origem === "FINR1253" ? "Topcon" : "EB";
 }
 
 function renderTituloDetalhe(item, grupo) {
@@ -175,10 +230,11 @@ function itemMatchesFilters(item, grupo, filters) {
   return matchesAllFiltersByValues((field) => [itemFilterValue(item, grupo, field)], filters);
 }
 function visibleTitlesForGroup(g, filters) {
+  const validTitulos = (g.titulos || []).filter((item) => !isLegacyOrInvalidFinr1253Title(item));
   const hasActiveFilter = Object.values(filters).some(v => v !== null && v !== undefined);
-  if (!hasActiveFilter) return g.titulos || [];
-  const matchedItems = (g.titulos || []).filter(item => itemMatchesFilters(item, g, filters));
-  return matchedItems.length > 0 ? matchedItems : (g.titulos || []);
+  if (!hasActiveFilter) return validTitulos;
+  const matchedItems = validTitulos.filter(item => itemMatchesFilters(item, g, filters));
+  return matchedItems.length > 0 ? matchedItems : validTitulos;
 }
 function applyLocalFilters(arr, filters) {
   return arr.filter((g) => groupMatchesFilters(g, filters));
@@ -192,8 +248,8 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   const CH = (props) => <ColHeader {...props} t={t} sortCfg={scCart} onSort={handleSort} />;
   const vis = visibleCols;
   const colCount = vis.length;
-  const validBaseCart = useMemo(() => (baseCart || []).filter(hasValidDisplayClient), [baseCart]);
-  const validSortedCart = useMemo(() => (sortedCart || []).filter(hasValidDisplayClient), [sortedCart]);
+  const validBaseCart = useMemo(() => sanitizeCart(baseCart).filter(hasValidDisplayClient), [baseCart]);
+  const validSortedCart = useMemo(() => sanitizeCart(sortedCart).filter(hasValidDisplayClient), [sortedCart]);
   const filteredCart = useMemo(() => applyLocalFilters(validSortedCart, tableFilters), [validSortedCart, tableFilters]);
   const headerData = useMemo(() => {
     const source = validBaseCart?.length ? validBaseCart : validSortedCart;

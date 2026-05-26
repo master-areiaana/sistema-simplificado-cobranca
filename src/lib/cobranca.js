@@ -189,35 +189,33 @@ export function keyPart(v) {
 }
 
 // ─── CHAVE ÚNICA CENTRAL DE TÍTULO ─────────────────────────────────────────
-// Usada em: importação, syncImport, loadData, grouped, Limpar BD, PDF.
-// Inclui vencimento para distinguir parcelas com mesmo número e seq vazia.
-// Inclui nome normalizado do cliente como fallback quando nrCli varia entre origens.
-export function getTituloKey({ origem, nrCli, nomeCli, titulo, seq, vencimento }) {
-  const normOrig = keyPart(origem);
-  // Cliente: usa código limpo se existir; fallback: primeiras 3 palavras do nome normalizado
-  const codLimpo = String(nrCli ?? "").replace(/\D/g, "").replace(/^0+(\d+)$/, "$1");
-  const nomeNorm = String(nomeCli ?? "").toUpperCase().normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, " ")
-    .replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join("");
-  const clientePart = codLimpo || nomeNorm;
+// Regras fixas (NUNCA alterar sem migrar banco inteiro):
+//   origem_norm | numero_norm | vencimento_norm
+//
+// NÃO usa seq nem cliente na chave — seq varia entre importações (vazio vs "1" vs vencimento)
+// e cliente pode variar de código entre relatórios.
+// Número + vencimento é suficientemente único dentro de cada origem.
+// Dois títulos com mesmo número mas vencimentos diferentes são registros distintos (✓ correto).
+export function getTituloKey({ origem, titulo, seq, vencimento }) {
+  // Origem: normaliza para valor canônico
+  const origRaw = String(origem ?? "").toUpperCase().replace(/[\s\-_]/g, "");
+  const normOrig = (origRaw.includes("7007") || origRaw.includes("CONSCAREB") || origRaw === "RPT7007CONSCAREB")
+    ? "EB" : "FINR1253";
 
-  // Número do título: normaliza e separa "530/1" em numero=530, seq=1 se seq vier vazio
+  // Número do título: remove zeros à esquerda e pontuação
   const tituloRaw = String(titulo ?? "").trim();
-  let numeroNorm = keyPart(tituloRaw);
-  let seqNorm = keyPart(seq ?? "");
+  let numeroNorm = tituloRaw.replace(/\./g, "").replace(/^0+(\d)/, "$1").toUpperCase();
 
-  // Se o número contém "/" e seq está vazio, extrai seq do número
-  if (!seqNorm && tituloRaw.includes("/")) {
-    const parts = tituloRaw.split("/");
-    numeroNorm = keyPart(parts[0]);
-    seqNorm = keyPart(parts[1] || "");
-  }
+  // Seq: normaliza; ignora se parecer ser um vencimento (yyyy-mm-dd ou yyyymmdd)
+  const seqRaw = String(seq ?? "").trim();
+  const seqPareceVencimento = /^\d{4}-\d{2}-\d{2}$/.test(seqRaw) || /^\d{8}$/.test(seqRaw);
+  const seqNorm = seqPareceVencimento ? "" : seqRaw.replace(/^0+(\d)/, "$1");
 
   // Vencimento normalizado: YYYYMMDD sem traços
   const vencNorm = String(vencimento ?? "").replace(/-/g, "").trim();
 
-  // Chave final: origem|cliente|numero|seq|vencimento
-  return [normOrig, clientePart, numeroNorm, seqNorm, vencNorm].join("|");
+  // Chave final: origem|numero|seq|vencimento
+  return [normOrig, numeroNorm, seqNorm, vencNorm].join("|");
 }
 
 // Deduplicação de array de itens usando getTituloKey — mantém o mais completo
@@ -709,11 +707,9 @@ export function parseRows7007(rows) {
     if (!titulo) { descartados++; addMotivo("sem_titulo"); continue; }
     if (!vencimento && valorOriginal <= 0) { descartados++; addMotivo("sem_venc_nem_valor"); continue; }
 
-    // --- Chave de deduplicação ---
-    // Inclui sempre o vencimento para evitar colisão entre parcelas de mesmo número
-    // com vencimentos diferentes quando a coluna SEQ não existe ou está vazia.
-    const seqBase = String(seq || "").trim();
-    const seqKey = seqBase ? seqBase : vencimento;
+    // seq: usa o valor limpo do arquivo (sem fallback para vencimento)
+    // getTituloKey já inclui vencimento na chave — não precisamos misturar seq+venc
+    const seqKey = String(seq || "").trim();
 
     out.push(buildItem({
       origem: "RPT_7007_CONS_CAR_EB",

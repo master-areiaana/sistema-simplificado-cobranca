@@ -480,31 +480,123 @@ export function parseRows1253(rows) {
   return items;
 }
 
+// ─── RPT_7007_CONS_CAR_EB parser ───────────────────────────────────────────
+// O relatório 7007 (EB) é um arquivo tabular com cabeçalho na primeira linha.
+// Cada linha representa um título/parcela individual.
+//
+// Campos lidos dinamicamente (por nome de cabeçalho):
+//   nomeCli    → NOMCLI / Nome Cliente / Razão Social / CLIENTE
+//   nrCli      → CODCLI / Cod Cliente / Código Cliente / Nº Cliente
+//   titulo     → NUMTIT / Núm. Título / Número Título / Nº Título
+//                (Evita-se "Titulo"/"Título" soltos para não capturar valor monetário)
+//   seq        → SEQ / Parcela / Seq / Par
+//   vencimento → DTVENC / Vencimento / VENCTO / Data Vencimento / Dt.Venc
+//   saldo      → SLDTTT / SALDO / Saldo / Val. Saldo (valor em aberto = valorOriginal)
+//   vlrTit     → VLRTIT / Val. Título / Valor Título (valor face — fallback de saldo)
+//   tp         → TPTIT / Tipo Título / Tipo / Tp (fallback "EB" se ausente)
+//   portador   → PORTAD / Portador / Banco / Carteira (fallback "EB" se ausente)
+//   serie      → SERTIT / Série / Serie / Ser
+//   emissao    → DTEMIS / Emissão / Emissao / Data Emissão / Dt.Emissão
+//
+// Campos FIXOS (só se não houver coluna real):
+//   tp = "EB" e portador = "EB" são fallback — o arquivo raramente traz essas colunas.
+//
+// Deduplicação: buildId usa [origem, nrCli, tp, titulo, seq].
+//   Para blindar colisão quando nrCli ausente, o vencimento é incluído no seq como sufixo.
 export function parseRows7007(rows) {
   const out = [];
   for (const row of rows) {
+    // --- Nome do cliente ---
     const nome = firstValid(row, ["NOMCLI", "Nome Cliente", "NOME CLIENTE", "Razão Social", "RAZAO SOCIAL", "CLIENTE", "Cliente"], isValidClientName)
       || pickFlex(row, ["NOMCLI", "Nome Cliente", "Razão Social", "Cliente"], isValidClientName);
-    const nrCli = firstValid(row, ["CODCLI", "Cod Cliente", "Código Cliente", "CODIGO CLIENTE", "Nº Cliente", "N Cliente", "Cliente Código"], isValidClientCode)
-      || pickFlex(row, ["CODCLI", "Cod Cliente", "Código Cliente", "Nº Cliente"], isValidClientCode);
-    const titulo = firstValid(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "Número Título", "N", "Nº Título"], (v) => !isDocToken(v))
-      || pickFlex(row, ["NUMTIT", "Titulo", "Título", "Núm. Título", "Número Título"], (v) => !isDocToken(v));
-    const seq = pick(row, ["SEQ", "Parcela", "Seq"]) || pickFlex(row, ["SEQ", "Parcela"]);
-    const valor = pick(row, ["SLDTTT", "SALDO", "Valor", "Val. Orig", "Valor Original"]) || pickFlex(row, ["SLDTTT", "Saldo", "Valor", "Valor Original"]);
-    const venc = pick(row, ["DTVENC", "Vencimento", "VENCTO", "Data Vencimento"]) || pickFlex(row, ["DTVENC", "Vencimento", "Vencto", "Data Vencimento"]);
-    if (!isValidClientName(nome) || !titulo || isDocToken(titulo) || num(valor) <= 0) continue;
+
+    // --- Código do cliente ---
+    const nrCliRaw = firstValid(row, ["CODCLI", "Cod Cliente", "Código Cliente", "CODIGO CLIENTE", "Nº Cliente", "N Cliente", "Cliente Código", "Cód. Cliente"], isValidClientCode)
+      || pickFlex(row, ["CODCLI", "Cod Cliente", "Código Cliente", "Cód. Cliente", "Nº Cliente"], isValidClientCode);
+    const nrCli = String(nrCliRaw || "").replace(/\D/g, "").trim();
+
+    // --- Número do título ---
+    // Nota: "Titulo"/"Título" soltos são evitados pois alguns layouts usam esse cabeçalho
+    // para o VALOR MONETÁRIO do título (como na FINR1253 col 7). Prioriza-se NUMTIT e variantes explícitas.
+    const titulo = firstValid(row, ["NUMTIT", "Núm. Título", "Número Título", "Nº Título", "Num Titulo", "Num. Titulo", "NUM_TIT"], (v) => !isDocToken(v))
+      || pickFlex(row, ["NUMTIT", "Núm. Título", "Número Título", "Nº Título"], (v) => !isDocToken(v));
+
+    // --- Parcela/Sequência ---
+    const seq = pick(row, ["SEQ", "Parcela", "Seq", "Par", "PARCELA"]) || pickFlex(row, ["SEQ", "Parcela", "Par"]);
+
+    // --- Vencimento ---
+    const vencRaw = pick(row, ["DTVENC", "Vencimento", "VENCTO", "Data Vencimento", "Dt.Venc", "DT_VENC", "Dt. Venc"])
+      || pickFlex(row, ["DTVENC", "Vencimento", "Vencto", "Data Vencimento", "DtVenc"]);
+    const vencimento = dateISO(vencRaw);
+
+    // --- Valor: saldo em aberto (principal) e valor face (fallback) ---
+    // SLDTTT = saldo total do título (campo padrão EB para o que se deve cobrar)
+    // VLRTIT = valor face original do título (nem sempre presente)
+    // Se só existir saldo, ele é gravado como valorOriginal (comportamento correto para EB).
+    const saldoRaw = pick(row, ["SLDTTT", "SALDO", "Saldo", "Val. Saldo", "Vlr Saldo"])
+      || pickFlex(row, ["SLDTTT", "Saldo", "Val. Saldo"]);
+    const vlrTitRaw = pick(row, ["VLRTIT", "Val. Título", "Valor Título", "Vlr. Título", "Valor Tit"])
+      || pickFlex(row, ["VLRTIT", "Val. Título", "Valor Título"]);
+    // Prioridade: saldo > valor face > campos genéricos
+    const valorRaw = saldoRaw
+      || vlrTitRaw
+      || pick(row, ["Valor", "Val. Orig", "Valor Original"])
+      || pickFlex(row, ["Valor", "Valor Original"]);
+    const valorOriginal = num(valorRaw);
+
+    // --- Tipo do título (lê coluna real; fallback "EB") ---
+    const tpRaw = pick(row, ["TPTIT", "Tipo Título", "Tipo", "Tp", "TIPO"])
+      || pickFlex(row, ["TPTIT", "Tipo Título", "Tipo"]);
+    const tp = (tpRaw && String(tpRaw).trim() && !isDocToken(String(tpRaw).trim()))
+      ? String(tpRaw).trim().toUpperCase()
+      : "EB";
+
+    // --- Portador / Banco / Carteira (lê coluna real; fallback "EB") ---
+    const portadorRaw = pick(row, ["PORTAD", "Portador", "Banco", "Carteira", "BANCO", "CARTEIRA"])
+      || pickFlex(row, ["PORTAD", "Portador", "Banco", "Carteira"]);
+    const portador = (portadorRaw && String(portadorRaw).trim())
+      ? String(portadorRaw).trim()
+      : "EB";
+
+    // --- Série ---
+    const ser = String(
+      pick(row, ["SERTIT", "Série", "Serie", "Ser", "SER"]) || pickFlex(row, ["SERTIT", "Série", "Serie"]) || ""
+    ).trim();
+
+    // --- Data de emissão ---
+    const emissaoRaw = pick(row, ["DTEMIS", "Emissão", "Emissao", "Data Emissão", "Dt. Emissão", "DT_EMIS"])
+      || pickFlex(row, ["DTEMIS", "Emissão", "Emissao", "Data Emissão"]);
+    const emissao = dateISO(emissaoRaw);
+
+    // --- Validação da linha ---
+    // Descarta linhas sem: nome de cliente válido, número de título, ou valor
+    if (!isValidClientName(nome)) continue;
+    if (!titulo || isDocToken(String(titulo))) continue;
+    if (valorOriginal <= 0) continue;
+
+    // --- Chave de deduplicação ---
+    // Se nrCli estiver ausente, incorpora o vencimento no seq para evitar colisão
+    // entre clientes diferentes com mesmo número de título.
+    const seqKey = nrCli
+      ? String(seq || "").trim()
+      : `${String(seq || "").trim()}|${vencimento}`;
+
     out.push(buildItem({
       origem: "RPT_7007_CONS_CAR_EB",
-      nrCli: String(nrCli || "").replace(/\D/g, "").trim(),
+      nrCli,
       nomeCli: String(nome).trim(),
-      tp: "EB",
+      tp,
+      ser,
       titulo: String(titulo).trim(),
-      seq: String(seq || "").trim(),
-      vencimento: dateISO(venc),
-      valorOriginal: num(valor),
-      portador: "EB"
+      seq: seqKey,
+      nfServico: "",
+      emissao,
+      vencimento,
+      valorOriginal,
+      portador
     }));
   }
+  console.info(`RPT_7007: ${out.length} títulos importados.`);
   return out;
 }
 

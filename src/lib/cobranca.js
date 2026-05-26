@@ -262,7 +262,9 @@ function isIgnorableFinr1253Line(row) {
     firstNorm.startsWith("TOTALEMPRESAS") ||
     firstNorm.startsWith("DATAHORAEMISSAO") ||
     firstNorm.startsWith("TOTALGERAL") ||
+    firstNorm.startsWith("TOTALCLIENTE") ||
     firstNorm === "TP" ||
+    firstNorm === "TPSER" ||
     rawNorm.includes("DATAHORAEMISSAO")
   );
 }
@@ -314,17 +316,40 @@ function parseTotalCliente(row) {
   return { telefone, contato };
 }
 
+// Mapeamento de colunas da FINR1253 (linha de lançamento, índice 0-based):
+// 0=Tp | 1=Ser | 2=Número | 3=Seq | 4=NF Serviço | 5=Operação | 6=Vencto.
+// 7=Título | 8=Acréscimo | 9=Receb.Prc. | 10=Calculada | 11=Receber | 12=Atraso | 13=Úteis | 14=Portador
 function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) {
   const tp = cellText(row, 0).toUpperCase();
-  const titulo = cellText(row, 7) || cellText(row, 2);
-  const receber = row?.[11];
-  const calculada = row?.[10];
-  const recebPrc = row?.[9];
-  const valor = num(receber) > 0 ? receber : num(calculada) > 0 ? calculada : recebPrc;
 
   if (!clienteAtivo || !isValidClientName(clienteAtivo.nomeCli)) return null;
   if (!isFinr1253TitleToken(tp)) return null;
-  if (!titulo || num(valor) <= 0) return null;
+
+  const ser       = cellText(row, 1);
+  const numero    = cellText(row, 2);
+  const seq       = cellText(row, 3);
+  const nfServico = cellText(row, 4);
+  const operacao  = row?.[5] ?? "";
+  const vencto    = row?.[6] ?? "";
+  const titulo    = cellText(row, 7);
+  const acrescimo = row?.[8] ?? 0;
+  const recebPrc  = row?.[9] ?? 0;
+  const calculada = row?.[10] ?? 0;
+  const receber   = row?.[11] ?? 0;
+  const atraso    = row?.[12] ?? 0;
+  const uteis     = cellText(row, 13);
+  const portador  = cellText(row, 14);
+
+  // Número do título é obrigatório
+  if (!numero) return null;
+
+  // Valor principal para cálculo: prioridade Receber > Calculada > Receb.Prc > Título
+  const valorBase = num(receber) > 0 ? receber
+    : num(calculada) > 0 ? calculada
+    : num(recebPrc) > 0 ? recebPrc
+    : num(cellText(row, 7));
+
+  if (valorBase <= 0) return null;
 
   return buildItem({
     origem: "FINR1253",
@@ -334,24 +359,23 @@ function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) {
     telefone: dadosTotal.telefone || "",
     contato: dadosTotal.contato || "",
     tp,
-    ser: cellText(row, 1),
-    numero: cellText(row, 2),
-    titulo: String(titulo || "").trim(),
-    seq: cellText(row, 3),
-    nfServico: cellText(row, 4),
-    operacao: row?.[5] ?? "",
+    ser,
+    numero,
+    titulo: numero,         // chave de deduplicação usa numero como titulo
+    seq,
+    nfServico,
+    operacao,
     emissao: "",
-    vencimento: row?.[6] ?? "",
-    vencto: row?.[6] ?? "",
-    valorOriginal: num(valor),
-    valorTitulo: num(row?.[7]),
-    acrescimo: num(row?.[8]),
+    vencimento: dateISO(vencto),
+    valorOriginal: valorBase,
+    valorTitulo: num(titulo),
+    acrescimo: num(acrescimo),
     recebPrc: num(recebPrc),
     valorCalculado: num(calculada),
     valorReceber: num(receber),
-    atrasoRelatorio: num(row?.[12]),
-    uteis: cellText(row, 13),
-    portador: cellText(row, 14)
+    atrasoRelatorio: num(atraso),
+    uteis,
+    portador
   });
 }
 
@@ -361,6 +385,7 @@ export function parseRows1253(rows) {
   const items = [];
   let clienteAtivo = null;
   let bufferTitulos = [];
+  let headerSkipped = 0; // conta as 2 primeiras linhas de cabeçalho que devem ser ignoradas
 
   const flushBloco = (dadosTotal = {}, motivo = "") => {
     if (bufferTitulos.length === 0) return;
@@ -386,19 +411,41 @@ export function parseRows1253(rows) {
   };
 
   for (const row of rows) {
+    // Pula as 2 primeiras linhas: linha de agrupadores (Nº, Cliente, VENCIMENTO...)
+    // e linha de cabeçalho detalhado (Tp, Ser, Número...) — ambas são metadados do relatório
+    if (headerSkipped < 2) {
+      headerSkipped++;
+      continue;
+    }
+
     const first = cellText(row, 0);
     const firstNorm = normHeader(first);
+    const joined = normHeader(joinedRow(row));
 
-    if (isIgnorableFinr1253Line(row)) continue;
+    // Linha vazia
+    if (!joined) continue;
 
-    if (firstNorm.startsWith("CLIENTE")) {
+    // Linhas de rodapé/totais globais — sempre ignorar
+    if (
+      firstNorm.startsWith("TOTALEMPRESAS") ||
+      firstNorm.startsWith("DATAHORAEMISSAO") ||
+      firstNorm.startsWith("TOTALGERAL") ||
+      joined.includes("DATAHORAEMISSAO")
+    ) continue;
+
+    // Linha de cabeçalho repetido (Tp, Ser, Número...) — pode aparecer no meio
+    if (firstNorm === "TP" || firstNorm === "TPSER" || firstNorm === "TIPO") continue;
+
+    // Linha "Cliente: CÓDIGO - NOME - CPF/CNPJ: XXX"
+    if (/^Cliente:/i.test(first)) {
       flushBloco({}, "sem_total_cliente");
       bufferTitulos = [];
       clienteAtivo = parseClienteLinha(row);
       continue;
     }
 
-    if (firstNorm.startsWith("TOTALCLIENTE")) {
+    // Linha "Total Cliente:" — extrai telefone e contato, fecha bloco
+    if (/^Total\s*Cliente/i.test(first) || firstNorm.startsWith("TOTALCLIENTE")) {
       const dadosTotal = parseTotalCliente(row);
       flushBloco(dadosTotal, "total_cliente");
       clienteAtivo = null;
@@ -406,6 +453,7 @@ export function parseRows1253(rows) {
       continue;
     }
 
+    // Linha de lançamento válida (começa com FAT, NFE, REC, NF...)
     if (isFinr1253TitleToken(first)) {
       if (!clienteAtivo) {
         console.warn("FINR1253: título órfão sem cliente ativo. Linha ignorada.", row);
@@ -414,9 +462,14 @@ export function parseRows1253(rows) {
       bufferTitulos.push(row);
       continue;
     }
+
+    // Qualquer outra linha (subtotais, observações) — ignorar
   }
 
+  // Fecha último bloco caso não haja linha Total Cliente no final
   flushBloco({}, "sem_total_cliente");
+
+  console.info(`FINR1253: ${items.length} lançamentos importados com sucesso.`);
   return items;
 }
 

@@ -229,8 +229,10 @@ function groupMatchesFilters(g, filters) {
 function itemMatchesFilters(item, grupo, filters) {
   return matchesAllFiltersByValues((field) => [itemFilterValue(item, grupo, field)], filters);
 }
-function visibleTitlesForGroup(g, filters) {
-  const validTitulos = (g.titulos || []).filter((item) => !isLegacyOrInvalidFinr1253Title(item));
+function visibleTitlesForGroup(g, filters, origemFiltro) {
+  let validTitulos = (g.titulos || []).filter((item) => !isLegacyOrInvalidFinr1253Title(item));
+  // Filtro por origem: nas linhas filhas expandidas, mostra apenas títulos da origem selecionada
+  if (origemFiltro) validTitulos = validTitulos.filter((item) => item.origem === origemFiltro);
   const hasActiveFilter = Object.values(filters).some(v => v !== null && v !== undefined);
   if (!hasActiveFilter) return validTitulos;
   const matchedItems = validTitulos.filter(item => itemMatchesFilters(item, g, filters));
@@ -240,7 +242,7 @@ function applyLocalFilters(arr, filters) {
   return arr.filter((g) => groupMatchesFilters(g, filters));
 }
 
-export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, onEncaminharSugestao, hiddenCols, onClickFilter }) {
+export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, onEncaminharSugestao, hiddenCols, onClickFilter, filtroOrigem }) {
   const [tableFilters, setTableFilters] = useState({});
   const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
   const hasAnyTableFilter = hasAnyFilter(tableFilters);
@@ -315,7 +317,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
               const isSel = selected.has(g.clientKey);
               const leftClr = g.encaminharConsolidado === "verificacao" ? "#3b82f6" : g.encaminharConsolidado === "protesto" ? "#ef4444" : prioCor(g.prioridadeCliente);
               const rowBg = isSel ? (isDark ? "rgba(232,119,34,.15)" : "rgba(232,119,34,.07)") : (i % 2 === 0 ? t.surf : t.alt);
-              const titulosVisiveis = visibleTitlesForGroup(g, tableFilters);
+              const titulosVisiveis = visibleTitlesForGroup(g, tableFilters, filtroOrigem);
               return (
                 <React.Fragment key={g.clientKey}>
                   <tr style={{ background: rowBg, borderLeft: `4px solid ${leftClr}` }}>

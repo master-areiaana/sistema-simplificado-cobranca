@@ -112,18 +112,21 @@ export default function Dashboard() {
         base44.entities.Titulo.filter({ active: true }, "client_name", 2000),
         base44.entities.ChargeEvent.list("-created_date", 2000)
       ]);
+      // Deduplicação física: mantém apenas o registro mais recente por buildId (inclui origem)
       const seenKeys = new Map();
       for (const r of titulos || []) {
         const asItem = dbToItem(r);
-        const key = asItem.id;
+        const key = asItem.id; // buildId inclui origem — não colapsa cross-source
         const existing = seenKeys.get(key);
         if (!existing || (r.updated_date || r.created_date) > (existing.updated_date || existing.created_date)) seenKeys.set(key, r);
       }
-      const titulosUnicos = Array.from(seenKeys.values());
+      // Deduplicação lógica: inclui source na chave para NÃO colapsar FINR1253 com EB
+      // Só colapsa registros exatamente iguais (mesma origem + mesmo nrCli + tp + titulo + seq)
       const logicalKeys = new Map();
-      for (const r of titulosUnicos) {
+      for (const r of seenKeys.values()) {
         const it = dbToItem(r);
-        const lk = [it.nrCli, it.tp, it.titulo, it.seq].map((v) => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1")).join("|");
+        const norm = (v) => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1");
+        const lk = [it.origem, it.nrCli, it.tp, it.titulo, it.seq].map(norm).join("|");
         const prev = logicalKeys.get(lk);
         if (!prev || (r.updated_date || r.created_date) > (prev.updated_date || prev.created_date)) logicalKeys.set(lk, r);
       }
@@ -165,8 +168,14 @@ export default function Dashboard() {
 
   const grouped = useMemo(() => {
     const map = new Map();
+    // Normaliza código do cliente: remove não-dígitos e zeros à esquerda
+    // Isso garante que "04234", "4.234", "4234" → "4234" (mesma chave entre EB e FINR1253)
+    function normNrCli(v) {
+      const s = String(v || "").replace(/\D/g, "").replace(/^0+(\d+)$/, "$1");
+      return s;
+    }
     function extractCliInfo(item) {
-      const rawNr = String(item.nrCli || "").trim();
+      const rawNr = normNrCli(item.nrCli);
       const rawNome = String(item.nomeCli || "").trim();
       const mSlash = rawNome.match(/^(\d{1,8})\s*[\/\-]\s*(.{2,})$/);
       if (mSlash) {
@@ -178,6 +187,8 @@ export default function Dashboard() {
     }
     records.forEach((item) => {
       const info = extractCliInfo(item);
+      // Chave de grupo: código normalizado tem prioridade (une EB + FINR1253 do mesmo cliente)
+      // Fallback: nome normalizado (para clientes sem código)
       const k = info.nrCli || cliKey(item);
       if (!map.has(k)) map.set(k, { clientKey: k, nrCli: info.nrCli, nomeCli: info.nomeCli, titulos: [], _nomes: [] });
       map.get(k)._nomes.push(info.nomeCli);
@@ -257,22 +268,40 @@ export default function Dashboard() {
   const groupedFiltrado = useMemo(() => {
     const busca = normText(buscaCliente);
     const buscaTit = normText(buscaTitulo);
-    return grouped.filter((g) => {
-      if (faixaAtraso > 0 && g.maiorAtraso < faixaAtraso) return false;
-      if (filtroOrigem && !g.titulos.some((ti) => ti.origem === filtroOrigem)) return false;
-      if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente)) return false;
-      if (buscaTit) {
-        const temTituloMatch = g.titulos.some((ti) => normText(ti.titulo || "").includes(buscaTit) || String(ti.titulo || "").includes(buscaTitulo));
-        if (!temTituloMatch) return false;
-      }
-      if (filtroSentinela && g.maiorAtraso <= 90) return false;
-      if (filtroCategoria && !g.titulos.some((ti) => ti.clientCategory === filtroCategoria)) return false;
-      if (!showPaid) {
-        const temPagamento = g.statusConsolidado === "Encerrado" || g.statusConsolidado === "Baixado" || g.statusConsolidado === "Pago Aguard. Baixa" || g.historicoCliente.some((h) => h.motivo === "Confirmado");
-        if (temPagamento) return false;
-      }
-      return true;
-    });
+    return grouped
+      .filter((g) => {
+        if (faixaAtraso > 0 && g.maiorAtraso < faixaAtraso) return false;
+        // Filtro por origem: mostra clientes que tenham pelo menos um título da origem selecionada
+        if (filtroOrigem && !g.titulos.some((ti) => ti.origem === filtroOrigem)) return false;
+        if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente)) return false;
+        if (buscaTit) {
+          const temTituloMatch = g.titulos.some((ti) => normText(ti.titulo || "").includes(buscaTit) || String(ti.titulo || "").includes(buscaTitulo));
+          if (!temTituloMatch) return false;
+        }
+        if (filtroSentinela && g.maiorAtraso <= 90) return false;
+        if (filtroCategoria && !g.titulos.some((ti) => ti.clientCategory === filtroCategoria)) return false;
+        if (!showPaid) {
+          const temPagamento = g.statusConsolidado === "Encerrado" || g.statusConsolidado === "Baixado" || g.statusConsolidado === "Pago Aguard. Baixa" || g.historicoCliente.some((h) => h.motivo === "Confirmado");
+          if (temPagamento) return false;
+        }
+        return true;
+      })
+      .map((g) => {
+        // Quando há filtro por origem, recalcula totais da linha principal apenas com títulos da origem filtrada
+        if (!filtroOrigem) return g;
+        const tsFilt = g.titulos.filter((ti) => ti.origem === filtroOrigem);
+        if (tsFilt.length === g.titulos.length) return g; // todos são da mesma origem, sem recálculo necessário
+        return {
+          ...g,
+          valorOriginal: tsFilt.reduce((s, x) => s + Number(x.valorOriginal || 0), 0),
+          valorMulta: tsFilt.reduce((s, x) => s + Number(x.valorMulta || 0), 0),
+          valorJuros: tsFilt.reduce((s, x) => s + Number(x.valorJuros || 0), 0),
+          valorTotalDebito: tsFilt.reduce((s, x) => s + Number(x.valorTotalDebito || 0), 0),
+          maiorAtraso: tsFilt.reduce((m, x) => Math.max(m, Number(x.diasAtraso || 0)), 0),
+          qtdTitulos: tsFilt.length,
+          primeiroVencimento: tsFilt.map((x) => x.vencimento).filter(Boolean).sort()[0] || "",
+        };
+      });
   }, [grouped, faixaAtraso, filtroOrigem, buscaCliente, buscaTitulo, filtroSentinela, filtroCategoria, showPaid]);
 
   const baseCart = useMemo(() => {
@@ -552,7 +581,7 @@ export default function Dashboard() {
         {activeTab === "verificacao" && <div className="kpi-container kpi-container-2"><KPI t={t} label="Pendentes de Verificação" color="#3B82F6" value={verifLista.length} sub="aguardando resposta" /><KPI t={t} label="Valor em Verificação" color="#3B82F6" value={fmtM(verifLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a validar" /></div>}
         {activeTab === "protesto" && <div className="kpi-container kpi-container-2"><KPI t={t} label="Pendentes de Aprovação" color="#EF4444" value={protestoLista.length} sub="aguardando gestor" /><KPI t={t} label="Valor em Protesto" color="#EF4444" value={fmtM(protestoLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a autorizar" /></div>}
         {(activeTab === "carteira" || activeTab === "verificacao" || activeTab === "protesto") && <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}><FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} /><div style={{ display: "flex", gap: 8, alignItems: "center" }}><span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Categoria:</span><select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}><option value="">Todas</option><option value="Portador">Portador</option><option value="Imobiliário">Imobiliário</option><option value="Parceiros">Parceiros</option><option value="Bancos">Bancos</option></select></div><div style={{ display: "flex", gap: 8, alignItems: "center" }}><span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span><select value={filtroOrigem} onChange={(e) => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}><option value="">Todos</option><option value="FINR1253">Topcon (FINR1253)</option><option value="RPT_7007_CONS_CAR_EB">EB (RPT_7007)</option></select></div><div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}><span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>📄 Título:</span><input type="text" placeholder="Buscar por nº ou nome..." value={buscaTitulo} onChange={(e) => setBuscaTitulo(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />{buscaTitulo && <button onClick={() => setBuscaTitulo("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>}</div><div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}><span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>🔍 Cliente:</span><input type="text" placeholder="Buscar por nome ou nº..." value={buscaCliente} onChange={(e) => setBuscaCliente(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />{buscaCliente && <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>}</div>{activeTab === "carteira" && <div style={{ display: "flex", gap: 8, alignItems: "center" }}><div style={{ position: "relative" }}><button onClick={() => setShowColMenu((x) => !x)} style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>☰ Colunas {hiddenCols.size > 0 ? `(${hiddenCols.size} ocultas)` : ""}</button>{showColMenu && <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: "8px", zIndex: 300, minWidth: 200, boxShadow: "0 8px 24px rgba(0,0,0,.2)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>{[{ key: "nrCli", label: "Nº" }, { key: "nomeCli", label: "CLIENTE" }, { key: "qtd", label: "QTD." }, { key: "venc", label: "VENCIMENTO" }, { key: "atraso", label: "ATRASO" }, { key: "vOrig", label: "VAL. ORIG" }, { key: "multa", label: "MULTA" }, { key: "juros", label: "JUROS" }, { key: "total", label: "TOTAL" }, { key: "status", label: "STATUS" }, { key: "enc", label: "ENCAMINHAR" }, { key: "origem", label: "ORIG." }, { key: "contato", label: "DT. CONTATO" }, { key: "prom", label: "PROMESSA" }, { key: "sugest", label: "SUGESTÃO" }, { key: "obs", label: "OBSERVAÇÃO" }].map((c) => <label key={c.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: hiddenCols.has(c.key) ? t.surf2 : "transparent" }}><input type="checkbox" checked={!hiddenCols.has(c.key)} onChange={() => setHiddenCols((p) => { const n = new Set(p); n.has(c.key) ? n.delete(c.key) : n.add(c.key); return n; })} style={{ accentColor: t.p }} />{c.label}</label>)}<button onClick={() => { setHiddenCols(new Set()); setShowColMenu(false); }} style={{ gridColumn: "1/-1", marginTop: 4, background: t.p, color: "#fff", border: "none", borderRadius: 4, padding: "4px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Mostrar Todas</button></div>}</div></div>}</div>}
-        {activeTab === "carteira" && <div>{selected.size > 0 && <div style={{ background: t.p, borderRadius: 8, padding: "8px 14px", marginBottom: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><span style={{ color: "#fff", fontWeight: 700, fontSize: 12 }}>{selected.size} selecionado(s)</span><button onClick={() => { setBatchForm(emptyForm()); setBatchModal(true); }} style={{ background: "#fff", color: t.p, border: "none", borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>✏️ Cobrança em Lote</button>{selGroups.length === 1 && <button onClick={() => setNegModal(selGroups[0])} style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>🤝 Negociar</button>}<Btn t={t} ghost sm onClick={() => setSelected(new Set())} style={{ color: "#fff", borderColor: "#fff" }}>✕ Deselecionar</Btn></div>}<TabelaCarteira sortedCart={sortedCart} baseCart={baseCart} fCart={fCart} setFCart={setFCart} selected={selected} toggleSel={toggleSel} toggleAll={toggleAll} scCart={scCart} handleSort={handleSort} setModal={setModal} setForm={setForm} setHistModal={setHistModal} openCli={openCli} setOpenCli={setOpenCli} emptyForm={emptyForm} isDark={isDark} t={t} makeColData={makeColData} fieldVal={fieldVal} applyExcelFilter={applyExcelFilter} setNegModal={setNegModal} hiddenCols={hiddenCols} setHiddenCols={setHiddenCols} onClickFilter={(val) => setBuscaCliente(val)} onEncaminharSugestao={async (g, enc) => { for (const item of g.titulos) { await base44.entities.ChargeEvent.create({ titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli, event_type: "COBRANCA", event_subtype: enc, event_date: hojeISO, status: g.statusConsolidado || "Em Cobrança", motive: enc, event_user: "Sistema" }); if (item._dbId) await base44.entities.Titulo.update(item._dbId, { workflow_status: enc, updated_by: "Sistema" }); } setSyncMsg(`✅ ${g.nomeCli} encaminhado para ${enc === "protesto" ? "Protesto" : enc === "verificacao" ? "Verificação" : enc}.`); await loadData(); }} /></div>}
+        {activeTab === "carteira" && <div>{selected.size > 0 && <div style={{ background: t.p, borderRadius: 8, padding: "8px 14px", marginBottom: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><span style={{ color: "#fff", fontWeight: 700, fontSize: 12 }}>{selected.size} selecionado(s)</span><button onClick={() => { setBatchForm(emptyForm()); setBatchModal(true); }} style={{ background: "#fff", color: t.p, border: "none", borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>✏️ Cobrança em Lote</button>{selGroups.length === 1 && <button onClick={() => setNegModal(selGroups[0])} style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>🤝 Negociar</button>}<Btn t={t} ghost sm onClick={() => setSelected(new Set())} style={{ color: "#fff", borderColor: "#fff" }}>✕ Deselecionar</Btn></div>}<TabelaCarteira sortedCart={sortedCart} baseCart={baseCart} fCart={fCart} setFCart={setFCart} selected={selected} toggleSel={toggleSel} toggleAll={toggleAll} scCart={scCart} handleSort={handleSort} setModal={setModal} setForm={setForm} setHistModal={setHistModal} openCli={openCli} setOpenCli={setOpenCli} emptyForm={emptyForm} isDark={isDark} t={t} makeColData={makeColData} fieldVal={fieldVal} applyExcelFilter={applyExcelFilter} setNegModal={setNegModal} hiddenCols={hiddenCols} setHiddenCols={setHiddenCols} filtroOrigem={filtroOrigem} onClickFilter={(val) => setBuscaCliente(val)} onEncaminharSugestao={async (g, enc) => { for (const item of g.titulos) { await base44.entities.ChargeEvent.create({ titulo_id: item.id, client_code: item.nrCli, client_name: item.nomeCli, event_type: "COBRANCA", event_subtype: enc, event_date: hojeISO, status: g.statusConsolidado || "Em Cobrança", motive: enc, event_user: "Sistema" }); if (item._dbId) await base44.entities.Titulo.update(item._dbId, { workflow_status: enc, updated_by: "Sistema" }); } setSyncMsg(`✅ ${g.nomeCli} encaminhado para ${enc === "protesto" ? "Protesto" : enc === "verificacao" ? "Verificação" : enc}.`); await loadData(); }} /></div>}
         {activeTab === "cobrados" && <><div style={{ display: "flex", gap: 6, marginBottom: 12 }}><button onClick={() => setSubTabCobr("historico")} style={{ background: subTabCobr === "historico" ? t.p : t.surf2, color: subTabCobr === "historico" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "historico" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✅ Histórico de Cobrança</button><button onClick={() => setSubTabCobr("promessas")} style={{ background: subTabCobr === "promessas" ? t.p : t.surf2, color: subTabCobr === "promessas" ? "#fff" : t.txt, border: `1px solid ${subTabCobr === "promessas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>📅 Promessas & Calendário</button></div><div className="kpi-container kpi-container-6"><KPI t={t} label="Total Cobrados" color="#10B981" value={cobrados.length} sub="clientes contactados" /><KPI t={t} label="Valor Cobrado" color="#10B981" value={fmtM(cobrados.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total em aberto" /><KPI t={t} label="Com Promessa" color="#FBBF24" value={cobrados.filter((g) => g.dataPromessa).length} sub="clientes com data" /><KPI t={t} label="Prometeu Pagar" color="#A78BFA" value={cobrados.filter((g) => g.statusConsolidado === "Prometeu Pagar" || g.statusConsolidado === "Promessa ativa").length} sub="status atual" /><KPI t={t} label="Pago Aguard. Baixa" color="#3B82F6" value={cobrados.filter((g) => g.statusConsolidado === "Pago Aguard. Baixa" || g.statusConsolidado === "Pago aguardando baixa").length} sub="aguardando baixa" /><KPI t={t} label="Sem Retorno" color="#EF4444" value={cobrados.filter((g) => g.statusConsolidado === "Sem Retorno").length} sub="sem resposta" /></div><div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}><FaixaFilter faixaAtual={faixaAtraso} setFaixa={setFaixaAtraso} t={t} /><div style={{ display: "flex", gap: 8, alignItems: "center" }}><span style={{ fontSize: 11, color: t.muted, fontWeight: 700 }}>Relatório:</span><select value={filtroOrigem} onChange={(e) => setFiltroOrigem(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", fontWeight: 700, cursor: "pointer" }}><option value="">Todos</option><option value="FINR1253">Topcon (FINR1253)</option><option value="RPT_7007_CONS_CAR_EB">EB (RPT_7007)</option></select></div><div style={{ display: "flex", gap: 8, alignItems: "center", flex: "1 1 200px", minWidth: 180 }}><span style={{ fontSize: 11, color: t.muted, fontWeight: 700, whiteSpace: "nowrap" }}>🔍 Cliente:</span><input type="text" placeholder="Buscar por nome ou nº..." value={buscaCliente} onChange={(e) => setBuscaCliente(e.target.value)} style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 6, padding: "6px 10px", fontSize: 12, color: t.txt, outline: "none", flex: 1, minWidth: 0 }} />{buscaCliente && <button onClick={() => setBuscaCliente("")} style={{ background: "none", border: "none", color: t.muted, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>✕</button>}</div></div>{subTabCobr === "historico" && <TabelaCobrados data={cobrados} events={events} t={t} setHistModal={setHistModal} dlCsv={dlCsv} />}{subTabCobr === "promessas" && <MonitorPromessas grouped={groupedFiltrado} events={events} t={t} />}</>}
         {activeTab === "verificacao" && <TabelaVerificacao data={verifLista} t={t} setRespModal={setRespModal} setRespForm={setRespForm} />}
         {activeTab === "protesto" && <TabelaProtesto data={protestoLista} t={t} setRespModal={setRespModal} setRespForm={setRespForm} />}

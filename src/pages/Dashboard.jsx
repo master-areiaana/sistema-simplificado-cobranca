@@ -4,7 +4,8 @@ import { base44 } from "@/api/base44Client";
 import {
   hoje, hojeISO, fmtM, fmtD, normText, cliKey, buildItem, buildId, dbToItem,
   detectSrc, parseRows1253, parseRows7007, calcFin, dateISO, num, pick,
-  dlCsv, openPrint, prioLabel, prioCor, sugestaoEncaminhamento, diffDias } from
+  dlCsv, openPrint, prioLabel, prioCor, sugestaoEncaminhamento, diffDias,
+  getTituloKey, dedupeTitulos } from
 "@/lib/cobranca";
 import { DARK, LIGHT, loadL, saveL } from "@/lib/theme";
 import { KPI, TabBtn, Badge, PrioBadge, PromBadge, ObsCell, Btn, SugestaoEncBadge } from "@/components/cobranca/UI";
@@ -112,29 +113,33 @@ export default function Dashboard() {
         base44.entities.Titulo.filter({ active: true }, "client_name", 2000),
         base44.entities.ChargeEvent.list("-created_date", 2000)
       ]);
-      // Deduplicação física: mantém apenas o registro mais recente por buildId (inclui origem)
-      const seenKeys = new Map();
+      // Deduplicação visual: usa getTituloKey (mesma chave do syncImport e Limpar BD)
+      // Garante que duplicatas antigas no banco não apareçam na tela nem somem nos cards.
+      const tituloKeyMap = new Map();
       for (const r of titulos || []) {
-        const asItem = dbToItem(r);
-        const key = asItem.id; // buildId inclui origem — não colapsa cross-source
-        const existing = seenKeys.get(key);
-        if (!existing || (r.updated_date || r.created_date) > (existing.updated_date || existing.created_date)) seenKeys.set(key, r);
+        const item = dbToItem(r);
+        const key = getTituloKey(item);
+        const prev = tituloKeyMap.get(key);
+        if (!prev) { tituloKeyMap.set(key, { r, item }); continue; }
+        // Entre duplicatas, prefere o com mais dados manuais; em empate, o mais recente
+        const score = (i) => [
+          i.status !== "Não Contatado", i.obs, i.dataPromessa,
+          i.dataContato, i.encaminhar, i.clientCategory
+        ].filter(Boolean).length;
+        const curr = { r, item };
+        const prevScore = score(prev.item);
+        const currScore = score(curr.item);
+        const prevDate = prev.r.updated_date || prev.r.created_date || "";
+        const currDate = curr.r.updated_date || curr.r.created_date || "";
+        if (currScore > prevScore || (currScore === prevScore && currDate > prevDate)) {
+          tituloKeyMap.set(key, curr);
+        }
       }
-      // Deduplicação lógica: inclui source na chave para NÃO colapsar FINR1253 com EB
-      // Só colapsa registros exatamente iguais (mesma origem + mesmo nrCli + tp + titulo + seq)
-      const logicalKeys = new Map();
-      for (const r of seenKeys.values()) {
-        const it = dbToItem(r);
-        const norm = (v) => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1");
-        const lk = [it.origem, it.nrCli, it.tp, it.titulo, it.seq].map(norm).join("|");
-        const prev = logicalKeys.get(lk);
-        if (!prev || (r.updated_date || r.created_date) > (prev.updated_date || prev.created_date)) logicalKeys.set(lk, r);
-      }
-      const titulosFinais = Array.from(logicalKeys.values());
-      setRecords(titulosFinais.map(dbToItem));
+      const titulosFinais = Array.from(tituloKeyMap.values()).map(({ item }) => item);
+      setRecords(titulosFinais);
       setEvents(evts || []);
       const dupCount = (titulos || []).length - titulosFinais.length;
-      setSyncMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${titulosFinais.length} títulos carregados${dupCount > 0 ? ` (${dupCount} duplicatas ignoradas)` : ""}`);
+      setSyncMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${titulosFinais.length} títulos carregados${dupCount > 0 ? ` (${dupCount} duplicatas ocultas)` : ""}`);
     } catch (err) {
       setSyncMsg(`❌ ${err.message}`);
     } finally {
@@ -452,17 +457,8 @@ export default function Dashboard() {
 
     const allTitulos = await base44.entities.Titulo.list("client_name", 5000);
 
-    // Chave de duplicidade SEGURA: inclui vencimento para não colidir parcelas
-    // do mesmo documento com datas diferentes (ex: parcela 1/12, 2/12 etc.)
-    const norm = (v) => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1");
-    const dupKey = (r) => [
-      norm(r.source),
-      norm(r.client_code),
-      norm(r.doc_type),
-      norm(r.title_number),
-      norm(r.seq),
-      norm(r.due_date), // ← vencimento incluso: parcelas diferentes NÃO colidem
-    ].join("|");
+    // Usa getTituloKey — mesma chave do syncImport e loadData (consistência total)
+    const dupKey = (r) => getTituloKey(dbToItem(r));
 
     const byKey = new Map();
     for (const r of allTitulos || []) {
@@ -598,7 +594,7 @@ export default function Dashboard() {
       `Preservadas (conflito origem): ${conflitos}`,
     ];
     if (conflitosDetalhe.length > 0) partes.push(`Conflitos: ${conflitosDetalhe.slice(0, 2).join(" | ")}`);
-    partes.push(`Chave usada: origem+código+tipo+título+seq+vencimento`);
+    partes.push(`Chave usada: getTituloKey (origem+cliente+numero+seq+vencimento)`);
     partes.push(`Reversão: registros com workflow_status="duplicata" e active=false`);
 
     setCleanupMsg(partes.join(" | "));
@@ -611,19 +607,49 @@ export default function Dashboard() {
   async function syncImport(source, imported, fileName, onProgress = () => {}) {
     const t0 = Date.now();
     onProgress("🔍 Verificando duplicidades...");
+    // Busca TODOS os registros da origem (ativos e inativos) para detectar duplicatas antigas
     const existingAll = await base44.entities.Titulo.filter({ source }, "client_name", 5000);
+
+    // existMap: chave = getTituloKey → mantém apenas o registro com mais dados manuais (ou mais recente)
     const existMap = new Map();
     for (const r of existingAll || []) {
-      const key = dbToItem(r).id;
+      const item = dbToItem(r);
+      const key = getTituloKey(item);
       const prev = existMap.get(key);
-      if (!prev || (r.updated_date || r.created_date) >= (prev.updated_date || prev.created_date)) existMap.set(key, r);
+      if (!prev) { existMap.set(key, r); continue; }
+      const score = (rec) => [rec.current_status !== "Não Contatado", rec.last_note, rec.promise_date,
+        rec.last_contact_date, rec.workflow_status !== "normal", rec.client_category].filter(Boolean).length;
+      const prevDate = prev.updated_date || prev.created_date || "";
+      const currDate = r.updated_date || r.created_date || "";
+      if (score(r) > score(prev) || (score(r) === score(prev) && currDate > prevDate)) existMap.set(key, r);
     }
-    const importKeys = new Set(imported.map((i) => i.id));
+
+    const importKeys = new Set(imported.map((i) => getTituloKey(i)));
     const isCarteirCompleta = existMap.size === 0 || imported.length >= existMap.size * 0.5;
     const toCreate = [], toUpdate = [];
     for (const item of imported) {
-      const old = existMap.get(item.id);
-      const payload = { source: item.origem, client_code: item.nrCli, client_name: item.nomeCli, doc_type: item.tp || null, serie: item.ser || null, title_number: item.titulo, seq: item.seq || null, nf_servico: item.nfServico || null, issue_date: item.emissao || null, due_date: item.vencimento || null, original_value: Number(item.valorOriginal || 0), portador: item.portador || null, active: true, import_file: fileName, current_status: old?.current_status || "Não Contatado", current_motive: old?.current_motive || null, current_contact_type: old?.current_contact_type || null, promise_date: old?.promise_date || null, last_contact_date: old?.last_contact_date || null, last_note: old?.last_note || null, contact_count: Number(old?.contact_count || 0), protest_requested_by: old?.protest_requested_by || null, workflow_status: old?.workflow_status || "normal", updated_by: "Importação" };
+      const tKey = getTituloKey(item);
+      const old = existMap.get(tKey);
+      const payload = {
+        source: item.origem, client_code: item.nrCli, client_name: item.nomeCli,
+        doc_type: item.tp || null, serie: item.ser || null, title_number: item.titulo,
+        seq: item.seq || null, nf_servico: item.nfServico || null,
+        issue_date: item.emissao || null, due_date: item.vencimento || null,
+        original_value: Number(item.valorOriginal || 0), portador: item.portador || null,
+        active: true, import_file: fileName,
+        // Preserva todos os dados manuais existentes
+        current_status: old?.current_status || "Não Contatado",
+        current_motive: old?.current_motive || null,
+        current_contact_type: old?.current_contact_type || null,
+        client_category: old?.client_category || null,
+        promise_date: old?.promise_date || null,
+        last_contact_date: old?.last_contact_date || null,
+        last_note: old?.last_note || null,
+        contact_count: Number(old?.contact_count || 0),
+        protest_requested_by: old?.protest_requested_by || null,
+        workflow_status: old?.workflow_status || "normal",
+        updated_by: "Importação"
+      };
       if (old) toUpdate.push({ dbId: old.id, payload }); else toCreate.push(payload);
     }
     let ins = 0;
@@ -647,7 +673,7 @@ export default function Dashboard() {
     let deact = 0, baixados = 0, valorBaixado = 0;
     if (isCarteirCompleta) {
       const toBaixa = (existingAll || []).filter((r) => {
-        const key = dbToItem(r).id;
+        const key = getTituloKey(dbToItem(r));
         return !importKeys.has(key) && r.active && !["Baixado","Recebido","Pago","Encerrado"].includes(r.current_status);
       });
       if (toBaixa.length > 0) onProgress(`📉 Baixando ${toBaixa.length} títulos removidos...`);

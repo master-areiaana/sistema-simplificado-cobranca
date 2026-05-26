@@ -188,6 +188,54 @@ export function keyPart(v) {
     .replace(/^0+(\d+)$/, "$1");
 }
 
+// ─── CHAVE ÚNICA CENTRAL DE TÍTULO ─────────────────────────────────────────
+// Usada em: importação, syncImport, loadData, grouped, Limpar BD, PDF.
+// Inclui vencimento para distinguir parcelas com mesmo número e seq vazia.
+// Inclui nome normalizado do cliente como fallback quando nrCli varia entre origens.
+export function getTituloKey({ origem, nrCli, nomeCli, titulo, seq, vencimento }) {
+  const normOrig = keyPart(origem);
+  // Cliente: usa código limpo se existir; fallback: primeiras 3 palavras do nome normalizado
+  const codLimpo = String(nrCli ?? "").replace(/\D/g, "").replace(/^0+(\d+)$/, "$1");
+  const nomeNorm = String(nomeCli ?? "").toUpperCase().normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, " ")
+    .replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join("");
+  const clientePart = codLimpo || nomeNorm;
+
+  // Número do título: normaliza e separa "530/1" em numero=530, seq=1 se seq vier vazio
+  const tituloRaw = String(titulo ?? "").trim();
+  let numeroNorm = keyPart(tituloRaw);
+  let seqNorm = keyPart(seq ?? "");
+
+  // Se o número contém "/" e seq está vazio, extrai seq do número
+  if (!seqNorm && tituloRaw.includes("/")) {
+    const parts = tituloRaw.split("/");
+    numeroNorm = keyPart(parts[0]);
+    seqNorm = keyPart(parts[1] || "");
+  }
+
+  // Vencimento normalizado: YYYYMMDD sem traços
+  const vencNorm = String(vencimento ?? "").replace(/-/g, "").trim();
+
+  // Chave final: origem|cliente|numero|seq|vencimento
+  return [normOrig, clientePart, numeroNorm, seqNorm, vencNorm].join("|");
+}
+
+// Deduplicação de array de itens usando getTituloKey — mantém o mais completo
+export function dedupeTitulos(items) {
+  const map = new Map();
+  for (const item of items) {
+    const key = getTituloKey(item);
+    const prev = map.get(key);
+    if (!prev) { map.set(key, item); continue; }
+    // Prefere o registro com mais campos manuais preenchidos
+    const score = (i) => [i.status !== "Não Contatado", i.obs, i.dataPromessa, i.dataContato, i.encaminhar, i.clientCategory]
+      .filter(Boolean).length;
+    if (score(item) > score(prev)) map.set(key, item);
+  }
+  return Array.from(map.values());
+}
+
+// buildId mantido para compatibilidade interna (buildItem ainda usa internamente)
 export function buildId({ origem, nrCli, tp, titulo, seq }) {
   return [origem, nrCli, tp, titulo, seq].map(keyPart).join("|");
 }
@@ -477,8 +525,12 @@ export function parseRows1253(rows) {
   // Fecha último bloco caso não haja linha Total Cliente no final
   flushBloco({}, "sem_total_cliente");
 
-  console.info(`FINR1253: ${items.length} lançamentos importados com sucesso.`);
-  return items;
+  // Deduplica dentro do próprio arquivo antes de retornar
+  const dedup = dedupeTitulos(items);
+  const dupCount = items.length - dedup.length;
+  if (dupCount > 0) console.info(`FINR1253: ${dupCount} duplicata(s) internas removidas do arquivo.`);
+  console.info(`FINR1253: ${dedup.length} lançamentos importados com sucesso.`);
+  return dedup;
 }
 
 // ─── RPT_7007_CONS_CAR_EB parser ───────────────────────────────────────────
@@ -683,10 +735,15 @@ export function parseRows7007(rows) {
     console.warn(`RPT_7007: ZERO títulos válidos. Descartados: ${descartados}. Motivos:`, motivosDescarte);
     console.warn(`RPT_7007: Campos mapeados:`, hmap);
     console.warn(`RPT_7007: Primeira linha de dados:`, dataRows[0]);
-  } else {
-    console.info(`RPT_7007: ${out.length} títulos importados | ${descartados} descartados | motivos:`, motivosDescarte);
+    return out;
   }
-  return out;
+
+  // Deduplica dentro do próprio arquivo antes de retornar
+  const dedup = dedupeTitulos(out);
+  const dupCount = out.length - dedup.length;
+  if (dupCount > 0) console.info(`RPT_7007: ${dupCount} duplicata(s) internas removidas do arquivo.`);
+  console.info(`RPT_7007: ${dedup.length} títulos importados | ${descartados} descartados | motivos:`, motivosDescarte);
+  return dedup;
 }
 
 export function dlCsv(name, rows) {

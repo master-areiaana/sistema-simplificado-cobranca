@@ -106,34 +106,57 @@ export default function Dashboard() {
   const [cleanupMsg, setCleanupMsg] = useState(null);
   const [showPaid, setShowPaid] = useState(false);
 
+  // Ref para bloquear reloads via subscribe durante importação ativa
+  const importingRef = useRef(false);
+
   const loadData = useCallback(async () => {
+    const t0perf = performance.now();
     setLoading(true);
     try {
+      const t1 = performance.now();
       const [titulos, evts] = await Promise.all([
-        base44.entities.Titulo.filter({ active: true }, "client_name", 2000),
+        base44.entities.Titulo.filter({ active: true }, "client_name", 3000),
         base44.entities.ChargeEvent.list("-created_date", 2000)
       ]);
-      // Dedup visual: mesma getTituloKey do syncImport → banco consistente com tela
+      const t2 = performance.now();
+
+      // ── Dedup visual via Map (O(n), sem loops aninhados) ──────────────────
       const tituloKeyMap = new Map();
       for (const r of titulos || []) {
         const key = getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
         const prev = tituloKeyMap.get(key);
         if (!prev) { tituloKeyMap.set(key, r); continue; }
-        const score = (rec) => [
-          rec.current_status && rec.current_status !== "Não Contatado",
-          rec.last_note, rec.promise_date, rec.last_contact_date,
-          rec.workflow_status && rec.workflow_status !== "normal",
-          rec.client_category, Number(rec.contact_count) > 0
-        ].filter(Boolean).length;
+        // Score inline — sem chamar função externa por chamada
+        const sc = (rec) => (
+          (rec.current_status && rec.current_status !== "Não Contatado" ? 1 : 0) +
+          (rec.last_note ? 1 : 0) + (rec.promise_date ? 1 : 0) +
+          (rec.last_contact_date ? 1 : 0) +
+          (rec.workflow_status && rec.workflow_status !== "normal" ? 1 : 0) +
+          (rec.client_category ? 1 : 0) +
+          (Number(rec.contact_count) > 0 ? 1 : 0)
+        );
+        const sr = sc(r), sp = sc(prev);
         const dc = r.updated_date || r.created_date || "";
         const dp = prev.updated_date || prev.created_date || "";
-        if (score(r) > score(prev) || (score(r) === score(prev) && dc > dp)) tituloKeyMap.set(key, r);
+        if (sr > sp || (sr === sp && dc > dp)) tituloKeyMap.set(key, r);
       }
+      const t3 = performance.now();
+
+      // ── Converter para items UMA VEZ (após dedup) ─────────────────────────
       const titulosFinais = Array.from(tituloKeyMap.values()).map((r) => dbToItem(r));
+      const t4 = performance.now();
+
+      // ── Batch setState: setRecords e setEvents juntos ─────────────────────
       setRecords(titulosFinais);
       setEvents(evts || []);
+
       const dupCount = (titulos || []).length - titulosFinais.length;
-      setSyncMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${titulosFinais.length} títulos carregados${dupCount > 0 ? ` (${dupCount} duplicatas ocultas)` : ""}`);
+      const totalMs = (performance.now() - t0perf).toFixed(0);
+      const fetchMs = (t2 - t1).toFixed(0);
+      const dedupMs = (t3 - t2).toFixed(0);
+      const convMs = (t4 - t3).toFixed(0);
+      console.info(`⚡ loadData: total=${totalMs}ms | fetch=${fetchMs}ms | dedup=${dedupMs}ms | convert=${convMs}ms | ${titulosFinais.length} títulos${dupCount > 0 ? ` (${dupCount} dup ocultas)` : ""}`);
+      setSyncMsg(`✅ ${new Date().toLocaleTimeString("pt-BR")} — ${titulosFinais.length} títulos carregados${dupCount > 0 ? ` (${dupCount} duplicatas ocultas)` : ""} ⏱${totalMs}ms`);
     } catch (err) {
       setSyncMsg(`❌ ${err.message}`);
     } finally {
@@ -145,9 +168,19 @@ export default function Dashboard() {
   useEffect(() => { saveL(LOCAL_THEME, isDark ? "dark" : "light"); }, [isDark]);
   useEffect(() => { saveL(LOCAL_TAB, activeTab); setKpiFilter(null); }, [activeTab]);
   useEffect(() => {
-    const unsub1 = base44.entities.Titulo.subscribe(() => loadData());
-    const unsub2 = base44.entities.ChargeEvent.subscribe(() => loadData());
-    return () => { unsub1(); unsub2(); };
+    // Debounce: evita múltiplos reloads durante importação (N writes → 1 reload)
+    // importingRef.current bloqueia completamente reloads enquanto importação ativa
+    let debounceTimer = null;
+    const debouncedLoad = () => {
+      if (importingRef.current) return; // importação ativa → ignora
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (!importingRef.current) loadData();
+      }, 800); // 800ms de debounce
+    };
+    const unsub1 = base44.entities.Titulo.subscribe(debouncedLoad);
+    const unsub2 = base44.entities.ChargeEvent.subscribe(debouncedLoad);
+    return () => { unsub1(); unsub2(); clearTimeout(debounceTimer); };
   }, [loadData]);
 
   const histMap = useMemo(() => {
@@ -171,6 +204,7 @@ export default function Dashboard() {
   }, [events]);
 
   const grouped = useMemo(() => {
+    const tg0 = performance.now();
     const map = new Map();
 
     // Normaliza nome para chave de agrupamento (não altera exibição):
@@ -235,39 +269,48 @@ export default function Dashboard() {
       delete g._nomes;
       delete g._codigos;
     });
-    return Array.from(map.values()).map((g) => {
+    const agrupados = Array.from(map.values()).map((g) => {
       const ts = g.titulos;
-      const vOrig = ts.reduce((s, x) => s + Number(x.valorOriginal || 0), 0);
-      const vMult = ts.reduce((s, x) => s + Number(x.valorMulta || 0), 0);
-      const vJuro = ts.reduce((s, x) => s + Number(x.valorJuros || 0), 0);
-      const vTot = ts.reduce((s, x) => s + Number(x.valorTotalDebito || 0), 0);
-      const mAtr = ts.reduce((m, x) => Math.max(m, Number(x.diasAtraso || 0)), 0);
-      const qtdT = ts.reduce((s, x) => s + Number(x.qtd || 0), 0);
-      const ultCont = ts.map((x) => x.dataContato || "").filter(Boolean).sort().slice(-1)[0] || "";
-      const dataProm = ts.map((x) => x.dataPromessa || "").filter(Boolean).sort().slice(-1)[0] || "";
-      const statusC = ts.map((x) => x.status).filter(Boolean).sort().slice(-1)[0] || "Não Contatado";
-      const obsC = ts.map((x) => x.obs).filter(Boolean).slice(-1)[0] || "";
-      const encC = ts.map((x) => x.encaminhar).filter(Boolean).slice(-1)[0] || "";
-      const solProt = ts.map((x) => x.solicitanteProtesto).filter(Boolean).slice(-1)[0] || "";
+      // Usa single-pass para evitar múltiplos reduce/map/filter sobre o mesmo array
+      let vOrig = 0, vMult = 0, vJuro = 0, vTot = 0, mAtr = 0, qtdT = 0;
+      let ultCont = "", dataProm = "", statusC = "", obsC = "", encC = "", solProt = "";
+      let primeiroVencimento = "", foiCobrado = false;
+      for (const x of ts) {
+        vOrig += Number(x.valorOriginal || 0);
+        vMult += Number(x.valorMulta || 0);
+        vJuro += Number(x.valorJuros || 0);
+        vTot += Number(x.valorTotalDebito || 0);
+        const da = Number(x.diasAtraso || 0); if (da > mAtr) mAtr = da;
+        qtdT += Number(x.qtd || 0);
+        if (x.dataContato && x.dataContato > ultCont) ultCont = x.dataContato;
+        if (x.dataPromessa && x.dataPromessa > dataProm) dataProm = x.dataPromessa;
+        if (x.status && x.status > statusC) statusC = x.status;
+        if (x.obs && !obsC) obsC = x.obs;
+        if (x.encaminhar && !encC) encC = x.encaminhar;
+        if (x.solicitanteProtesto && !solProt) solProt = x.solicitanteProtesto;
+        if (x.vencimento && (!primeiroVencimento || x.vencimento < primeiroVencimento)) primeiroVencimento = x.vencimento;
+        if (!foiCobrado && ((x.qtd || 0) > 0 || !!x.dataContato)) foiCobrado = true;
+      }
+      if (!statusC) statusC = "Não Contatado";
       const prio = mAtr > 90 || qtdT >= 3 ? "CRÍTICO" : mAtr > 30 || qtdT >= 2 ? "ALTO" : mAtr > 0 || qtdT >= 1 ? "MÉDIO" : "BAIXO";
-      const foiCobrado = ts.some((x) => (x.qtd || 0) > 0 || !!x.dataContato);
-      const vencimentos = ts.map((x) => x.vencimento).filter(Boolean).sort();
-      const primeiroVencimento = vencimentos[0] || "";
-      // Busca histórico: tenta clientKey direto, depois chaves derivadas (código+nome de cada título)
+      // Histórico: lookup direto por chave (O(1)), sem normText no loop
       const histCliKey = histMap[g.clientKey];
-      const histNomeKey = g.clientKey.startsWith("NOME:") ? histMap[g.clientKey] : histMap[`NOME:${normText(g.nomeCli || "")}`];
+      const histNomeKey = g.clientKey.startsWith("NOME:") ? histCliKey : histMap[`NOME:${normText(g.nomeCli || "")}`];
       const historicoMerged = (() => {
-        const all = [...(histCliKey || []), ...(histNomeKey || [])];
+        const all = histCliKey === histNomeKey ? (histCliKey || []) : [...(histCliKey || []), ...(histNomeKey || [])];
+        if (!all.length) return [];
         const seen = new Set();
         return all.filter((h) => {
-          const hk = [h.data, h.status, h.motivo, h.obs, h.usuario].join("|");
+          const hk = `${h.data}|${h.status}|${h.motivo}|${h.obs}|${h.usuario}`;
           if (seen.has(hk)) return false;
           seen.add(hk);
           return true;
-        }).sort((a, b) => String(b.data).localeCompare(String(a.data)));
+        }).sort((a, b) => b.data > a.data ? -1 : 1);
       })();
       return { ...g, valorOriginal: vOrig, valorMulta: vMult, valorJuros: vJuro, valorTotalDebito: vTot, maiorAtraso: mAtr, qtdTitulos: ts.length, qtdTotal: qtdT, ultimoContato: ultCont, dataPromessa: dataProm, statusConsolidado: statusC, obsConsolidada: obsC, encaminharConsolidado: encC, solicitanteProtestoConsolidado: solProt, prioridadeCliente: prio, foiCobrado, historicoCliente: historicoMerged, primeiroVencimento };
     });
+    console.info(`⚡ grouped: ${(performance.now() - tg0).toFixed(0)}ms | ${agrupados.length} grupos de ${records.length} títulos`);
+    return agrupados;
   }, [records, histMap]);
 
   function fieldVal(g, field) {
@@ -629,7 +672,8 @@ export default function Dashboard() {
 
     const existMap = new Map();
     for (const r of existingAll || []) {
-      const key = getTituloKey(dbToItem(r));
+      // Usa campos do banco direto — evita dbToItem() custoso só para gerar chave
+      const key = getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
       const prev = existMap.get(key);
       if (!prev) { existMap.set(key, r); continue; }
       const sc = manualScore(r), sp = manualScore(prev);
@@ -750,7 +794,7 @@ export default function Dashboard() {
     const isCarteirCompleta = existMap.size === 0 || deduped.length >= existMap.size * 0.5;
     if (isCarteirCompleta) {
       const toBaixa = (existingAll || []).filter((r) => {
-        const key = getTituloKey(dbToItem(r));
+        const key = getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
         return !importKeys.has(key) && r.active &&
           !["Baixado","Recebido","Pago","Encerrado"].includes(r.current_status);
       });
@@ -800,7 +844,9 @@ export default function Dashboard() {
       setImportStatus({ ok: false, msg: "❌ Formato não permitido. Envie CSV, XLSX ou XLS." }); e.target.value = ""; return;
     }
     setImportStatus(null); setIsImporting(true);
+    importingRef.current = true; // bloqueia subscribe durante toda a importação
     const t0 = Date.now();
+    const t0perf = performance.now();
     const setStep = (msg) => setSyncMsg(`⏳ ${msg}`);
     try {
       setStep("Lendo arquivo...");
@@ -889,12 +935,19 @@ export default function Dashboard() {
         const parcialMsg = !r.isCarteirCompleta ? " ⚠️ Parcial: baixa automática desabilitada." : "";
         setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${rawRows.length} linhas | ${imported.length} válidos | ${r.ins} novos | ${r.upd} atualizados${ignoradosMsg}${dupArqMsg}${baixaMsg}${parcialMsg} — ⏱ ${elapsed}s` });
       }
-      e.target.value = ""; await loadData();
+      e.target.value = "";
+      setSyncMsg("⏳ Importação concluída. Atualizando carteira...");
+      const tLoadStart = performance.now();
+      await loadData();
+      const tLoadEnd = performance.now();
+      console.info(`⚡ loadData pós-importação: ${(tLoadEnd - tLoadStart).toFixed(0)}ms`);
+      console.info(`⚡ TOTAL importação+reload: ${(performance.now() - t0perf).toFixed(0)}ms`);
     } catch (err) {
       console.error("Erro na importação:", err);
       e.target.value = "";
       setImportStatus({ ok: false, msg: `❌ Erro: ${err.message}` });
     } finally {
+      importingRef.current = false; // libera subscribe
       setIsImporting(false);
     }
   }

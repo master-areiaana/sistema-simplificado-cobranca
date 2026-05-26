@@ -188,33 +188,59 @@ export function keyPart(v) {
     .replace(/^0+(\d+)$/, "$1");
 }
 
+// ─── NORMALIZAÇÃO DO NÚMERO DO TÍTULO ──────────────────────────────────────
+// Separa o número base de um sufixo de barra (ex: "10117/1" → base "10117", sufixo "1").
+// A barra NÃO é tratada como parcela real para fins de deduplicação — ela apenas
+// varia entre importações e causa duplicidade indevida.
+// Regra: se o título vier no formato "NUMERO/SUFIXO", usa apenas o NUMERO como base.
+// Se houver campo seq próprio e confiável no relatório, ele entra separadamente.
+export function normalizeTituloNumero(titulo) {
+  const raw = String(titulo ?? "").trim().replace(/\./g, "");
+  // Detecta formato "BASE/SUFIXO" onde BASE é numérico e SUFIXO é curto (1-3 dígitos)
+  // Ex: "10117/1", "530/2", "557/1" → extrai apenas o número base
+  const m = raw.match(/^(\d+)\/(\d{1,3})$/);
+  if (m) {
+    return { base: m[1].replace(/^0+(\d)/, "$1"), sufixo: m[2] };
+  }
+  // Sem barra: usa número inteiro como base
+  const base = raw.replace(/^0+(\d)/, "$1").toUpperCase();
+  return { base, sufixo: "" };
+}
+
 // ─── CHAVE ÚNICA CENTRAL DE TÍTULO ─────────────────────────────────────────
-// Regras fixas (NUNCA alterar sem migrar banco inteiro):
-//   origem_norm | numero_norm | vencimento_norm
+// Regra: origem_norm | numero_BASE (sem sufixo de barra) | seq_proprio | vencimento_norm
 //
-// NÃO usa seq nem cliente na chave — seq varia entre importações (vazio vs "1" vs vencimento)
-// e cliente pode variar de código entre relatórios.
-// Número + vencimento é suficientemente único dentro de cada origem.
-// Dois títulos com mesmo número mas vencimentos diferentes são registros distintos (✓ correto).
+// A barra no número (ex: 10117/1, 10117/2) NÃO entra na chave como diferenciador.
+// Isso evita duplicidade indevida quando o relatório gera sufixos inconsistentes.
+//
+// A seq só entra na chave se:
+//   - for um campo próprio do relatório (não derivado da barra do número), E
+//   - não parecer um vencimento, E
+//   - não for idêntica ao sufixo da barra (pois nesse caso a barra e o seq seriam a mesma coisa)
+//
+// Dois títulos com mesmo número base mas vencimentos diferentes → registros distintos (✓).
 export function getTituloKey({ origem, titulo, seq, vencimento }) {
   // Origem: normaliza para valor canônico
   const origRaw = String(origem ?? "").toUpperCase().replace(/[\s\-_]/g, "");
   const normOrig = (origRaw.includes("7007") || origRaw.includes("CONSCAREB") || origRaw === "RPT7007CONSCAREB")
     ? "EB" : "FINR1253";
 
-  // Número do título: remove zeros à esquerda e pontuação
-  const tituloRaw = String(titulo ?? "").trim();
-  let numeroNorm = tituloRaw.replace(/\./g, "").replace(/^0+(\d)/, "$1").toUpperCase();
+  // Número do título: extrai apenas o BASE (sem sufixo de barra)
+  const { base: numeroBase, sufixo: sufixoBarra } = normalizeTituloNumero(titulo);
+  const numeroNorm = numeroBase.toUpperCase();
 
-  // Seq: normaliza; ignora se parecer ser um vencimento (yyyy-mm-dd ou yyyymmdd)
+  // Seq: só entra na chave se for campo próprio E confiável
+  // Ignora: vencimentos disfarçados, seq idêntico ao sufixo da barra (seria duplicar info), vazio
   const seqRaw = String(seq ?? "").trim();
   const seqPareceVencimento = /^\d{4}-\d{2}-\d{2}$/.test(seqRaw) || /^\d{8}$/.test(seqRaw);
-  const seqNorm = seqPareceVencimento ? "" : seqRaw.replace(/^0+(\d)/, "$1");
+  // Se seq é exatamente o sufixo da barra, ignorar (a barra já foi descartada)
+  const seqEhSufixoBarra = sufixoBarra !== "" && seqRaw === sufixoBarra;
+  const seqNorm = (seqPareceVencimento || seqEhSufixoBarra || !seqRaw) ? "" : seqRaw.replace(/^0+(\d)/, "$1");
 
   // Vencimento normalizado: YYYYMMDD sem traços
   const vencNorm = String(vencimento ?? "").replace(/-/g, "").trim();
 
-  // Chave final: origem|numero|seq|vencimento
+  // Chave final: origem|numero_base|seq_proprio|vencimento
   return [normOrig, numeroNorm, seqNorm, vencNorm].join("|");
 }
 
@@ -373,8 +399,11 @@ function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) {
   if (!isFinr1253TitleToken(tp)) return null;
 
   const ser            = cellText(row, 1);
-  const numero         = cellText(row, 2);   // Número do documento (ex: 9831)
-  const seq            = cellText(row, 3);
+  const numeroRaw      = cellText(row, 2);   // Número do documento (ex: 9831 ou 10117/1)
+  const { base: numero, sufixo: numSufixo } = normalizeTituloNumero(numeroRaw); // extrai número base sem barra
+  // Seq do FINR1253 vem da coluna 3; se estiver vazio, usa sufixo da barra como fallback
+  const seqColuna      = cellText(row, 3);
+  const seq            = seqColuna || numSufixo || "";
   const nfServico      = cellText(row, 4);
   const operacao       = row?.[5] ?? "";
   const vencto         = row?.[6] ?? "";
@@ -666,14 +695,25 @@ export function parseRows7007(rows) {
     }
 
     // --- Número do título ---
+    // Normaliza para usar apenas o número BASE (sem sufixo de barra ex: "10117/1" → "10117")
+    // O sufixo de barra só vira seq se não houver campo seq próprio no relatório
     let titulo = "";
+    let seqDaBarra = "";
     if (hmap.titulo) {
       const v = row[hmap.titulo];
-      if (v != null && String(v).trim() && !isDocToken(String(v).trim())) titulo = String(v).trim();
+      if (v != null && String(v).trim() && !isDocToken(String(v).trim())) {
+        const { base, sufixo } = normalizeTituloNumero(String(v).trim());
+        titulo = base;
+        seqDaBarra = sufixo; // guarda para usar como seq apenas se não houver campo seq próprio
+      }
     }
 
     // --- Parcela/Sequência ---
-    const seq = hmap.seq ? String(row[hmap.seq] ?? "").trim() : "";
+    // Prioridade: campo seq próprio do relatório > sufixo da barra (apenas como fallback)
+    // Se houver campo seq próprio E ele não for igual ao sufixo da barra, usa o campo próprio
+    const seqProprio = hmap.seq ? String(row[hmap.seq] ?? "").trim() : "";
+    // Só usa sufixo da barra se NÃO houver campo seq próprio no relatório (hmap.seq não mapeado)
+    const seq = seqProprio || (!hmap.seq && seqDaBarra ? seqDaBarra : "");
 
     // --- Vencimento ---
     const vencRaw = hmap.venc ? row[hmap.venc] : undefined;

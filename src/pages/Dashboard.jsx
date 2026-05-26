@@ -446,23 +446,144 @@ export default function Dashboard() {
   }
 
   async function limparDuplicatasBanco() {
-    setCleanupMsg("⏳ Verificando duplicatas no banco...");
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    // ─── FASE 1: DIAGNÓSTICO ───────────────────────────────────────────────
+    setCleanupMsg("🔍 Analisando duplicatas no banco...");
+    await yieldUI();
+
     const allTitulos = await base44.entities.Titulo.list("client_name", 5000);
     const byKey = new Map();
     for (const r of allTitulos || []) {
-      const asItem = dbToItem(r); const key = asItem.id;
+      const key = dbToItem(r).id;
       if (!byKey.has(key)) byKey.set(key, []);
       byKey.get(key).push(r);
     }
-    let removed = 0, idx = 0;
-    for (const [, group] of byKey) {
+
+    // Identifica grupos com duplicatas
+    const gruposDup = [];
+    for (const [key, group] of byKey) {
       if (group.length <= 1) continue;
+      // Ordena: mais recente primeiro
       group.sort((a, b) => String(b.updated_date || b.created_date || "").localeCompare(String(a.updated_date || a.created_date || "")));
-      for (let i = 1; i < group.length; i++) { await base44.entities.Titulo.delete(group[i].id); removed++; idx++; if (idx % 3 === 0) await sleep(600); }
+      gruposDup.push({ key, group });
     }
-    setCleanupMsg(removed > 0 ? `✅ ${removed} duplicata(s) removida(s) do banco.` : "✅ Nenhuma duplicata encontrada no banco.");
-    if (removed > 0) await loadData();
+
+    const totalFisico = allTitulos.length;
+    const totalUnicos = byKey.size;
+    const totalDupGrupos = gruposDup.length;
+    const totalDupRegistros = gruposDup.reduce((s, g) => s + g.group.length - 1, 0);
+
+    if (totalDupRegistros === 0) {
+      setCleanupMsg("✅ Nenhuma duplicata física encontrada no banco. Banco já está limpo.");
+      return;
+    }
+
+    // ─── FASE 2: CONFIRMAÇÃO COM DIAGNÓSTICO ──────────────────────────────
+    const msgConfirm = [
+      `📊 DIAGNÓSTICO DE DUPLICATAS`,
+      ``,
+      `Registros físicos no banco: ${totalFisico}`,
+      `Registros únicos (chave lógica): ${totalUnicos}`,
+      `Grupos com duplicatas: ${totalDupGrupos}`,
+      `Duplicatas a inativar: ${totalDupRegistros}`,
+      ``,
+      `REGRA USADA: origem + nrCli + tp + titulo + seq`,
+      `CRITÉRIO: mantém o registro com updated_date mais recente.`,
+      ``,
+      `⚠️  SEGURANÇA: duplicatas com observação, promessa, status`,
+      `manual ou data de contato NÃO serão inativadas automaticamente.`,
+      `Elas serão preservadas e listadas no relatório.`,
+      ``,
+      `Deseja prosseguir com a limpeza segura?`
+    ].join("\n");
+
+    if (!window.confirm(msgConfirm)) {
+      setCleanupMsg("ℹ️ Limpeza cancelada pelo usuário.");
+      return;
+    }
+
+    // ─── FASE 3: LIMPEZA SEGURA ────────────────────────────────────────────
+    setCleanupMsg("⏳ Executando limpeza segura...");
+    await yieldUI();
+
+    // Verifica se registro tem dados manuais relevantes
+    const temDadosManuais = (r) =>
+      !!(r.last_note?.trim()) ||
+      !!(r.promise_date) ||
+      !!(r.last_contact_date) ||
+      !!(r.protest_requested_by?.trim()) ||
+      (r.current_status && r.current_status !== "Não Contatado" && r.current_status !== "Baixado") ||
+      (r.workflow_status && r.workflow_status !== "normal" && r.workflow_status !== "baixado" && r.workflow_status !== "");
+
+    let inativados = 0, preservadosManuais = 0, conflitos = 0;
+    const conflitosDetalhe = [];
+    const t0 = Date.now();
+
+    for (const { group } of gruposDup) {
+      const principal = group[0]; // mais recente — manter
+      const duplicatas = group.slice(1);
+
+      for (const dup of duplicatas) {
+        // Segurança: origens diferentes no mesmo grupo → conflito, não inativar
+        if (dup.source !== principal.source) {
+          conflitos++;
+          conflitosDetalhe.push(`Conflito de origem: ${dup.client_name} [${dup.source} vs ${principal.source}]`);
+          continue;
+        }
+
+        // Segurança: duplicata tem dados manuais que o principal não tem
+        const dupTemDados = temDadosManuais(dup);
+        const principalTemDados = temDadosManuais(principal);
+
+        if (dupTemDados && !principalTemDados) {
+          // Migra dados manuais para o principal antes de inativar
+          await base44.entities.Titulo.update(principal.id, {
+            current_status: dup.current_status || principal.current_status,
+            current_motive: dup.current_motive || principal.current_motive,
+            current_contact_type: dup.current_contact_type || principal.current_contact_type,
+            promise_date: dup.promise_date || principal.promise_date,
+            last_contact_date: dup.last_contact_date || principal.last_contact_date,
+            last_note: dup.last_note || principal.last_note,
+            protest_requested_by: dup.protest_requested_by || principal.protest_requested_by,
+            workflow_status: dup.workflow_status || principal.workflow_status,
+            contact_count: Math.max(Number(dup.contact_count || 0), Number(principal.contact_count || 0)),
+            updated_by: "Limpeza Segura — dados migrados de duplicata",
+          });
+        } else if (dupTemDados && principalTemDados) {
+          // Ambos têm dados manuais — preservar duplicata, não inativar automaticamente
+          preservadosManuais++;
+          continue;
+        }
+
+        // Inativar duplicata antiga (não deletar fisicamente)
+        await base44.entities.Titulo.update(dup.id, {
+          active: false,
+          current_status: "Baixado",
+          current_motive: "Duplicata inativada — limpeza segura. Registro principal preservado.",
+          workflow_status: "duplicata",
+          updated_by: "Limpeza Segura",
+        });
+        inativados++;
+      }
+      await yieldUI();
+    }
+
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+    // ─── FASE 4: RELATÓRIO FINAL ───────────────────────────────────────────
+    const linhasRelatorio = [
+      `✅ LIMPEZA SEGURA CONCLUÍDA — ${elapsed}s`,
+      ``,
+      `📊 Registros físicos analisados: ${totalFisico}`,
+      `🔑 Grupos únicos encontrados: ${totalUnicos}`,
+      `🔁 Grupos com duplicatas: ${totalDupGrupos}`,
+      `🗑️  Duplicatas inativadas: ${inativados}`,
+      `🔒 Preservadas (dados manuais em ambos): ${preservadosManuais}`,
+      `⚠️  Preservadas por conflito de origem: ${conflitos}`,
+    ];
+    if (conflitosDetalhe.length > 0) linhasRelatorio.push(``, `Conflitos: ${conflitosDetalhe.slice(0, 3).join(" | ")}`);
+
+    setCleanupMsg(linhasRelatorio.join(" | "));
+    if (inativados > 0) await loadData();
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

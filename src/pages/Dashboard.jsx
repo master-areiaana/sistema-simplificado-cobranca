@@ -158,9 +158,14 @@ export default function Dashboard() {
       if (!seen.has(k)) seen.set(k, e);
     }
     for (const e of seen.values()) {
-      const key = `${String(e.client_code || "").trim()}||${normText(e.client_name || "")}`;
-      if (!out[key]) out[key] = [];
-      out[key].push({ ...e, data: e.event_date || "", tipo: e.contact_type || "", status: e.status || "", motivo: e.motive || "", obs: e.note || "", usuario: e.event_user || "", dataPromessa: e.promise_date || "", subtype: e.event_subtype || "" });
+      const evtData = { ...e, data: e.event_date || "", tipo: e.contact_type || "", status: e.status || "", motivo: e.motive || "", obs: e.note || "", usuario: e.event_user || "", dataPromessa: e.promise_date || "", subtype: e.event_subtype || "" };
+      // Indexa por código+nome E por nome normalizado sozinho (para grupos unificados por nome)
+      const keyFull = `${String(e.client_code || "").trim()}||${normText(e.client_name || "")}`;
+      const keyNome = `NOME:${normText(e.client_name || "")}`;
+      if (!out[keyFull]) out[keyFull] = [];
+      out[keyFull].push(evtData);
+      if (!out[keyNome]) out[keyNome] = [];
+      out[keyNome].push(evtData);
     }
     Object.keys(out).forEach((k) => out[k].sort((a, b) => String(b.data).localeCompare(String(a.data))));
     return out;
@@ -168,48 +173,68 @@ export default function Dashboard() {
 
   const grouped = useMemo(() => {
     const map = new Map();
+
+    // Normaliza nome para chave de agrupamento (não altera exibição):
+    // maiúsculas, sem acentos, pontuação vira espaço, espaços duplos removidos.
+    function normNomeKey(v) {
+      return String(v || "")
+        .toUpperCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[.,\-/\\]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    // Extrai nome limpo removendo prefixo numérico "CÓDIGO / NOME"
+    function extractNomeCli(v) {
+      const raw = String(v || "").trim();
+      const m = raw.match(/^(\d{1,10})\s*[\/\-–]\s*(.{2,})$/);
+      if (m && /[A-Za-zÀ-ÿ]/.test(m[2])) return m[2].trim();
+      return /^\d+$/.test(raw) ? "" : raw;
+    }
+
     // Normaliza código do cliente: remove não-dígitos e zeros à esquerda
-    // Isso garante que "04234", "4.234", "4234" → "4234" (mesma chave entre EB e FINR1253)
-    function normNrCli(v) {
-      const s = String(v || "").replace(/\D/g, "").replace(/^0+(\d+)$/, "$1");
-      return s;
+    function normCod(v) {
+      return String(v || "").replace(/\D/g, "").replace(/^0+(\d+)$/, "$1");
     }
-    function extractCliInfo(item) {
-      const rawNr = normNrCli(item.nrCli);
-      const rawNome = String(item.nomeCli || "").trim();
-      const mSlash = rawNome.match(/^(\d{1,8})\s*[\/\-]\s*(.{2,})$/);
-      if (mSlash) {
-        const nome = mSlash[2].trim();
-        if (/[A-Za-zÀ-ÿ]/.test(nome)) return { nrCli: rawNr, nomeCli: nome };
-      }
-      if (/^\d{2,8}$/.test(rawNome)) return { nrCli: rawNr, nomeCli: "" };
-      return { nrCli: rawNr, nomeCli: rawNome };
+
+    // Chave de agrupamento: CPF/CNPJ > Nome normalizado > Código
+    // PREMIX CONCRETO LTDA com códigos 71, 67, 73 → mesma chave NOME:PREMIX CONCRETO LTDA
+    function getClienteKey(item) {
+      const doc = String(item.cpfCnpj || "").replace(/\D/g, "");
+      if (doc.length >= 11) return `DOC:${doc}`;
+      const nomeNorm = normNomeKey(extractNomeCli(item.nomeCli));
+      if (nomeNorm.replace(/\s/g, "").length >= 3 && /[A-Za-z]/.test(nomeNorm)) return `NOME:${nomeNorm}`;
+      const cod = normCod(item.nrCli);
+      if (cod) return `COD:${cod}`;
+      return `ID:${item.id || Math.random()}`;
     }
+
     records.forEach((item) => {
-      const info = extractCliInfo(item);
-      // Chave de grupo: código normalizado tem prioridade (une EB + FINR1253 do mesmo cliente)
-      // Fallback: nome normalizado (para clientes sem código)
-      const k = info.nrCli || cliKey(item);
-      if (!map.has(k)) map.set(k, { clientKey: k, nrCli: info.nrCli, nomeCli: info.nomeCli, titulos: [], _nomes: [] });
-      map.get(k)._nomes.push(info.nomeCli);
-      map.get(k).titulos.push(item);
+      const k = getClienteKey(item);
+      const nomeExibicao = extractNomeCli(item.nomeCli) || item.nomeCli || "";
+      const cod = normCod(item.nrCli);
+      if (!map.has(k)) {
+        map.set(k, { clientKey: k, nrCli: cod, nomeCli: nomeExibicao, _codigos: new Set(), titulos: [], _nomes: [] });
+      }
+      const g = map.get(k);
+      if (cod) g._codigos.add(cod);
+      g._nomes.push(nomeExibicao);
+      g.titulos.push(item);
     });
+
+    // Consolida nome de exibição (mais longo com letras) e lista de códigos
     map.forEach((g) => {
-      const stripCode = (s) => {
-        const raw = String(s || "").trim();
-        if (!raw) return "";
-        const mm = raw.match(/^(\d{1,8})\s*[\/\-]\s*(.{2,})$/);
-        if (mm && /[A-Za-zÀ-ÿ]/.test(mm[2])) return mm[2].trim();
-        return raw;
-      };
-      const cands = [...(g._nomes || []).map(stripCode), ...(g.titulos || []).map((ti) => stripCode(ti && ti.nomeCli))].map((s) => String(s).trim()).filter(Boolean);
-      if (cands.length > 0) {
-        const comLetras = cands.filter((s) => /[A-Za-zÀ-ÿ]/.test(s));
-        if (comLetras.length === 0) { if (!g.nomeCli) g.nomeCli = ""; g.nomeCliInvalido = true; delete g._nomes; return; }
+      const comLetras = (g._nomes || []).filter((s) => /[A-Za-zÀ-ÿ]/.test(s));
+      if (comLetras.length > 0) {
         comLetras.sort((a, b) => b.length - a.length);
         g.nomeCli = comLetras[0];
       }
+      g.codigosLista = [...g._codigos].sort((a, b) => Number(a) - Number(b));
+      if (g.codigosLista.length > 0) g.nrCli = g.codigosLista[0];
       delete g._nomes;
+      delete g._codigos;
     });
     return Array.from(map.values()).map((g) => {
       const ts = g.titulos;
@@ -229,7 +254,20 @@ export default function Dashboard() {
       const foiCobrado = ts.some((x) => (x.qtd || 0) > 0 || !!x.dataContato);
       const vencimentos = ts.map((x) => x.vencimento).filter(Boolean).sort();
       const primeiroVencimento = vencimentos[0] || "";
-      return { ...g, valorOriginal: vOrig, valorMulta: vMult, valorJuros: vJuro, valorTotalDebito: vTot, maiorAtraso: mAtr, qtdTitulos: ts.length, qtdTotal: qtdT, ultimoContato: ultCont, dataPromessa: dataProm, statusConsolidado: statusC, obsConsolidada: obsC, encaminharConsolidado: encC, solicitanteProtestoConsolidado: solProt, prioridadeCliente: prio, foiCobrado, historicoCliente: histMap[g.clientKey] || [], primeiroVencimento };
+      // Busca histórico: tenta clientKey direto, depois chaves derivadas (código+nome de cada título)
+      const histCliKey = histMap[g.clientKey];
+      const histNomeKey = g.clientKey.startsWith("NOME:") ? histMap[g.clientKey] : histMap[`NOME:${normText(g.nomeCli || "")}`];
+      const historicoMerged = (() => {
+        const all = [...(histCliKey || []), ...(histNomeKey || [])];
+        const seen = new Set();
+        return all.filter((h) => {
+          const hk = [h.data, h.status, h.motivo, h.obs, h.usuario].join("|");
+          if (seen.has(hk)) return false;
+          seen.add(hk);
+          return true;
+        }).sort((a, b) => String(b.data).localeCompare(String(a.data)));
+      })();
+      return { ...g, valorOriginal: vOrig, valorMulta: vMult, valorJuros: vJuro, valorTotalDebito: vTot, maiorAtraso: mAtr, qtdTitulos: ts.length, qtdTotal: qtdT, ultimoContato: ultCont, dataPromessa: dataProm, statusConsolidado: statusC, obsConsolidada: obsC, encaminharConsolidado: encC, solicitanteProtestoConsolidado: solProt, prioridadeCliente: prio, foiCobrado, historicoCliente: historicoMerged, primeiroVencimento };
     });
   }, [records, histMap]);
 
@@ -273,7 +311,7 @@ export default function Dashboard() {
         if (faixaAtraso > 0 && g.maiorAtraso < faixaAtraso) return false;
         // Filtro por origem: mostra clientes que tenham pelo menos um título da origem selecionada
         if (filtroOrigem && !g.titulos.some((ti) => ti.origem === filtroOrigem)) return false;
-        if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente)) return false;
+        if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente) && !(g.codigosLista || []).some((c) => c.includes(buscaCliente))) return false;
         if (buscaTit) {
           const temTituloMatch = g.titulos.some((ti) => normText(ti.titulo || "").includes(buscaTit) || String(ti.titulo || "").includes(buscaTitulo));
           if (!temTituloMatch) return false;

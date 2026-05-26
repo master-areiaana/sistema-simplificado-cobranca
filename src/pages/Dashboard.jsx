@@ -622,7 +622,7 @@ export default function Dashboard() {
         const r = await syncImport(source, imported, file.name, setStep);
         const elapsed = r.elapsed;
         const baixaMsg = r.baixados > 0 ? ` | ${r.baixados} baixados (${fmtM(r.valorBaixado)})` : "";
-        const parcialMsg = !r.isCarteirCompleta ? " ⚠️ Planilha parcial — baixa automática não aplicada." : "";
+        const parcialMsg = !r.isCarteirCompleta ? " ⚠️ Importação parcial: este arquivo representa menos de 50% da carteira atual, por isso nenhum título foi baixado automaticamente. Nenhuma ação necessária." : "";
         setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${rawRows.length} linhas | ${imported.length} válidos | ${r.ins} novos | ${r.upd} atualizados${baixaMsg}${parcialMsg} — ⏱ ${elapsed}s` });
       }
       e.target.value = ""; await loadData();

@@ -451,9 +451,22 @@ export default function Dashboard() {
     await yieldUI();
 
     const allTitulos = await base44.entities.Titulo.list("client_name", 5000);
+
+    // Chave de duplicidade SEGURA: inclui vencimento para não colidir parcelas
+    // do mesmo documento com datas diferentes (ex: parcela 1/12, 2/12 etc.)
+    const norm = (v) => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1");
+    const dupKey = (r) => [
+      norm(r.source),
+      norm(r.client_code),
+      norm(r.doc_type),
+      norm(r.title_number),
+      norm(r.seq),
+      norm(r.due_date), // ← vencimento incluso: parcelas diferentes NÃO colidem
+    ].join("|");
+
     const byKey = new Map();
     for (const r of allTitulos || []) {
-      const key = dbToItem(r).id;
+      const key = dupKey(r);
       if (!byKey.has(key)) byKey.set(key, []);
       byKey.get(key).push(r);
     }
@@ -505,16 +518,19 @@ export default function Dashboard() {
     setCleanupMsg("⏳ Executando limpeza segura...");
     await yieldUI();
 
-    // Verifica se registro tem dados manuais relevantes
+    // Verifica se registro tem dados manuais relevantes (todos os campos de cobrança)
     const temDadosManuais = (r) =>
       !!(r.last_note?.trim()) ||
       !!(r.promise_date) ||
       !!(r.last_contact_date) ||
       !!(r.protest_requested_by?.trim()) ||
+      !!(r.current_contact_type?.trim()) ||
+      !!(r.client_category?.trim()) ||
+      (Number(r.contact_count) > 0) ||
       (r.current_status && r.current_status !== "Não Contatado" && r.current_status !== "Baixado") ||
-      (r.workflow_status && r.workflow_status !== "normal" && r.workflow_status !== "baixado" && r.workflow_status !== "");
+      (r.workflow_status && r.workflow_status !== "normal" && r.workflow_status !== "baixado" && r.workflow_status !== "duplicata" && r.workflow_status !== "");
 
-    let inativados = 0, preservadosManuais = 0, conflitos = 0;
+    let inativados = 0, preservadosManuais = 0, conflitos = 0, migrados = 0;
     const conflitosDetalhe = [];
     const t0 = Date.now();
 
@@ -535,18 +551,20 @@ export default function Dashboard() {
         const principalTemDados = temDadosManuais(principal);
 
         if (dupTemDados && !principalTemDados) {
-          // Migra dados manuais para o principal antes de inativar
+          migrados++;
+          // Migra TODOS os dados manuais para o principal antes de inativar
           await base44.entities.Titulo.update(principal.id, {
             current_status: dup.current_status || principal.current_status,
             current_motive: dup.current_motive || principal.current_motive,
             current_contact_type: dup.current_contact_type || principal.current_contact_type,
+            client_category: dup.client_category || principal.client_category,
             promise_date: dup.promise_date || principal.promise_date,
             last_contact_date: dup.last_contact_date || principal.last_contact_date,
             last_note: dup.last_note || principal.last_note,
             protest_requested_by: dup.protest_requested_by || principal.protest_requested_by,
-            workflow_status: dup.workflow_status || principal.workflow_status,
+            workflow_status: (dup.workflow_status && dup.workflow_status !== "normal" && dup.workflow_status !== "") ? dup.workflow_status : principal.workflow_status,
             contact_count: Math.max(Number(dup.contact_count || 0), Number(principal.contact_count || 0)),
-            updated_by: "Limpeza Segura — dados migrados de duplicata",
+            updated_by: `Limpeza Segura ${hojeISO} — dados migrados de duplicata ID ${dup.id}`,
           });
         } else if (dupTemDados && principalTemDados) {
           // Ambos têm dados manuais — preservar duplicata, não inativar automaticamente
@@ -554,13 +572,12 @@ export default function Dashboard() {
           continue;
         }
 
-        // Inativar duplicata antiga (não deletar fisicamente)
+        // Inativar duplicata antiga — NÃO deletar fisicamente (reversível)
         await base44.entities.Titulo.update(dup.id, {
           active: false,
-          current_status: "Baixado",
-          current_motive: "Duplicata inativada — limpeza segura. Registro principal preservado.",
+          current_motive: `Duplicata inativada em ${hojeISO} — registro principal ID: ${principal.id}`,
           workflow_status: "duplicata",
-          updated_by: "Limpeza Segura",
+          updated_by: `Limpeza Segura ${hojeISO}`,
         });
         inativados++;
       }
@@ -570,19 +587,21 @@ export default function Dashboard() {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
     // ─── FASE 4: RELATÓRIO FINAL ───────────────────────────────────────────
-    const linhasRelatorio = [
-      `✅ LIMPEZA SEGURA CONCLUÍDA — ${elapsed}s`,
-      ``,
-      `📊 Registros físicos analisados: ${totalFisico}`,
-      `🔑 Grupos únicos encontrados: ${totalUnicos}`,
-      `🔁 Grupos com duplicatas: ${totalDupGrupos}`,
-      `🗑️  Duplicatas inativadas: ${inativados}`,
-      `🔒 Preservadas (dados manuais em ambos): ${preservadosManuais}`,
-      `⚠️  Preservadas por conflito de origem: ${conflitos}`,
+    const partes = [
+      `✅ LIMPEZA SEGURA — ${elapsed}s`,
+      `Analisados: ${totalFisico}`,
+      `Únicos: ${totalUnicos}`,
+      `Grupos dup.: ${totalDupGrupos}`,
+      `Inativadas: ${inativados}`,
+      `Dados migrados: ${migrados}`,
+      `Preservadas (conflito manual): ${preservadosManuais}`,
+      `Preservadas (conflito origem): ${conflitos}`,
     ];
-    if (conflitosDetalhe.length > 0) linhasRelatorio.push(``, `Conflitos: ${conflitosDetalhe.slice(0, 3).join(" | ")}`);
+    if (conflitosDetalhe.length > 0) partes.push(`Conflitos: ${conflitosDetalhe.slice(0, 2).join(" | ")}`);
+    partes.push(`Chave usada: origem+código+tipo+título+seq+vencimento`);
+    partes.push(`Reversão: registros com workflow_status="duplicata" e active=false`);
 
-    setCleanupMsg(linhasRelatorio.join(" | "));
+    setCleanupMsg(partes.join(" | "));
     if (inativados > 0) await loadData();
   }
 
@@ -770,7 +789,7 @@ export default function Dashboard() {
           <button onClick={() => setIsDark((x) => !x)} style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{isDark ? "☀️" : "🌙"}</button>
           <Btn t={t} sm onClick={() => setEmailModal(true)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📧 Enviar PDF</Btn>
           <Btn t={t} sm onClick={() => exportarPDFExecutivo({ grouped, filteredCart: sortedCart, dash, faixaAtraso, filtroOrigem, hojeISO })} style={{ background: "#0369a1", border: "none", color: "#fff" }}>📊 Baixar Relatório</Btn>
-          <Btn t={t} sm onClick={() => { if (window.confirm("⚠️ AÇÃO IRREVERSÍVEL\n\nIsso vai remover PERMANENTEMENTE duplicatas físicas do banco de dados, mantendo apenas o registro mais recente por título.\n\nEssa ação não pode ser desfeita. Use apenas para manutenção.\n\nDeseja continuar?")) limparDuplicatasBanco(); }} style={{ background: "#64748b", border: "none", color: "#fff" }} title="Remover duplicatas do banco (irreversível)">🧹 Limpar BD</Btn>
+          <Btn t={t} sm onClick={limparDuplicatasBanco} style={{ background: "#64748b", border: "none", color: "#fff" }} title="Limpeza segura de duplicatas — inativa cópias antigas, preserva dados manuais">🧹 Limpar BD</Btn>
           <Btn t={t} sm onClick={() => fileRef.current?.click()} disabled={isImporting} style={{ background: isImporting ? "#ccc" : t.p, border: "none", color: isImporting ? "#999" : "#fff", cursor: isImporting ? "not-allowed" : "pointer" }}>⬆️ {isImporting ? "Importando..." : "Importar"}</Btn>
         </div>
       </header>

@@ -646,7 +646,8 @@ export default function Dashboard() {
     const lap = (k) => { T[k] = ((Date.now() - T.t0) / 1000).toFixed(2); };
 
     // ── 1. Deduplicar arquivo em memória (usa nova getTituloKey) ──────────────
-    onProgress("🔍 Deduplicando arquivo...");
+    onProgress(`🔍 Deduplicando ${imported.length} registros do arquivo...`);
+    await yieldUI();
     const fileMap = new Map();
     for (const item of imported) {
       const k = getTituloKey(item);
@@ -657,7 +658,8 @@ export default function Dashboard() {
     lap("dedup");
 
     // ── 2. Buscar banco UMA VEZ ───────────────────────────────────────────────
-    onProgress("📥 Buscando registros existentes...");
+    onProgress(`📥 Consultando banco de dados (origem: ${source})...`);
+    await yieldUI();
     const existingAll = await base44.entities.Titulo.filter({ source }, "client_name", 5000);
     lap("fetch");
 
@@ -682,6 +684,8 @@ export default function Dashboard() {
       if (sc > sp || (sc === sp && dc > dp)) existMap.set(key, r);
     }
     lap("map");
+    onProgress(`🔎 Comparando ${deduped.length} registros com ${existMap.size} existentes...`);
+    await yieldUI();
 
     // ── 4. Separar: create / update (apenas se mudou) / skip ─────────────────
     const toCreate = [], toUpdate = [], skipped = [];
@@ -764,6 +768,8 @@ export default function Dashboard() {
       }
     }
     lap("compare");
+    onProgress(`📊 Resultado: ${toCreate.length} novos | ${toUpdate.length} a atualizar | ${skipped.length} sem alteração`);
+    await yieldUI();
 
     // ── 5. Creates em lote ────────────────────────────────────────────────────
     let ins = 0;
@@ -798,26 +804,34 @@ export default function Dashboard() {
         return !importKeys.has(key) && r.active &&
           !["Baixado","Recebido","Pago","Encerrado"].includes(r.current_status);
       });
-      if (toBaixa.length > 0) onProgress(`📉 Baixando ${toBaixa.length} títulos removidos...`);
-      for (let i = 0; i < toBaixa.length; i += 10) {
-        await Promise.all(toBaixa.slice(i, i + 10).map(async (r) => {
-          const valorTit = Number(r.original_value || 0);
-          valorBaixado += valorTit;
-          await base44.entities.Titulo.update(r.id, {
+      if (toBaixa.length > 0) {
+        onProgress(`📉 Baixando ${toBaixa.length} títulos removidos...`);
+        // Separa updates e creates — executa cada batch em paralelo separadamente
+        // (não aninhado: evita 2 awaits sequenciais por registro dentro do Promise.all)
+        const BAIXA_BATCH = 20;
+        for (let i = 0; i < toBaixa.length; i += BAIXA_BATCH) {
+          const lote = toBaixa.slice(i, i + BAIXA_BATCH);
+          // Todos os updates do lote em paralelo
+          await Promise.all(lote.map((r) => base44.entities.Titulo.update(r.id, {
             active: false, current_status: "Baixado",
             current_motive: "Saiu da carteira — baixa automática por importação",
             last_contact_date: hojeISO, workflow_status: "baixado", updated_by: "Importação"
-          });
-          await base44.entities.ChargeEvent.create({
-            titulo_id: r.id, client_code: r.client_code, client_name: r.client_name,
-            event_type: "BAIXA", event_subtype: "SAIU_IMPORTACAO", event_date: hojeISO,
-            status: "Baixado", motive: "Título não presente na nova importação",
-            note: `Arquivo: ${fileName}. Valor: R$ ${valorTit.toFixed(2).replace(".",",")}`,
-            event_user: "Importação Automática"
-          });
-          deact++; baixados++;
-        }));
-        await yieldUI();
+          })));
+          // Todos os events do lote em paralelo
+          await Promise.all(lote.map((r) => {
+            const valorTit = Number(r.original_value || 0);
+            valorBaixado += valorTit;
+            deact++; baixados++;
+            return base44.entities.ChargeEvent.create({
+              titulo_id: r.id, client_code: r.client_code, client_name: r.client_name,
+              event_type: "BAIXA", event_subtype: "SAIU_IMPORTACAO", event_date: hojeISO,
+              status: "Baixado", motive: "Título não presente na nova importação",
+              note: `Arquivo: ${fileName}. Valor: R$ ${valorTit.toFixed(2).replace(".",",")}`,
+              event_user: "Importação Automática"
+            });
+          }));
+          await yieldUI();
+        }
       }
     }
     lap("baixa");
@@ -847,7 +861,8 @@ export default function Dashboard() {
     importingRef.current = true; // bloqueia subscribe durante toda a importação
     const t0 = Date.now();
     const t0perf = performance.now();
-    const setStep = (msg) => setSyncMsg(`⏳ ${msg}`);
+    setSyncMsg("⏳ Lendo arquivo...");
+    const setStep = (msg) => { setSyncMsg(`⏳ ${msg}`); };
     try {
       setStep("Lendo arquivo...");
       const buf = await file.arrayBuffer();
@@ -973,7 +988,7 @@ export default function Dashboard() {
       <main style={{ padding: "14px 16px", maxWidth: "100%", margin: "0 auto" }}>
         {importStatus && <div style={{ background: importStatus.ok ? isDark ? "#052e16" : "#f0fdf4" : isDark ? "#2d0a0a" : "#fef2f2", border: `1px solid ${importStatus.ok ? "#16a34a" : "#dc2626"}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: importStatus.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{importStatus.msg}</span><button onClick={() => setImportStatus(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
         {cleanupMsg && <div style={{ background: isDark ? "#0c1a2e" : "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#3b82f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{cleanupMsg}</span><button onClick={() => setCleanupMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
-        <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{isImporting ? "⏳ Importando relatório, aguarde... (não feche a tela)" : loading ? "⏳ Carregando..." : syncMsg}</div>
+        <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{loading && !isImporting ? "⏳ Carregando..." : syncMsg}</div>
         <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto", paddingBottom: 8, paddingTop: 8, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "stretch", justifyContent: "flex-start", borderBottom: `1px solid ${t.bor}` }} className="bg-transparent">
           <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")} badge={dash.devolvidos} badgeColor="#10b981">📋 Carteira Geral</TabBtn>
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico / Promessas</TabBtn>

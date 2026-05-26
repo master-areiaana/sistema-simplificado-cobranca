@@ -318,38 +318,39 @@ function parseTotalCliente(row) {
 
 // Mapeamento de colunas da FINR1253 (linha de lançamento, índice 0-based):
 // 0=Tp | 1=Ser | 2=Número | 3=Seq | 4=NF Serviço | 5=Operação | 6=Vencto.
-// 7=Título | 8=Acréscimo | 9=Receb.Prc. | 10=Calculada | 11=Receber | 12=Atraso | 13=Úteis | 14=Portador
+// 7=Título(valor face) | 8=Acréscimo | 9=Receb.Prc. | 10=Calculada | 11=Receber | 12=Atraso | 13=Úteis | 14=Portador
 function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) {
   const tp = cellText(row, 0).toUpperCase();
 
   if (!clienteAtivo || !isValidClientName(clienteAtivo.nomeCli)) return null;
   if (!isFinr1253TitleToken(tp)) return null;
 
-  const ser       = cellText(row, 1);
-  const numero    = cellText(row, 2);
-  const seq       = cellText(row, 3);
-  const nfServico = cellText(row, 4);
-  const operacao  = row?.[5] ?? "";
-  const vencto    = row?.[6] ?? "";
-  const titulo    = cellText(row, 7);
-  const acrescimo = row?.[8] ?? 0;
-  const recebPrc  = row?.[9] ?? 0;
-  const calculada = row?.[10] ?? 0;
-  const receber   = row?.[11] ?? 0;
-  const atraso    = row?.[12] ?? 0;
-  const uteis     = cellText(row, 13);
-  const portador  = cellText(row, 14);
+  const ser            = cellText(row, 1);
+  const numero         = cellText(row, 2);   // Número do documento (ex: 9831)
+  const seq            = cellText(row, 3);
+  const nfServico      = cellText(row, 4);
+  const operacao       = row?.[5] ?? "";
+  const vencto         = row?.[6] ?? "";
+  const valorFaceTit   = row?.[7] ?? 0;      // "Título" = valor face do documento (ex: 147900,75)
+  const acrescimo      = row?.[8] ?? 0;
+  const recebPrc       = row?.[9] ?? 0;      // Receb.Prc. (valor já recebido)
+  const calculada      = row?.[10] ?? 0;     // Calculada (juros+multa calculados)
+  const receber        = row?.[11] ?? 0;     // Receber (total a receber = face + acréscimos)
+  const atraso         = row?.[12] ?? 0;
+  const uteis          = cellText(row, 13);
+  const portador       = cellText(row, 14);
 
-  // Número do título é obrigatório
+  // Número do título é obrigatório para identificar o lançamento
   if (!numero) return null;
 
-  // Valor principal para cálculo: prioridade Receber > Calculada > Receb.Prc > Título
-  const valorBase = num(receber) > 0 ? receber
-    : num(calculada) > 0 ? calculada
-    : num(recebPrc) > 0 ? recebPrc
-    : num(cellText(row, 7));
+  // valorOriginal = valor face do título (col 7), que é o valor do documento sem acréscimos.
+  // Se estiver zerado, usa Receb.Prc como fallback, depois Calculada, depois Receber.
+  const valorOriginal = num(valorFaceTit) > 0 ? num(valorFaceTit)
+    : num(recebPrc) > 0 ? num(recebPrc)
+    : num(calculada) > 0 ? num(calculada)
+    : num(receber);
 
-  if (valorBase <= 0) return null;
+  if (valorOriginal <= 0) return null;
 
   return buildItem({
     origem: "FINR1253",
@@ -360,19 +361,21 @@ function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) {
     contato: dadosTotal.contato || "",
     tp,
     ser,
+    // "titulo" é o campo interno de chave — guarda o NÚMERO do documento (9831, 9867...)
+    // Isso é intencional: buildId usa "titulo" como parte da chave única de deduplicação.
+    // O valor monetário do título (col 7) fica em valorOriginal.
+    titulo: numero,
     numero,
-    titulo: numero,         // chave de deduplicação usa numero como titulo
     seq,
     nfServico,
     operacao,
     emissao: "",
     vencimento: dateISO(vencto),
-    valorOriginal: valorBase,
-    valorTitulo: num(titulo),
+    valorOriginal,              // valor face do documento (col 7 = "Título" do relatório)
     acrescimo: num(acrescimo),
     recebPrc: num(recebPrc),
     valorCalculado: num(calculada),
-    valorReceber: num(receber),
+    valorReceber: num(receber), // total com juros/multa (col 11 = "Receber")
     atrasoRelatorio: num(atraso),
     uteis,
     portador
@@ -411,19 +414,26 @@ export function parseRows1253(rows) {
   };
 
   for (const row of rows) {
-    // Pula as 2 primeiras linhas: linha de agrupadores (Nº, Cliente, VENCIMENTO...)
-    // e linha de cabeçalho detalhado (Tp, Ser, Número...) — ambas são metadados do relatório
-    if (headerSkipped < 2) {
-      headerSkipped++;
-      continue;
-    }
-
     const first = cellText(row, 0);
     const firstNorm = normHeader(first);
     const joined = normHeader(joinedRow(row));
 
     // Linha vazia
     if (!joined) continue;
+
+    // Linhas de cabeçalho (agrupadores ou cabeçalho detalhado) — ignora por conteúdo
+    // Linha agrupadora: contém "VENCIMENTO", "VALORIA" ou "ATRASO" sem ser um lançamento
+    // Linha de cabeçalho detalhado: começa com "TP", "TPSER", "TIPO", "SER", "NUMERO"
+    const isHeaderRow = (
+      firstNorm === "TP" || firstNorm === "TPSER" || firstNorm === "TIPO" ||
+      (firstNorm === "" && joined.includes("VENCIMENTO") && joined.includes("ATRASO")) ||
+      (joined.includes("VENCIMENTO") && joined.includes("VALORIA") && !firstNorm.startsWith("CLIENTE") && !isFinr1253TitleToken(first))
+    );
+    // Também pula as primeiras 2 linhas como fallback para arquivos com estrutura ligeiramente diferente
+    if (headerSkipped < 2 || isHeaderRow) {
+      if (!isHeaderRow) headerSkipped++;
+      continue;
+    }
 
     // Linhas de rodapé/totais globais — sempre ignorar
     if (
@@ -432,9 +442,6 @@ export function parseRows1253(rows) {
       firstNorm.startsWith("TOTALGERAL") ||
       joined.includes("DATAHORAEMISSAO")
     ) continue;
-
-    // Linha de cabeçalho repetido (Tp, Ser, Número...) — pode aparecer no meio
-    if (firstNorm === "TP" || firstNorm === "TPSER" || firstNorm === "TIPO") continue;
 
     // Linha "Cliente: CÓDIGO - NOME - CPF/CNPJ: XXX"
     if (/^Cliente:/i.test(first)) {

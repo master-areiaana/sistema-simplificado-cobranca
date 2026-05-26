@@ -416,6 +416,9 @@ export default function Dashboard() {
       const toCreate = [], toUpdate = [];
       for (const item of imported) {
         const old = existMap.get(item.id);
+        // title_number guarda o NÚMERO do documento (ex: 9831, 9867)
+        // original_value guarda o VALOR FACE do título (col 7 "Título" = ex: 147900,75)
+        // portador vem da última coluna do lançamento (col 14)
         const payload = { source: item.origem, client_code: item.nrCli, client_name: item.nomeCli, doc_type: item.tp || null, serie: item.ser || null, title_number: item.titulo, seq: item.seq || null, nf_servico: item.nfServico || null, issue_date: item.emissao || null, due_date: item.vencimento || null, original_value: Number(item.valorOriginal || 0), portador: item.portador || null, active: true, import_file: fileName, current_status: old?.current_status || "Não Contatado", current_motive: old?.current_motive || null, current_contact_type: old?.current_contact_type || null, promise_date: old?.promise_date || null, last_contact_date: old?.last_contact_date || null, last_note: old?.last_note || null, contact_count: Number(old?.contact_count || 0), protest_requested_by: old?.protest_requested_by || null, workflow_status: old?.workflow_status || "normal", updated_by: "Importação" };
         if (old) toUpdate.push({ dbId: old.id, payload }); else toCreate.push(payload);
       }

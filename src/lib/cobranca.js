@@ -658,9 +658,10 @@ export function parseRows7007(rows) {
     if (!vencimento && valorOriginal <= 0) { descartados++; addMotivo("sem_venc_nem_valor"); continue; }
 
     // --- Chave de deduplicação ---
-    const seqKey = nrCli
-      ? String(seq || "").trim()
-      : `${String(seq || "").trim()}|${vencimento}`;
+    // Inclui sempre o vencimento para evitar colisão entre parcelas de mesmo número
+    // com vencimentos diferentes quando a coluna SEQ não existe ou está vazia.
+    const seqBase = String(seq || "").trim();
+    const seqKey = seqBase ? seqBase : vencimento;
 
     out.push(buildItem({
       origem: "RPT_7007_CONS_CAR_EB",

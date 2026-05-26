@@ -167,8 +167,9 @@ function pickFlex(row, names, validator = null) {
 }
 
 export function detectSrc(fn) {
-  const u = String(fn || "").toUpperCase();
-  return (u.includes("7007") || u.includes("CONS_CAR_EB") || u.includes("_EB")) ? "RPT_7007_CONS_CAR_EB" : "FINR1253";
+  // Normaliza: maiúsculo, remove espaços/hífens/underlines para comparação robusta
+  const u = String(fn || "").toUpperCase().replace(/[\s\-_]/g, "");
+  return (u.includes("7007") || u.includes("CONSCAREB") || u.includes("RPTEB") || /EB\.XLS/.test(u) || u.endsWith("EB")) ? "RPT_7007_CONS_CAR_EB" : "FINR1253";
 }
 
 export function calcFin(valor, venc) {
@@ -481,102 +482,182 @@ export function parseRows1253(rows) {
 }
 
 // ─── RPT_7007_CONS_CAR_EB parser ───────────────────────────────────────────
-// O relatório 7007 (EB) é um arquivo tabular com cabeçalho na primeira linha.
-// Cada linha representa um título/parcela individual.
-//
-// Campos lidos dinamicamente (por nome de cabeçalho):
-//   nomeCli    → NOMCLI / Nome Cliente / Razão Social / CLIENTE
-//   nrCli      → CODCLI / Cod Cliente / Código Cliente / Nº Cliente
-//   titulo     → NUMTIT / Núm. Título / Número Título / Nº Título
-//                (Evita-se "Titulo"/"Título" soltos para não capturar valor monetário)
-//   seq        → SEQ / Parcela / Seq / Par
-//   vencimento → DTVENC / Vencimento / VENCTO / Data Vencimento / Dt.Venc
-//   saldo      → SLDTTT / SALDO / Saldo / Val. Saldo (valor em aberto = valorOriginal)
-//   vlrTit     → VLRTIT / Val. Título / Valor Título (valor face — fallback de saldo)
-//   tp         → TPTIT / Tipo Título / Tipo / Tp (fallback "EB" se ausente)
-//   portador   → PORTAD / Portador / Banco / Carteira (fallback "EB" se ausente)
-//   serie      → SERTIT / Série / Serie / Ser
-//   emissao    → DTEMIS / Emissão / Emissao / Data Emissão / Dt.Emissão
-//
-// Campos FIXOS (só se não houver coluna real):
-//   tp = "EB" e portador = "EB" são fallback — o arquivo raramente traz essas colunas.
-//
-// Deduplicação: buildId usa [origem, nrCli, tp, titulo, seq].
-//   Para blindar colisão quando nrCli ausente, o vencimento é incluído no seq como sufixo.
+// Suporta qualquer layout tabular com cabeçalho em qualquer linha.
+// Normaliza os nomes dos cabeçalhos antes de mapear, aceitando variações com
+// acentos, pontuação, espaços e maiúsculas/minúsculas.
+
+// Normaliza cabeçalho para comparação: maiúsculo, sem acento, sem ponto/hífen, sem espaço duplo
+function normH(v) {
+  return String(v ?? "")
+    .toUpperCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.\-_°ºª]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Aliases normalizados para cada campo (aplicar normH antes de comparar)
+const H7007 = {
+  nomeCli: ["NOMCLI","NOME CLIENTE","RAZAO SOCIAL","CLIENTE","SACADO","NOME SACADO","DEVEDOR","NOME","RAZAO","NOME DO CLIENTE","NOME SACADO","FAVORECIDO"],
+  nrCli:   ["CODCLI","COD CLIENTE","CODIGO CLIENTE","CLIENTE CODIGO","COD","CODIGO","NRCLI","NRO CLIENTE","NR CLIENTE","N CLIENTE","NUM CLIENTE","NUMERO CLIENTE"],
+  titulo:  ["NUMTIT","NUM TIT","NUMERO TITULO","N TITULO","NR TITULO","NRO TITULO","DUPLICATA","NOTA","FATURA","DOCUMENTO","NR DOCUMENTO","NUMERO DOCUMENTO","NUM DOCUMENTO","TITULO","TITULOS"],
+  seq:     ["SEQ","SEQUENCIA","PARCELA","PARC","PRESTACAO","PAR","PARTE","PARCELA NR","NR PARCELA"],
+  venc:    ["DTVENC","DT VENC","DATA VENCIMENTO","VENCIMENTO","VENCTO","DT VENCTO","VENC","DATA VENC","DT VENCIMENTO","VENCIMENTO TITULO"],
+  saldo:   ["SLDTTT","SALDO","SALDO TITULO","SALDO TOTAL","VLR SALDO","VAL SALDO","VALOR SALDO","VALOR ABERTO","VALOR EM ABERTO","SALDO EM ABERTO","SALDO DEVEDOR"],
+  vlrTit:  ["VLRTIT","VLR TIT","VAL TITULO","VALOR TITULO","VAL ORIG","VALOR ORIGINAL","VLR ORIG","VALOR","TOTAL","VLR TOTAL","VALOR FACE","VALOR NOMINAL"],
+  tp:      ["TPTIT","TP","TIPO","TIPO TITULO","TIPO DOC","TIPO DOCUMENTO","ESPECIE","ESP"],
+  portador:["PORTAD","PORTADOR","BANCO","CARTEIRA","COBRANCA","COBRANÇA","COD BANCO","BANCO COBRADOR"],
+  serie:   ["SERTIT","SERIE","SER","SERIE TITULO","NR SERIE"],
+  emissao: ["DTEMIS","EMISSAO","DATA EMISSAO","DT EMISSAO","DATA EMIS","DT EMIS","DT EMISSAO","DATA DE EMISSAO"],
+};
+
+// Mapeia as chaves reais do objeto-linha para os campos internos, usando os aliases normalizados
+function buildHeaderMap7007(sampleRow) {
+  const map = {}; // field -> realKey
+  const keys = Object.keys(sampleRow || {});
+  for (const [field, aliases] of Object.entries(H7007)) {
+    for (const realKey of keys) {
+      const n = normH(realKey);
+      if (aliases.includes(n)) { map[field] = realKey; break; }
+    }
+    if (!map[field]) {
+      // fallback: busca parcial (ex: "NR. TITULO" contém "TITULO")
+      for (const realKey of keys) {
+        const n = normH(realKey);
+        for (const alias of aliases) {
+          if (n.includes(alias) || alias.includes(n)) { map[field] = realKey; break; }
+        }
+        if (map[field]) break;
+      }
+    }
+  }
+  return map;
+}
+
+// Detecta a linha de cabeçalho: procura primeira linha que tenha ao menos 2 campos reconhecidos
+function detectHeaderRow7007(rows) {
+  const minMatches = 2;
+  for (let i = 0; i < Math.min(rows.length, 20); i++) {
+    const row = rows[i];
+    if (!row || typeof row !== "object") continue;
+    const keys = Object.keys(row);
+    let matches = 0;
+    for (const k of keys) {
+      const n = normH(k);
+      for (const aliases of Object.values(H7007)) {
+        if (aliases.some((a) => n === a || n.includes(a) || a.includes(n))) { matches++; break; }
+      }
+    }
+    if (matches >= minMatches) return i;
+  }
+  return 0; // fallback: assume primeira linha
+}
+
+function getField(row, hmap, field) {
+  const k = hmap[field];
+  if (!k) return undefined;
+  const v = row[k];
+  return v === undefined || v === null ? undefined : v;
+}
+
 export function parseRows7007(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  // --- Detecta linha de cabeçalho e constrói mapa de campos ---
+  const headerIdx = detectHeaderRow7007(rows);
+  const sampleRow = rows[headerIdx] || rows[0];
+  const hmap = buildHeaderMap7007(sampleRow);
+
+  // --- Log de diagnóstico ---
+  const camposMapeados = Object.entries(hmap).map(([f, k]) => `${f}="${k}"`).join(", ");
+  const camposFaltando = Object.keys(H7007).filter((f) => !hmap[f]);
+  console.info(`RPT_7007 diagnóstico: ${rows.length} linhas lidas | cabeçalho na linha ${headerIdx} | mapeados: [${camposMapeados}]${camposFaltando.length ? ` | NÃO mapeados: [${camposFaltando.join(", ")}]` : ""}`);
+
+  // --- Filtra linhas de cabeçalho, totais e vazias ---
+  const isHeaderOrTotalRow = (row) => {
+    if (!row) return true;
+    const vals = Object.values(row).map((v) => normH(String(v ?? "")));
+    const joined = vals.join(" ");
+    // Linhas de totais ou metadados
+    if (joined.includes("TOTAL") && vals.some((v) => /^TOTAL/.test(v))) return true;
+    if (joined.includes("EMPRESA") && joined.includes("TOTAL")) return true;
+    // Linha completamente vazia
+    if (vals.every((v) => !v)) return true;
+    return false;
+  };
+
+  const dataRows = rows.slice(headerIdx + 1 > 0 ? headerIdx + 1 : 1);
   const out = [];
-  for (const row of rows) {
+  let descartados = 0;
+  const motivosDescarte = {};
+  const addMotivo = (m) => { motivosDescarte[m] = (motivosDescarte[m] || 0) + 1; };
+
+  for (const row of dataRows) {
+    if (isHeaderOrTotalRow(row)) continue;
+
     // --- Nome do cliente ---
-    const nome = firstValid(row, ["NOMCLI", "Nome Cliente", "NOME CLIENTE", "Razão Social", "RAZAO SOCIAL", "CLIENTE", "Cliente"], isValidClientName)
-      || pickFlex(row, ["NOMCLI", "Nome Cliente", "Razão Social", "Cliente"], isValidClientName);
+    let nome = "";
+    if (hmap.nomeCli) {
+      const v = row[hmap.nomeCli];
+      if (isValidClientName(v)) nome = String(v).trim();
+    }
+    // fallback: qualquer coluna com nome válido que se pareça com cliente
+    if (!nome) {
+      for (const k of Object.keys(row)) {
+        if (isValidClientName(row[k])) { nome = String(row[k]).trim(); break; }
+      }
+    }
 
     // --- Código do cliente ---
-    const nrCliRaw = firstValid(row, ["CODCLI", "Cod Cliente", "Código Cliente", "CODIGO CLIENTE", "Nº Cliente", "N Cliente", "Cliente Código", "Cód. Cliente"], isValidClientCode)
-      || pickFlex(row, ["CODCLI", "Cod Cliente", "Código Cliente", "Cód. Cliente", "Nº Cliente"], isValidClientCode);
-    const nrCli = String(nrCliRaw || "").replace(/\D/g, "").trim();
+    let nrCli = "";
+    if (hmap.nrCli) {
+      const raw = row[hmap.nrCli];
+      if (raw != null && String(raw).trim()) nrCli = String(raw).replace(/\D/g, "").trim();
+    }
 
     // --- Número do título ---
-    // Nota: "Titulo"/"Título" soltos são evitados pois alguns layouts usam esse cabeçalho
-    // para o VALOR MONETÁRIO do título (como na FINR1253 col 7). Prioriza-se NUMTIT e variantes explícitas.
-    const titulo = firstValid(row, ["NUMTIT", "Núm. Título", "Número Título", "Nº Título", "Num Titulo", "Num. Titulo", "NUM_TIT"], (v) => !isDocToken(v))
-      || pickFlex(row, ["NUMTIT", "Núm. Título", "Número Título", "Nº Título"], (v) => !isDocToken(v));
+    let titulo = "";
+    if (hmap.titulo) {
+      const v = row[hmap.titulo];
+      if (v != null && String(v).trim() && !isDocToken(String(v).trim())) titulo = String(v).trim();
+    }
 
     // --- Parcela/Sequência ---
-    const seq = pick(row, ["SEQ", "Parcela", "Seq", "Par", "PARCELA"]) || pickFlex(row, ["SEQ", "Parcela", "Par"]);
+    const seq = hmap.seq ? String(row[hmap.seq] ?? "").trim() : "";
 
     // --- Vencimento ---
-    const vencRaw = pick(row, ["DTVENC", "Vencimento", "VENCTO", "Data Vencimento", "Dt.Venc", "DT_VENC", "Dt. Venc"])
-      || pickFlex(row, ["DTVENC", "Vencimento", "Vencto", "Data Vencimento", "DtVenc"]);
+    const vencRaw = hmap.venc ? row[hmap.venc] : undefined;
     const vencimento = dateISO(vencRaw);
 
-    // --- Valor: saldo em aberto (principal) e valor face (fallback) ---
-    // SLDTTT = saldo total do título (campo padrão EB para o que se deve cobrar)
-    // VLRTIT = valor face original do título (nem sempre presente)
-    // Se só existir saldo, ele é gravado como valorOriginal (comportamento correto para EB).
-    const saldoRaw = pick(row, ["SLDTTT", "SALDO", "Saldo", "Val. Saldo", "Vlr Saldo"])
-      || pickFlex(row, ["SLDTTT", "Saldo", "Val. Saldo"]);
-    const vlrTitRaw = pick(row, ["VLRTIT", "Val. Título", "Valor Título", "Vlr. Título", "Valor Tit"])
-      || pickFlex(row, ["VLRTIT", "Val. Título", "Valor Título"]);
-    // Prioridade: saldo > valor face > campos genéricos
-    const valorRaw = saldoRaw
-      || vlrTitRaw
-      || pick(row, ["Valor", "Val. Orig", "Valor Original"])
-      || pickFlex(row, ["Valor", "Valor Original"]);
+    // --- Valor ---
+    const saldoRaw = hmap.saldo ? row[hmap.saldo] : undefined;
+    const vlrTitRaw = hmap.vlrTit ? row[hmap.vlrTit] : undefined;
+    const valorRaw = saldoRaw ?? vlrTitRaw;
     const valorOriginal = num(valorRaw);
 
-    // --- Tipo do título (lê coluna real; fallback "EB") ---
-    const tpRaw = pick(row, ["TPTIT", "Tipo Título", "Tipo", "Tp", "TIPO"])
-      || pickFlex(row, ["TPTIT", "Tipo Título", "Tipo"]);
+    // --- Tipo ---
+    const tpRaw = hmap.tp ? row[hmap.tp] : undefined;
     const tp = (tpRaw && String(tpRaw).trim() && !isDocToken(String(tpRaw).trim()))
-      ? String(tpRaw).trim().toUpperCase()
-      : "EB";
+      ? String(tpRaw).trim().toUpperCase() : "EB";
 
-    // --- Portador / Banco / Carteira (lê coluna real; fallback "EB") ---
-    const portadorRaw = pick(row, ["PORTAD", "Portador", "Banco", "Carteira", "BANCO", "CARTEIRA"])
-      || pickFlex(row, ["PORTAD", "Portador", "Banco", "Carteira"]);
-    const portador = (portadorRaw && String(portadorRaw).trim())
-      ? String(portadorRaw).trim()
-      : "EB";
+    // --- Portador ---
+    const portadorRaw = hmap.portador ? row[hmap.portador] : undefined;
+    const portador = (portadorRaw && String(portadorRaw).trim()) ? String(portadorRaw).trim() : "EB";
 
     // --- Série ---
-    const ser = String(
-      pick(row, ["SERTIT", "Série", "Serie", "Ser", "SER"]) || pickFlex(row, ["SERTIT", "Série", "Serie"]) || ""
-    ).trim();
+    const ser = hmap.serie ? String(row[hmap.serie] ?? "").trim() : "";
 
-    // --- Data de emissão ---
-    const emissaoRaw = pick(row, ["DTEMIS", "Emissão", "Emissao", "Data Emissão", "Dt. Emissão", "DT_EMIS"])
-      || pickFlex(row, ["DTEMIS", "Emissão", "Emissao", "Data Emissão"]);
+    // --- Emissão ---
+    const emissaoRaw = hmap.emissao ? row[hmap.emissao] : undefined;
     const emissao = dateISO(emissaoRaw);
 
-    // --- Validação da linha ---
-    // Descarta linhas sem: nome de cliente válido, número de título, ou valor
-    if (!isValidClientName(nome)) continue;
-    if (!titulo || isDocToken(String(titulo))) continue;
-    if (valorOriginal <= 0) continue;
+    // --- Validação: regra mínima ---
+    // Deve ter (nome OU código) E título E (vencimento OU valor)
+    if (!isValidClientName(nome) && !nrCli) { descartados++; addMotivo("sem_cliente"); continue; }
+    if (!titulo) { descartados++; addMotivo("sem_titulo"); continue; }
+    if (!vencimento && valorOriginal <= 0) { descartados++; addMotivo("sem_venc_nem_valor"); continue; }
 
     // --- Chave de deduplicação ---
-    // Se nrCli estiver ausente, incorpora o vencimento no seq para evitar colisão
-    // entre clientes diferentes com mesmo número de título.
     const seqKey = nrCli
       ? String(seq || "").trim()
       : `${String(seq || "").trim()}|${vencimento}`;
@@ -584,10 +665,10 @@ export function parseRows7007(rows) {
     out.push(buildItem({
       origem: "RPT_7007_CONS_CAR_EB",
       nrCli,
-      nomeCli: String(nome).trim(),
+      nomeCli: nome || `CLI_${nrCli}`,
       tp,
       ser,
-      titulo: String(titulo).trim(),
+      titulo,
       seq: seqKey,
       nfServico: "",
       emissao,
@@ -596,7 +677,14 @@ export function parseRows7007(rows) {
       portador
     }));
   }
-  console.info(`RPT_7007: ${out.length} títulos importados.`);
+
+  if (out.length === 0) {
+    console.warn(`RPT_7007: ZERO títulos válidos. Descartados: ${descartados}. Motivos:`, motivosDescarte);
+    console.warn(`RPT_7007: Campos mapeados:`, hmap);
+    console.warn(`RPT_7007: Primeira linha de dados:`, dataRows[0]);
+  } else {
+    console.info(`RPT_7007: ${out.length} títulos importados | ${descartados} descartados | motivos:`, motivosDescarte);
+  }
   return out;
 }
 

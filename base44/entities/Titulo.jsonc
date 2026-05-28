@@ -8,7 +8,7 @@
         "FINR1253",
         "RPT_7007_CONS_CAR_EB"
       ],
-      "description": "Origem do t\u00edtulo"
+      "description": "Origem do título"
     },
     "client_code": {
       "type": "string"
@@ -16,11 +16,35 @@
     "client_name": {
       "type": "string"
     },
+    "client_group_key": {
+      "type": "string",
+      "description": "Chave de consolidação do cliente. No RPT_7007_CONS_CAR_EB, usar razão social normalizada, pois o relatório não possui CNPJ."
+    },
+    "primary_client_code": {
+      "type": "string",
+      "description": "Código principal do grupo de cliente consolidado"
+    },
+    "erp_client_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Lista de códigos originais do ERP vinculados ao mesmo cliente consolidado"
+    },
+    "record_origin": {
+      "type": "string",
+      "enum": [
+        "ERP",
+        "Manual"
+      ],
+      "default": "ERP",
+      "description": "Indica se o registro veio da importação ERP ou foi inserido manualmente"
+    },
     "client_category": {
       "type": "string",
       "enum": [
         "Portador",
-        "Imobili\u00e1rio",
+        "Imobiliário",
         "Parceiros",
         "Bancos"
       ],
@@ -52,6 +76,26 @@
     "original_value": {
       "type": "number"
     },
+    "received_value": {
+      "type": "number",
+      "default": 0,
+      "description": "Valor recebido no ERP"
+    },
+    "open_value": {
+      "type": "number",
+      "default": 0,
+      "description": "Saldo efetivo em aberto após pagamentos parciais"
+    },
+    "erp_balance": {
+      "type": "number",
+      "default": 0,
+      "description": "Saldo informado diretamente pelo ERP, quando existir"
+    },
+    "partial_payment_detected": {
+      "type": "boolean",
+      "default": false,
+      "description": "Indica pagamento parcial identificado na importação do ERP"
+    },
     "portador": {
       "type": "string"
     },
@@ -67,7 +111,7 @@
     },
     "current_status": {
       "type": "string",
-      "default": "N\u00e3o Contatado"
+      "default": "Não Contatado"
     },
     "current_motive": {
       "type": "string"
@@ -88,7 +132,7 @@
     },
     "action_to_do": {
       "type": "string",
-      "description": "A\u00e7\u00e3o a fazer (pr\u00f3ximo passo)"
+      "description": "Ação a fazer (próximo passo)"
     },
     "contact_count": {
       "type": "number",
@@ -100,6 +144,18 @@
     "workflow_status": {
       "type": "string",
       "default": "normal"
+    },
+    "loss_status": {
+      "type": "boolean",
+      "default": false,
+      "description": "Indica título/classificação movida para carteira de perdas"
+    },
+    "loss_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "loss_reason": {
+      "type": "string"
     },
     "updated_by": {
       "type": "string"

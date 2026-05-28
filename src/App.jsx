@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import PageNotFound from './lib/PageNotFound';
 // Add page imports here
 import Dashboard from './pages/Dashboard';
-import Assessoria from './pages/AssessoriaCentralLite';
+import Assessoria from './pages/Assessoria';
 import CorrecoesGlobais from './components/cobranca/CorrecoesGlobais';
 
 function AssessoriaTabInjector() {

@@ -12,8 +12,17 @@ const KPI_OCULTOS = new Set([
   "N TITULOS",
   "Nº TITULOS",
   "VAL. ORIGINAL",
-  "VAL ORIGINAL"
+  "VAL ORIGINAL",
+  "EM ABERTO POR RELATORIO",
+  "EM ABERTO POR RELATÓRIO"
 ]);
+
+const KPI_ORDEM = {
+  "FALTAM COBRAR": 1,
+  "COBRADOS HOJE": 2,
+  "A COBRAR": 3,
+  "TOTAL EM ABERTO": 4
+};
 
 function normalizarInterfaceLabel(v) {
   return String(v ?? "")
@@ -57,6 +66,7 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
       className={`kpi-card ${active ? "active" : ""} ${onClick ? "cursor-pointer" : ""}`}
       onClick={onClick}
       style={{
+        order: KPI_ORDEM[labelNorm] || 99,
         borderLeft: `4px solid ${color} !important`,
         background: `${t.card} !important`,
       }}

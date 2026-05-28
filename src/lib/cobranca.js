@@ -100,31 +100,15 @@ export function normText(v) {
 }
 
 function normHeader(v) {
-  return String(v ?? "")
-    .trim()
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/^\uFEFF/, "")
-    .replace(/[^A-Z0-9]/g, "");
+  return String(v ?? "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/^\uFEFF/, "").replace(/[^A-Z0-9]/g, "");
 }
 
 function normH(v) {
-  return String(v ?? "")
-    .toUpperCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[.\-_°ºª]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(v ?? "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.\-_°ºª]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function normToken(v) {
-  return String(v ?? "")
-    .trim()
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^A-Z0-9]/g, "");
+  return String(v ?? "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
 }
 
 const DOC_TOKENS = new Set(["NF", "NFE", "NFSE", "FAT", "TC", "EB", "CTE", "DUP", "DUPL", "DUPLICATA", "TITULO", "PARCELA", "REC"]);
@@ -163,11 +147,7 @@ export function calcFin(valor, venc) {
 }
 
 export function keyPart(v) {
-  return String(v ?? "")
-    .toUpperCase()
-    .replace(/\s+/g, "")
-    .replace(/\./g, "")
-    .replace(/^0+(\d+)$/, "$1");
+  return String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/\./g, "").replace(/^0+(\d+)$/, "$1");
 }
 
 export function normalizeTituloNumero(titulo) {
@@ -178,14 +158,7 @@ export function normalizeTituloNumero(titulo) {
 }
 
 export function normalizarRazaoSocial(nome) {
-  return String(nome || "")
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[.,\-\/\\]/g, " ")
-    .replace(/\b(LTDA|ME|EPP|S A|SA|EIRELI|EIRELLI|SPE)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(nome || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.,\-\/\\]/g, " ").replace(/\b(LTDA|ME|EPP|S A|SA|EIRELI|EIRELLI|SPE)\b/g, "").replace(/\s+/g, " ").trim();
 }
 
 export function getClienteGroupKeyRPT7007(item) {
@@ -233,7 +206,15 @@ export function buildItem(o) {
   const valorRecebido = num(o.valorRecebido ?? o.received_value ?? 0);
   const saldoErp = num(o.saldoErp ?? o.erp_balance ?? 0);
   const valorEmAberto = num(o.valorEmAberto ?? o.open_value ?? (saldoErp > 0 ? saldoErp : valorOriginal));
-  const f = calcFin(valorEmAberto || valorOriginal, o.vencimento);
+  const totalInformado = o.valorTotalDebito !== undefined && o.valorTotalDebito !== null ? num(o.valorTotalDebito) : null;
+  const usaValorDoRelatorio = ["FINR1253", "RPT_7007_CONS_CAR_EB"].includes(String(o.origem || ""));
+  const diasAtraso = diffDias(o.vencimento);
+  const f = totalInformado !== null
+    ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: totalInformado, diasAtraso }
+    : usaValorDoRelatorio
+      ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: valorEmAberto || valorOriginal, diasAtraso }
+      : calcFin(valorEmAberto || valorOriginal, o.vencimento);
+
   return {
     ...o,
     id: buildId(o),
@@ -262,50 +243,17 @@ export function buildItem(o) {
 
 export function dbToItem(r) {
   return buildItem({
-    _dbId: r.id,
-    origem: r.source,
-    nrCli: r.client_code,
-    nomeCli: r.client_name,
-    clientGroupKey: r.client_group_key || "",
-    primaryClientCode: r.primary_client_code || r.client_code || "",
-    erpClientCodes: r.erp_client_codes || (r.client_code ? [r.client_code] : []),
-    recordOrigin: r.record_origin || "ERP",
-    tp: r.doc_type,
-    ser: r.serie,
-    titulo: r.title_number,
-    seq: r.seq,
-    nfServico: r.nf_servico,
-    emissao: r.issue_date,
-    vencimento: r.due_date,
-    valorOriginal: r.original_value,
-    valorRecebido: r.received_value,
-    valorEmAberto: r.open_value,
-    saldoErp: r.erp_balance,
-    partialPaymentDetected: r.partial_payment_detected,
-    portador: r.portador,
-    status: r.current_status || "Não Contatado",
-    encaminhar: r.workflow_status || "",
-    tipoContato: r.current_contact_type || "",
-    dataContato: r.last_contact_date || "",
-    dataPromessa: r.promise_date || "",
-    obs: r.last_note || "",
-    qtd: r.contact_count || 0,
-    solicitanteProtesto: r.protest_requested_by || "",
-    clientCategory: r.client_category || ""
+    _dbId: r.id, origem: r.source, nrCli: r.client_code, nomeCli: r.client_name,
+    clientGroupKey: r.client_group_key || "", primaryClientCode: r.primary_client_code || r.client_code || "", erpClientCodes: r.erp_client_codes || (r.client_code ? [r.client_code] : []), recordOrigin: r.record_origin || "ERP",
+    tp: r.doc_type, ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico, emissao: r.issue_date, vencimento: r.due_date,
+    valorOriginal: r.open_value || r.original_value, valorRecebido: r.received_value, valorEmAberto: r.open_value || r.original_value, saldoErp: r.erp_balance, partialPaymentDetected: r.partial_payment_detected,
+    portador: r.portador, status: r.current_status || "Não Contatado", encaminhar: r.workflow_status || "", tipoContato: r.current_contact_type || "", dataContato: r.last_contact_date || "", dataPromessa: r.promise_date || "", obs: r.last_note || "", qtd: r.contact_count || 0, solicitanteProtesto: r.protest_requested_by || "", clientCategory: r.client_category || ""
   });
 }
 
-function cleanClientCode(v) {
-  return String(v ?? "").replace(/\D/g, "").trim();
-}
-
-function cellText(row, idx) {
-  return String((row || [])[idx] ?? "").trim();
-}
-
-function joinedRow(row) {
-  return (row || []).map((c) => String(c ?? "").trim()).filter(Boolean).join(" ");
-}
+function cleanClientCode(v) { return String(v ?? "").replace(/\D/g, "").trim(); }
+function cellText(row, idx) { return String((row || [])[idx] ?? "").trim(); }
+function joinedRow(row) { return (row || []).map((c) => String(c ?? "").trim()).filter(Boolean).join(" "); }
 
 function parseClienteLinha(row) {
   const raw = cellText(row, 0);
@@ -318,14 +266,8 @@ function parseTotalCliente(row) {
   let telefone = "", contato = "";
   for (const cell of row || []) {
     const text = String(cell ?? "").trim();
-    if (!telefone) {
-      const telMatch = text.match(/Tel\.?\s*:?\s*(.+)/i);
-      if (telMatch) telefone = String(telMatch[1] || "").replace(/\s+Contato\s*:.*$/i, "").trim();
-    }
-    if (!contato) {
-      const contatoMatch = text.match(/Contato\s*:?\s*(.+)/i);
-      if (contatoMatch) contato = String(contatoMatch[1] || "").trim();
-    }
+    if (!telefone) telefone = String(text.match(/Tel\.?\s*:?\s*(.+?)(?:\s+Contato\s*:|$)/i)?.[1] || "").trim();
+    if (!contato) contato = String(text.match(/Contato\s*:?\s*(.+)$/i)?.[1] || "").trim();
   }
   const raw = joinedRow(row);
   if (!telefone) telefone = String(raw.match(/Tel\.?\s*:?\s*(.+?)(?:\s+Contato\s*:|$)/i)?.[1] || "").trim();
@@ -341,22 +283,28 @@ function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) {
   const seq = cellText(row, 3) || numSufixo || "";
   const nfServico = cellText(row, 4);
   const vencto = row?.[6] ?? "";
-  const valorFaceTit = row?.[7] ?? 0;
-  const acrescimo = row?.[8] ?? 0;
-  const recebPrc = row?.[9] ?? 0;
-  const calculada = row?.[10] ?? 0;
-  const receber = row?.[11] ?? 0;
-  const atraso = row?.[12] ?? 0;
+  const valorFaceTit = num(row?.[7] ?? 0);
+  const recebPrc = num(row?.[9] ?? 0);
+  const calculada = num(row?.[10] ?? 0);
+  const receber = num(row?.[11] ?? 0);
+  const atraso = num(row?.[12] ?? 0);
   const uteis = cellText(row, 13);
   const portador = cellText(row, 14);
   if (!numero) return null;
-  const valorOriginal = num(valorFaceTit) > 0 ? num(valorFaceTit) : num(recebPrc) > 0 ? num(recebPrc) : num(calculada) > 0 ? num(calculada) : num(receber);
-  if (valorOriginal <= 0) return null;
+
+  // FINR1253: a Carteira Geral deve bater com a coluna RECEBER do relatório.
+  // "Título" é valor face/original; "Receb.Prc." é principal em aberto; "Calculada" é acréscimo calculado; "Receber" é total a cobrar.
+  const valorACobrar = receber > 0 ? receber : (recebPrc > 0 ? recebPrc + calculada : valorFaceTit);
+  if (valorACobrar <= 0) return null;
+  const valorRecebidoParcial = Math.max(0, valorFaceTit - recebPrc);
+
   return buildItem({
     origem: "FINR1253", nrCli: clienteAtivo.nrCli, nomeCli: clienteAtivo.nomeCli, cpfCnpj: clienteAtivo.cpfCnpj || "",
     telefone: dadosTotal.telefone || "", contato: dadosTotal.contato || "", tp, ser, titulo: numero, numero, seq, nfServico,
-    operacao: row?.[5] ?? "", emissao: "", vencimento: dateISO(vencto), valorOriginal, valorEmAberto: valorOriginal,
-    acrescimo: num(acrescimo), recebPrc: num(recebPrc), valorCalculado: num(calculada), valorReceber: num(receber), atrasoRelatorio: num(atraso), uteis, portador
+    operacao: row?.[5] ?? "", emissao: "", vencimento: dateISO(vencto),
+    valorOriginal: valorACobrar, valorRecebido: valorRecebidoParcial, valorEmAberto: valorACobrar, valorTotalDebito: valorACobrar,
+    valorMulta: 0, valorJuros: calculada, acrescimo: num(row?.[8] ?? 0), recebPrc, valorCalculado: calculada, valorReceber: receber,
+    atrasoRelatorio: atraso, uteis, portador, partialPaymentDetected: valorRecebidoParcial > 0
   });
 }
 
@@ -366,7 +314,7 @@ export function parseRows1253(rows) {
   let clienteAtivo = null;
   let bufferTitulos = [];
   let headerSkipped = 0;
-  const flushBloco = (dadosTotal = {}, motivo = "") => {
+  const flushBloco = (dadosTotal = {}) => {
     if (!bufferTitulos.length) return;
     if (!clienteAtivo) { bufferTitulos = []; return; }
     for (const row of bufferTitulos) {
@@ -376,22 +324,18 @@ export function parseRows1253(rows) {
     bufferTitulos = [];
   };
   for (const row of rows) {
-    const first = cellText(row, 0);
-    const firstNorm = normHeader(first);
-    const joined = normHeader(joinedRow(row));
+    const first = cellText(row, 0), firstNorm = normHeader(first), joined = normHeader(joinedRow(row));
     if (!joined) continue;
-    const isHeaderRow = firstNorm === "TP" || firstNorm === "TPSER" || firstNorm === "TIPO" ||
-      (firstNorm === "" && joined.includes("VENCIMENTO") && joined.includes("ATRASO")) ||
-      (joined.includes("VENCIMENTO") && joined.includes("VALORIA") && !firstNorm.startsWith("CLIENTE") && !isFinr1253TitleToken(first));
+    const isHeaderRow = firstNorm === "TP" || firstNorm === "TPSER" || firstNorm === "TIPO" || (firstNorm === "" && joined.includes("VENCIMENTO") && joined.includes("ATRASO")) || (joined.includes("VENCIMENTO") && joined.includes("VALORIA") && !firstNorm.startsWith("CLIENTE") && !isFinr1253TitleToken(first));
     if (headerSkipped < 2 || isHeaderRow) { if (!isHeaderRow) headerSkipped++; continue; }
     if (firstNorm.startsWith("TOTALEMPRESAS") || firstNorm.startsWith("DATAHORAEMISSAO") || firstNorm.startsWith("TOTALGERAL") || joined.includes("DATAHORAEMISSAO")) continue;
-    if (/^Cliente:/i.test(first)) { flushBloco({}, "sem_total_cliente"); bufferTitulos = []; clienteAtivo = parseClienteLinha(row); continue; }
-    if (/^Total\s*Cliente/i.test(first) || firstNorm.startsWith("TOTALCLIENTE")) { const dadosTotal = parseTotalCliente(row); flushBloco(dadosTotal, "total_cliente"); clienteAtivo = null; bufferTitulos = []; continue; }
+    if (/^Cliente:/i.test(first)) { flushBloco({}); bufferTitulos = []; clienteAtivo = parseClienteLinha(row); continue; }
+    if (/^Total\s*Cliente/i.test(first) || firstNorm.startsWith("TOTALCLIENTE")) { const dadosTotal = parseTotalCliente(row); flushBloco(dadosTotal); clienteAtivo = null; bufferTitulos = []; continue; }
     if (isFinr1253TitleToken(first)) { if (clienteAtivo) bufferTitulos.push(row); continue; }
   }
-  flushBloco({}, "sem_total_cliente");
+  flushBloco({});
   const dedup = dedupeTitulos(items);
-  console.info(`FINR1253: ${dedup.length} lançamentos importados com sucesso.`);
+  console.info(`FINR1253: ${dedup.length} lançamentos importados com sucesso. Valor usado na carteira = coluna Receber.`);
   return dedup;
 }
 
@@ -411,33 +355,21 @@ const H7007 = {
 };
 
 function buildHeaderMap7007(sampleRow) {
-  const map = {};
-  const keys = Object.keys(sampleRow || {});
+  const map = {}, keys = Object.keys(sampleRow || {});
   for (const [field, aliases] of Object.entries(H7007)) {
-    for (const realKey of keys) {
-      const n = normH(realKey);
-      if (aliases.includes(n)) { map[field] = realKey; break; }
-    }
-    if (!map[field]) {
-      for (const realKey of keys) {
-        const n = normH(realKey);
-        if (aliases.some((a) => n.includes(a) || a.includes(n))) { map[field] = realKey; break; }
-      }
-    }
+    for (const realKey of keys) { const n = normH(realKey); if (aliases.includes(n)) { map[field] = realKey; break; } }
+    if (!map[field]) for (const realKey of keys) { const n = normH(realKey); if (aliases.some((a) => n.includes(a) || a.includes(n))) { map[field] = realKey; break; } }
   }
   return map;
 }
 
 function detectHeaderRow7007(rows) {
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
-    const row = rows[i];
-    if (!row || typeof row !== "object") continue;
+    const row = rows[i]; if (!row || typeof row !== "object") continue;
     let matches = 0;
     for (const k of Object.keys(row)) {
       const n = normH(k);
-      for (const aliases of Object.values(H7007)) {
-        if (aliases.some((a) => n === a || n.includes(a) || a.includes(n))) { matches++; break; }
-      }
+      for (const aliases of Object.values(H7007)) if (aliases.some((a) => n === a || n.includes(a) || a.includes(n))) { matches++; break; }
     }
     if (matches >= 2) return i;
   }
@@ -447,113 +379,55 @@ function detectHeaderRow7007(rows) {
 export function parseRows7007(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
   const headerIdx = detectHeaderRow7007(rows);
-  const sampleRow = rows[headerIdx] || rows[0];
-  const hmap = buildHeaderMap7007(sampleRow);
-  const camposMapeados = Object.entries(hmap).map(([f, k]) => `${f}="${k}"`).join(", ");
-  const camposFaltando = Object.keys(H7007).filter((f) => !hmap[f]);
-  console.info(`RPT_7007 diagnóstico: ${rows.length} linhas lidas | cabeçalho na linha ${headerIdx} | mapeados: [${camposMapeados}]${camposFaltando.length ? ` | NÃO mapeados: [${camposFaltando.join(", ")}]` : ""}`);
+  const hmap = buildHeaderMap7007(rows[headerIdx] || rows[0]);
+  console.info(`RPT_7007 diagnóstico: ${rows.length} linhas lidas | cabeçalho na linha ${headerIdx} | mapeados: [${Object.entries(hmap).map(([f, k]) => `${f}="${k}"`).join(", ")}]`);
 
   const isHeaderOrTotalRow = (row) => {
     if (!row) return true;
-    const vals = Object.values(row).map((v) => normH(String(v ?? "")));
-    const joined = vals.join(" ");
-    if (joined.includes("TOTAL") && vals.some((v) => /^TOTAL/.test(v))) return true;
-    if (joined.includes("EMPRESA") && joined.includes("TOTAL")) return true;
-    return vals.every((v) => !v);
+    const vals = Object.values(row).map((v) => normH(String(v ?? ""))), joined = vals.join(" ");
+    return (joined.includes("TOTAL") && vals.some((v) => /^TOTAL/.test(v))) || (joined.includes("EMPRESA") && joined.includes("TOTAL")) || vals.every((v) => !v);
   };
 
-  const dataRows = rows.slice(headerIdx + 1 > 0 ? headerIdx + 1 : 1);
   const out = [];
   let descartados = 0;
   const motivosDescarte = {};
   const addMotivo = (m) => { motivosDescarte[m] = (motivosDescarte[m] || 0) + 1; };
 
-  for (const row of dataRows) {
+  for (const row of rows.slice(headerIdx + 1 > 0 ? headerIdx + 1 : 1)) {
     if (isHeaderOrTotalRow(row)) continue;
     let nome = "";
     if (hmap.nomeCli && isValidClientName(row[hmap.nomeCli])) nome = String(row[hmap.nomeCli]).trim();
-    if (!nome) {
-      for (const k of Object.keys(row)) {
-        if (isValidClientName(row[k])) { nome = String(row[k]).trim(); break; }
-      }
-    }
-    let nrCli = "";
-    if (hmap.nrCli) {
-      const raw = row[hmap.nrCli];
-      if (raw != null && String(raw).trim()) nrCli = String(raw).replace(/\D/g, "").trim();
-    }
+    if (!nome) for (const k of Object.keys(row)) if (isValidClientName(row[k])) { nome = String(row[k]).trim(); break; }
+    let nrCli = hmap.nrCli && row[hmap.nrCli] != null ? String(row[hmap.nrCli]).replace(/\D/g, "").trim() : "";
     let titulo = "", seqDaBarra = "";
-    if (hmap.titulo) {
-      const v = row[hmap.titulo];
-      if (v != null && String(v).trim() && !isDocToken(String(v).trim())) {
-        const { base, sufixo } = normalizeTituloNumero(String(v).trim());
-        titulo = base;
-        seqDaBarra = sufixo;
-      }
+    if (hmap.titulo && row[hmap.titulo] != null && String(row[hmap.titulo]).trim() && !isDocToken(String(row[hmap.titulo]).trim())) {
+      const t = normalizeTituloNumero(String(row[hmap.titulo]).trim()); titulo = t.base; seqDaBarra = t.sufixo;
     }
-    const seqProprio = hmap.seq ? String(row[hmap.seq] ?? "").trim() : "";
-    const seq = seqProprio || (!hmap.seq && seqDaBarra ? seqDaBarra : "");
+    const seq = (hmap.seq ? String(row[hmap.seq] ?? "").trim() : "") || (!hmap.seq && seqDaBarra ? seqDaBarra : "");
     const vencimento = dateISO(hmap.venc ? row[hmap.venc] : undefined);
-
-    const saldoRaw = hmap.saldo ? row[hmap.saldo] : undefined;
-    const vlrTitRaw = hmap.vlrTit ? row[hmap.vlrTit] : undefined;
-    const valorRecebidoRaw = hmap.valorRecebido ? row[hmap.valorRecebido] : undefined;
-    const valorTotalErp = num(vlrTitRaw);
-    const valorRecebidoErp = num(valorRecebidoRaw);
-    const saldoErp = num(saldoRaw);
+    const valorTotalErp = num(hmap.vlrTit ? row[hmap.vlrTit] : 0);
+    const valorRecebidoErp = num(hmap.valorRecebido ? row[hmap.valorRecebido] : 0);
+    const saldoErp = num(hmap.saldo ? row[hmap.saldo] : 0);
     let valorEmAberto = saldoErp > 0 ? saldoErp : valorTotalErp - valorRecebidoErp;
-    if (!Number.isFinite(valorEmAberto)) valorEmAberto = 0;
-    if (valorEmAberto < 0) valorEmAberto = 0;
-    const valorOriginal = valorTotalErp > 0 ? valorTotalErp : valorEmAberto;
-
+    if (!Number.isFinite(valorEmAberto) || valorEmAberto < 0) valorEmAberto = 0;
+    if (!isValidClientName(nome) && !nrCli) { descartados++; addMotivo("sem_cliente"); continue; }
+    if (!titulo) { descartados++; addMotivo("sem_titulo"); continue; }
+    if (!vencimento && valorTotalErp <= 0 && valorEmAberto <= 0) { descartados++; addMotivo("sem_venc_nem_valor"); continue; }
+    if (valorEmAberto <= 0) { descartados++; addMotivo("saldo_zerado"); continue; }
+    const nomeFinal = nome || `CLI_${nrCli}`;
+    const clientGroupKey = getClienteGroupKeyRPT7007({ nrCli, nomeCli: nomeFinal });
     const tpRaw = hmap.tp ? row[hmap.tp] : undefined;
     const tp = (tpRaw && String(tpRaw).trim() && !isDocToken(String(tpRaw).trim())) ? String(tpRaw).trim().toUpperCase() : "EB";
     const portadorRaw = hmap.portador ? row[hmap.portador] : undefined;
     const portador = (portadorRaw && String(portadorRaw).trim()) ? String(portadorRaw).trim() : "EB";
-    const ser = hmap.serie ? String(row[hmap.serie] ?? "").trim() : "";
-    const emissao = dateISO(hmap.emissao ? row[hmap.emissao] : undefined);
-
-    if (!isValidClientName(nome) && !nrCli) { descartados++; addMotivo("sem_cliente"); continue; }
-    if (!titulo) { descartados++; addMotivo("sem_titulo"); continue; }
-    if (!vencimento && valorOriginal <= 0 && valorEmAberto <= 0) { descartados++; addMotivo("sem_venc_nem_valor"); continue; }
-    if (valorEmAberto <= 0) { descartados++; addMotivo("saldo_zerado"); continue; }
-
-    const nomeFinal = nome || `CLI_${nrCli}`;
-    const clientGroupKey = getClienteGroupKeyRPT7007({ nrCli, nomeCli: nomeFinal });
     out.push(buildItem({
-      origem: "RPT_7007_CONS_CAR_EB",
-      nrCli,
-      nomeCli: nomeFinal,
-      clientGroupKey,
-      primaryClientCode: nrCli,
-      erpClientCodes: nrCli ? [nrCli] : [],
-      recordOrigin: "ERP",
-      tp,
-      ser,
-      titulo,
-      seq: String(seq || "").trim(),
-      nfServico: "",
-      emissao,
-      vencimento,
-      valorOriginal,
-      valorRecebido: valorRecebidoErp,
-      valorEmAberto,
-      saldoErp,
-      partialPaymentDetected: valorRecebidoErp > 0,
-      portador
+      origem: "RPT_7007_CONS_CAR_EB", nrCli, nomeCli: nomeFinal, clientGroupKey, primaryClientCode: nrCli, erpClientCodes: nrCli ? [nrCli] : [], recordOrigin: "ERP",
+      tp, ser: hmap.serie ? String(row[hmap.serie] ?? "").trim() : "", titulo, seq: String(seq || "").trim(), nfServico: "", emissao: dateISO(hmap.emissao ? row[hmap.emissao] : undefined), vencimento,
+      valorOriginal: valorEmAberto, valorRecebido: valorRecebidoErp, valorEmAberto, valorTotalDebito: valorEmAberto, saldoErp, partialPaymentDetected: valorRecebidoErp > 0, portador
     }));
   }
-
-  if (out.length === 0) {
-    console.warn(`RPT_7007: ZERO títulos válidos. Descartados: ${descartados}. Motivos:`, motivosDescarte);
-    console.warn(`RPT_7007: Campos mapeados:`, hmap);
-    console.warn(`RPT_7007: Primeira linha de dados:`, dataRows[0]);
-    return out;
-  }
   const dedup = dedupeTitulos(out);
-  const dupCount = out.length - dedup.length;
-  if (dupCount > 0) console.info(`RPT_7007: ${dupCount} duplicata(s) internas removidas do arquivo.`);
-  console.info(`RPT_7007: ${dedup.length} títulos importados | ${descartados} descartados | motivos:`, motivosDescarte);
+  console.info(`RPT_7007: ${dedup.length} títulos importados | ${descartados} descartados | motivos:`, motivosDescarte, "Valor usado na carteira = Saldo.");
   return dedup;
 }
 
@@ -564,6 +438,4 @@ export function dlCsv(name, rows) {
   XLSX.writeFile(wb, name);
 }
 
-export function openPrint() {
-  window.print();
-}
+export function openPrint() { window.print(); }

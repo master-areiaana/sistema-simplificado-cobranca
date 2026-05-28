@@ -15,15 +15,6 @@ const KPI_OCULTOS = new Set([
   "VAL ORIGINAL"
 ]);
 
-const ABAS_OCULTAS = [
-  "CONFERENCIA DE PAGAMENTO",
-  "APROVACAO DO GESTOR",
-  "PRODUTIVIDADE",
-  "METAS",
-  "IMPACTO NO CAIXA",
-  "ASSESSORIA"
-];
-
 function normalizarInterfaceLabel(v) {
   return String(v ?? "")
     .toUpperCase()
@@ -116,9 +107,6 @@ export function PromessaClassifBadge({ qtd }) {
 }
 
 export function TabBtn({ active, children, badge, badgeColor = "#ef4444", onClick, t }) {
-  const labelNorm = normalizarInterfaceLabel(children);
-  if (ABAS_OCULTAS.some((aba) => labelNorm.includes(aba))) return null;
-
   return (
     <button onClick={onClick} style={{ position: "relative", background: active ? t.p : "transparent", color: active ? "#fff" : t.txt, border: "none", borderBottom: `3px solid ${active ? t.p : "transparent"}`, borderRadius: 0, padding: "10px 16px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, lineHeight: 1.3, transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center" }}>
       {children}

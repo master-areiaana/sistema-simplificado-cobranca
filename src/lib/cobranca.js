@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 export const hoje = new Date();
 export const hojeISO = hoje.toISOString().slice(0, 10);
 
-export const STATUS_OPC = ["Não Contatado","Em Cobrança","Sem Retorno","Prometeu Pagar","Pago Aguard. Baixa","Em Permuta","Encerrado"];
+export const STATUS_OPC = ["Não Contatado","Em Cobrança","Sem Retorno","Prometeu Pagar","Pago Aguard. Baixa","Em Permuta","Encerrado","Incobrável / Baixa por Perda"];
 export const ENCAMINHAR_OPC = [
   {value:"",label:"Sem encaminhamento"},
   {value:"verificacao",label:"→ Verificar Pagamento"},
@@ -14,7 +14,6 @@ export const CONTATO_OPC = ["Ligação","WhatsApp","E-mail","Presencial","Mensag
 export const VERIF_RESP = ["Confirmado","Não localizado","Baixado","Erro","Duplicidade","Devolver para cobrança"];
 export const PROT_RESP = ["Aprovado","Reprovado","Devolver para cobrança"];
 
-// Faixas de atraso
 export const FAIXAS_ATRASO = [
   { label: "Todos", value: 0 },
   { label: "7+ dias", value: 7 },
@@ -80,7 +79,6 @@ export function prioCor(l) {
   return l === "CRÍTICO" ? "#ef4444" : l === "ALTO" ? "#f97316" : l === "MÉDIO" ? "#eab308" : "#64748b";
 }
 
-// Classificação de promessa de pagamento
 export function promessaClassif(qtd) {
   if (qtd >= 3) return { label: "Crítico", cor: "#ef4444" };
   if (qtd === 2) return { label: "Médio", cor: "#f97316" };
@@ -88,8 +86,8 @@ export function promessaClassif(qtd) {
   return null;
 }
 
-// Sugestão de encaminhamento baseada em dias de atraso
 export function sugestaoEncaminhamento(diasAtraso, valor) {
+  if (diasAtraso > 900) return { label: "Perda", cor: "#991b1b" };
   if (diasAtraso > 180 || (diasAtraso > 90 && valor > 5000)) return { label: "Jurídico", cor: "#7c3aed" };
   if (diasAtraso > 90) return { label: "Protesto", cor: "#ef4444" };
   if (diasAtraso > 30) return { label: "Assessoria", cor: "#f97316" };
@@ -109,6 +107,15 @@ function normHeader(v) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/^\uFEFF/, "")
     .replace(/[^A-Z0-9]/g, "");
+}
+
+function normH(v) {
+  return String(v ?? "")
+    .toUpperCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.\-_°ºª]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normToken(v) {
@@ -138,36 +145,12 @@ function isValidClientName(v) {
   return /[A-Za-zÀ-ÿ]/.test(s) && s.replace(/[^A-Za-zÀ-ÿ]/g, "").length >= 3;
 }
 
-function isValidClientCode(v) {
-  const s = String(v ?? "").trim();
-  return /^\d{1,10}$/.test(s.replace(/\D/g, "")) && !isDocToken(s);
-}
-
-function firstValid(row, names, validator) {
-  for (const n of names) {
-    if (row[n] != null && String(row[n]).trim() !== "" && (!validator || validator(row[n]))) return row[n];
-  }
-  return "";
-}
-
 export function pick(row, names) {
   for (const n of names) if (row[n] != null && String(row[n]).trim() !== "") return row[n];
   return "";
 }
 
-function pickFlex(row, names, validator = null) {
-  const wanted = names.map(normHeader);
-  for (const [k, v] of Object.entries(row || {})) {
-    const nk = normHeader(k);
-    if (wanted.some((w) => nk === w || nk.includes(w) || w.includes(nk))) {
-      if (v != null && String(v).trim() !== "" && (!validator || validator(v))) return v;
-    }
-  }
-  return "";
-}
-
 export function detectSrc(fn) {
-  // Normaliza: maiúsculo, remove espaços/hífens/underlines para comparação robusta
   const u = String(fn || "").toUpperCase().replace(/[\s\-_]/g, "");
   return (u.includes("7007") || u.includes("CONSCAREB") || u.includes("RPTEB") || /EB\.XLS/.test(u) || u.endsWith("EB")) ? "RPT_7007_CONS_CAR_EB" : "FINR1253";
 }
@@ -179,7 +162,6 @@ export function calcFin(valor, venc) {
   return { valorOriginal: orig, valorMulta: multa, valorJuros: juros, valorTotalDebito: orig + multa + juros, diasAtraso: dias };
 }
 
-// Normaliza um campo de chave: maiúsculas, sem espaços, sem pontos, sem zeros à esquerda numéricos
 export function keyPart(v) {
   return String(v ?? "")
     .toUpperCase()
@@ -188,78 +170,56 @@ export function keyPart(v) {
     .replace(/^0+(\d+)$/, "$1");
 }
 
-// ─── NORMALIZAÇÃO DO NÚMERO DO TÍTULO ──────────────────────────────────────
-// Separa o número base de um sufixo de barra (ex: "10117/1" → base "10117", sufixo "1").
-// A barra NÃO é tratada como parcela real para fins de deduplicação — ela apenas
-// varia entre importações e causa duplicidade indevida.
-// Regra: se o título vier no formato "NUMERO/SUFIXO", usa apenas o NUMERO como base.
-// Se houver campo seq próprio e confiável no relatório, ele entra separadamente.
 export function normalizeTituloNumero(titulo) {
   const raw = String(titulo ?? "").trim().replace(/\./g, "");
-  // Detecta formato "BASE/SUFIXO" onde BASE é numérico e SUFIXO é curto (1-3 dígitos)
-  // Ex: "10117/1", "530/2", "557/1" → extrai apenas o número base
   const m = raw.match(/^(\d+)\/(\d{1,3})$/);
-  if (m) {
-    return { base: m[1].replace(/^0+(\d)/, "$1"), sufixo: m[2] };
-  }
-  // Sem barra: usa número inteiro como base
-  const base = raw.replace(/^0+(\d)/, "$1").toUpperCase();
-  return { base, sufixo: "" };
+  if (m) return { base: m[1].replace(/^0+(\d)/, "$1"), sufixo: m[2] };
+  return { base: raw.replace(/^0+(\d)/, "$1").toUpperCase(), sufixo: "" };
 }
 
-// ─── CHAVE ÚNICA CENTRAL DE TÍTULO ─────────────────────────────────────────
-// Regra: origem_norm | numero_BASE (sem sufixo de barra) | seq_proprio | vencimento_norm
-//
-// A barra no número (ex: 10117/1, 10117/2) NÃO entra na chave como diferenciador.
-// Isso evita duplicidade indevida quando o relatório gera sufixos inconsistentes.
-//
-// A seq só entra na chave se:
-//   - for um campo próprio do relatório (não derivado da barra do número), E
-//   - não parecer um vencimento, E
-//   - não for idêntica ao sufixo da barra (pois nesse caso a barra e o seq seriam a mesma coisa)
-//
-// Dois títulos com mesmo número base mas vencimentos diferentes → registros distintos (✓).
-export function getTituloKey({ origem, titulo, seq, vencimento }) {
-  // Origem: normaliza para valor canônico
-  const origRaw = String(origem ?? "").toUpperCase().replace(/[\s\-_]/g, "");
-  const normOrig = (origRaw.includes("7007") || origRaw.includes("CONSCAREB") || origRaw === "RPT7007CONSCAREB")
-    ? "EB" : "FINR1253";
+export function normalizarRazaoSocial(nome) {
+  return String(nome || "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.,\-\/\\]/g, " ")
+    .replace(/\b(LTDA|ME|EPP|S A|SA|EIRELI|EIRELLI|SPE)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  // Número do título: extrai apenas o BASE (sem sufixo de barra)
+export function getClienteGroupKeyRPT7007(item) {
+  const nome = normalizarRazaoSocial(item?.nomeCli || item?.client_name);
+  if (nome.length >= 3) return `NOME:${nome}`;
+  const cod = String(item?.nrCli || item?.client_code || "").replace(/\D/g, "").replace(/^0+(\d+)$/, "$1");
+  return `COD:${cod}`;
+}
+
+export function getTituloKey({ origem, titulo, seq, vencimento }) {
+  const origRaw = String(origem ?? "").toUpperCase().replace(/[\s\-_]/g, "");
+  const normOrig = (origRaw.includes("7007") || origRaw.includes("CONSCAREB") || origRaw === "RPT7007CONSCAREB") ? "EB" : "FINR1253";
   const { base: numeroBase, sufixo: sufixoBarra } = normalizeTituloNumero(titulo);
   const numeroNorm = numeroBase.toUpperCase();
-
-  // Seq: só entra na chave se for campo próprio E confiável
-  // Ignora: vencimentos disfarçados, seq idêntico ao sufixo da barra (seria duplicar info), vazio
   const seqRaw = String(seq ?? "").trim();
   const seqPareceVencimento = /^\d{4}-\d{2}-\d{2}$/.test(seqRaw) || /^\d{8}$/.test(seqRaw);
-  // Se seq é exatamente o sufixo da barra, ignorar (a barra já foi descartada)
   const seqEhSufixoBarra = sufixoBarra !== "" && seqRaw === sufixoBarra;
   const seqNorm = (seqPareceVencimento || seqEhSufixoBarra || !seqRaw) ? "" : seqRaw.replace(/^0+(\d)/, "$1");
-
-  // Vencimento normalizado: YYYYMMDD sem traços
   const vencNorm = String(vencimento ?? "").replace(/-/g, "").trim();
-
-  // Chave final: origem|numero_base|seq_proprio|vencimento
   return [normOrig, numeroNorm, seqNorm, vencNorm].join("|");
 }
 
-// Deduplicação de array de itens usando getTituloKey — mantém o mais completo
 export function dedupeTitulos(items) {
   const map = new Map();
   for (const item of items) {
     const key = getTituloKey(item);
     const prev = map.get(key);
     if (!prev) { map.set(key, item); continue; }
-    // Prefere o registro com mais campos manuais preenchidos
-    const score = (i) => [i.status !== "Não Contatado", i.obs, i.dataPromessa, i.dataContato, i.encaminhar, i.clientCategory]
-      .filter(Boolean).length;
+    const score = (i) => [i.status !== "Não Contatado", i.obs, i.dataPromessa, i.dataContato, i.encaminhar, i.clientCategory].filter(Boolean).length;
     if (score(item) > score(prev)) map.set(key, item);
   }
   return Array.from(map.values());
 }
 
-// buildId mantido para compatibilidade interna (buildItem ainda usa internamente)
 export function buildId({ origem, nrCli, tp, titulo, seq }) {
   return [origem, nrCli, tp, titulo, seq].map(keyPart).join("|");
 }
@@ -269,15 +229,27 @@ export function cliKey(item) {
 }
 
 export function buildItem(o) {
-  const f = calcFin(o.valorOriginal, o.vencimento);
+  const valorOriginal = num(o.valorOriginal ?? o.original_value ?? 0);
+  const valorRecebido = num(o.valorRecebido ?? o.received_value ?? 0);
+  const saldoErp = num(o.saldoErp ?? o.erp_balance ?? 0);
+  const valorEmAberto = num(o.valorEmAberto ?? o.open_value ?? (saldoErp > 0 ? saldoErp : valorOriginal));
+  const f = calcFin(valorEmAberto || valorOriginal, o.vencimento);
   return {
     ...o,
     id: buildId(o),
-    valorOriginal: f.valorOriginal,
+    valorOriginal,
+    valorRecebido,
+    valorEmAberto,
+    saldoErp,
     valorMulta: f.valorMulta,
     valorJuros: f.valorJuros,
     valorTotalDebito: f.valorTotalDebito,
     diasAtraso: f.diasAtraso,
+    partialPaymentDetected: Boolean(o.partialPaymentDetected || o.partial_payment_detected || valorRecebido > 0),
+    clientGroupKey: o.clientGroupKey || o.client_group_key || "",
+    primaryClientCode: o.primaryClientCode || o.primary_client_code || o.nrCli || "",
+    erpClientCodes: o.erpClientCodes || o.erp_client_codes || (o.nrCli ? [String(o.nrCli)] : []),
+    recordOrigin: o.recordOrigin || o.record_origin || "ERP",
     status: o.status || "Não Contatado",
     encaminhar: o.encaminhar || "",
     dataContato: o.dataContato || "",
@@ -294,6 +266,10 @@ export function dbToItem(r) {
     origem: r.source,
     nrCli: r.client_code,
     nomeCli: r.client_name,
+    clientGroupKey: r.client_group_key || "",
+    primaryClientCode: r.primary_client_code || r.client_code || "",
+    erpClientCodes: r.erp_client_codes || (r.client_code ? [r.client_code] : []),
+    recordOrigin: r.record_origin || "ERP",
     tp: r.doc_type,
     ser: r.serie,
     titulo: r.title_number,
@@ -302,6 +278,10 @@ export function dbToItem(r) {
     emissao: r.issue_date,
     vencimento: r.due_date,
     valorOriginal: r.original_value,
+    valorRecebido: r.received_value,
+    valorEmAberto: r.open_value,
+    saldoErp: r.erp_balance,
+    partialPaymentDetected: r.partial_payment_detected,
     portador: r.portador,
     status: r.current_status || "Não Contatado",
     encaminhar: r.workflow_status || "",
@@ -327,41 +307,15 @@ function joinedRow(row) {
   return (row || []).map((c) => String(c ?? "").trim()).filter(Boolean).join(" ");
 }
 
-function isIgnorableFinr1253Line(row) {
-  const firstNorm = normHeader(cellText(row, 0));
-  const rawNorm = normHeader(joinedRow(row));
-  if (!rawNorm) return true;
-  return (
-    firstNorm.startsWith("TOTALEMPRESAS") ||
-    firstNorm.startsWith("DATAHORAEMISSAO") ||
-    firstNorm.startsWith("TOTALGERAL") ||
-    firstNorm.startsWith("TOTALCLIENTE") ||
-    firstNorm === "TP" ||
-    firstNorm === "TPSER" ||
-    rawNorm.includes("DATAHORAEMISSAO")
-  );
-}
-
 function parseClienteLinha(row) {
   const raw = cellText(row, 0);
   const m = raw.match(/^Cliente:\s*([\d.]+)\s*-\s*(.+?)\s*-\s*CPF\/CNPJ:\s*([\d./-]+)\s*$/i);
-  if (!m) {
-    console.error("Linha Cliente: inválida na FINR1253. Bloco ignorado.", row);
-    return null;
-  }
-  return {
-    nrCli: cleanClientCode(m[1]),
-    nomeCli: String(m[2] || "").trim(),
-    cpfCnpj: String(m[3] || "").trim(),
-    telefone: "",
-    contato: ""
-  };
+  if (!m) return null;
+  return { nrCli: cleanClientCode(m[1]), nomeCli: String(m[2] || "").trim(), cpfCnpj: String(m[3] || "").trim(), telefone: "", contato: "" };
 }
 
 function parseTotalCliente(row) {
-  let telefone = "";
-  let contato = "";
-
+  let telefone = "", contato = "";
   for (const cell of row || []) {
     const text = String(cell ?? "").trim();
     if (!telefone) {
@@ -373,226 +327,91 @@ function parseTotalCliente(row) {
       if (contatoMatch) contato = String(contatoMatch[1] || "").trim();
     }
   }
-
-  if (!telefone || !contato) {
-    const raw = joinedRow(row);
-    if (!telefone) {
-      const telMatch = raw.match(/Tel\.?\s*:?\s*(.+?)(?:\s+Contato\s*:|$)/i);
-      telefone = String(telMatch?.[1] || "").trim();
-    }
-    if (!contato) {
-      const contatoMatch = raw.match(/Contato\s*:?\s*(.+)$/i);
-      contato = String(contatoMatch?.[1] || "").trim();
-    }
-  }
-
+  const raw = joinedRow(row);
+  if (!telefone) telefone = String(raw.match(/Tel\.?\s*:?\s*(.+?)(?:\s+Contato\s*:|$)/i)?.[1] || "").trim();
+  if (!contato) contato = String(raw.match(/Contato\s*:?\s*(.+)$/i)?.[1] || "").trim();
   return { telefone, contato };
 }
 
-// Mapeamento de colunas da FINR1253 (linha de lançamento, índice 0-based):
-// 0=Tp | 1=Ser | 2=Número | 3=Seq | 4=NF Serviço | 5=Operação | 6=Vencto.
-// 7=Título(valor face) | 8=Acréscimo | 9=Receb.Prc. | 10=Calculada | 11=Receber | 12=Atraso | 13=Úteis | 14=Portador
 function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) {
   const tp = cellText(row, 0).toUpperCase();
-
-  if (!clienteAtivo || !isValidClientName(clienteAtivo.nomeCli)) return null;
-  if (!isFinr1253TitleToken(tp)) return null;
-
-  const ser            = cellText(row, 1);
-  const numeroRaw      = cellText(row, 2);   // Número do documento (ex: 9831 ou 10117/1)
-  const { base: numero, sufixo: numSufixo } = normalizeTituloNumero(numeroRaw); // extrai número base sem barra
-  // Seq do FINR1253 vem da coluna 3; se estiver vazio, usa sufixo da barra como fallback
-  const seqColuna      = cellText(row, 3);
-  const seq            = seqColuna || numSufixo || "";
-  const nfServico      = cellText(row, 4);
-  const operacao       = row?.[5] ?? "";
-  const vencto         = row?.[6] ?? "";
-  const valorFaceTit   = row?.[7] ?? 0;      // "Título" = valor face do documento (ex: 147900,75)
-  const acrescimo      = row?.[8] ?? 0;
-  const recebPrc       = row?.[9] ?? 0;      // Receb.Prc. (valor já recebido)
-  const calculada      = row?.[10] ?? 0;     // Calculada (juros+multa calculados)
-  const receber        = row?.[11] ?? 0;     // Receber (total a receber = face + acréscimos)
-  const atraso         = row?.[12] ?? 0;
-  const uteis          = cellText(row, 13);
-  const portador       = cellText(row, 14);
-
-  // Número do título é obrigatório para identificar o lançamento
+  if (!clienteAtivo || !isValidClientName(clienteAtivo.nomeCli) || !isFinr1253TitleToken(tp)) return null;
+  const ser = cellText(row, 1);
+  const { base: numero, sufixo: numSufixo } = normalizeTituloNumero(cellText(row, 2));
+  const seq = cellText(row, 3) || numSufixo || "";
+  const nfServico = cellText(row, 4);
+  const vencto = row?.[6] ?? "";
+  const valorFaceTit = row?.[7] ?? 0;
+  const acrescimo = row?.[8] ?? 0;
+  const recebPrc = row?.[9] ?? 0;
+  const calculada = row?.[10] ?? 0;
+  const receber = row?.[11] ?? 0;
+  const atraso = row?.[12] ?? 0;
+  const uteis = cellText(row, 13);
+  const portador = cellText(row, 14);
   if (!numero) return null;
-
-  // valorOriginal = valor face do título (col 7), que é o valor do documento sem acréscimos.
-  // Se estiver zerado, usa Receb.Prc como fallback, depois Calculada, depois Receber.
-  const valorOriginal = num(valorFaceTit) > 0 ? num(valorFaceTit)
-    : num(recebPrc) > 0 ? num(recebPrc)
-    : num(calculada) > 0 ? num(calculada)
-    : num(receber);
-
+  const valorOriginal = num(valorFaceTit) > 0 ? num(valorFaceTit) : num(recebPrc) > 0 ? num(recebPrc) : num(calculada) > 0 ? num(calculada) : num(receber);
   if (valorOriginal <= 0) return null;
-
   return buildItem({
-    origem: "FINR1253",
-    nrCli: clienteAtivo.nrCli,
-    nomeCli: clienteAtivo.nomeCli,
-    cpfCnpj: clienteAtivo.cpfCnpj || "",
-    telefone: dadosTotal.telefone || "",
-    contato: dadosTotal.contato || "",
-    tp,
-    ser,
-    // "titulo" é o campo interno de chave — guarda o NÚMERO do documento (9831, 9867...)
-    // Isso é intencional: buildId usa "titulo" como parte da chave única de deduplicação.
-    // O valor monetário do título (col 7) fica em valorOriginal.
-    titulo: numero,
-    numero,
-    seq,
-    nfServico,
-    operacao,
-    emissao: "",
-    vencimento: dateISO(vencto),
-    valorOriginal,              // valor face do documento (col 7 = "Título" do relatório)
-    acrescimo: num(acrescimo),
-    recebPrc: num(recebPrc),
-    valorCalculado: num(calculada),
-    valorReceber: num(receber), // total com juros/multa (col 11 = "Receber")
-    atrasoRelatorio: num(atraso),
-    uteis,
-    portador
+    origem: "FINR1253", nrCli: clienteAtivo.nrCli, nomeCli: clienteAtivo.nomeCli, cpfCnpj: clienteAtivo.cpfCnpj || "",
+    telefone: dadosTotal.telefone || "", contato: dadosTotal.contato || "", tp, ser, titulo: numero, numero, seq, nfServico,
+    operacao: row?.[5] ?? "", emissao: "", vencimento: dateISO(vencto), valorOriginal, valorEmAberto: valorOriginal,
+    acrescimo: num(acrescimo), recebPrc: num(recebPrc), valorCalculado: num(calculada), valorReceber: num(receber), atrasoRelatorio: num(atraso), uteis, portador
   });
 }
 
 export function parseRows1253(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
-
   const items = [];
   let clienteAtivo = null;
   let bufferTitulos = [];
-  let headerSkipped = 0; // conta as 2 primeiras linhas de cabeçalho que devem ser ignoradas
-
+  let headerSkipped = 0;
   const flushBloco = (dadosTotal = {}, motivo = "") => {
-    if (bufferTitulos.length === 0) return;
-
-    if (!clienteAtivo) {
-      console.warn("FINR1253: bloco com títulos sem cliente ativo ignorado.", { motivo, linhas: bufferTitulos.length });
-      bufferTitulos = [];
-      return;
-    }
-
-    if (motivo === "sem_total_cliente") {
-      console.warn("FINR1253: bloco fechado sem Total Cliente; telefone e contato ficarão vazios.", {
-        cliente: clienteAtivo.nomeCli,
-        linhas: bufferTitulos.length
-      });
-    }
-
+    if (!bufferTitulos.length) return;
+    if (!clienteAtivo) { bufferTitulos = []; return; }
     for (const row of bufferTitulos) {
       const item = buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal);
       if (item) items.push(item);
     }
     bufferTitulos = [];
   };
-
   for (const row of rows) {
     const first = cellText(row, 0);
     const firstNorm = normHeader(first);
     const joined = normHeader(joinedRow(row));
-
-    // Linha vazia
     if (!joined) continue;
-
-    // Linhas de cabeçalho (agrupadores ou cabeçalho detalhado) — ignora por conteúdo
-    // Linha agrupadora: contém "VENCIMENTO", "VALORIA" ou "ATRASO" sem ser um lançamento
-    // Linha de cabeçalho detalhado: começa com "TP", "TPSER", "TIPO", "SER", "NUMERO"
-    const isHeaderRow = (
-      firstNorm === "TP" || firstNorm === "TPSER" || firstNorm === "TIPO" ||
+    const isHeaderRow = firstNorm === "TP" || firstNorm === "TPSER" || firstNorm === "TIPO" ||
       (firstNorm === "" && joined.includes("VENCIMENTO") && joined.includes("ATRASO")) ||
-      (joined.includes("VENCIMENTO") && joined.includes("VALORIA") && !firstNorm.startsWith("CLIENTE") && !isFinr1253TitleToken(first))
-    );
-    // Também pula as primeiras 2 linhas como fallback para arquivos com estrutura ligeiramente diferente
-    if (headerSkipped < 2 || isHeaderRow) {
-      if (!isHeaderRow) headerSkipped++;
-      continue;
-    }
-
-    // Linhas de rodapé/totais globais — sempre ignorar
-    if (
-      firstNorm.startsWith("TOTALEMPRESAS") ||
-      firstNorm.startsWith("DATAHORAEMISSAO") ||
-      firstNorm.startsWith("TOTALGERAL") ||
-      joined.includes("DATAHORAEMISSAO")
-    ) continue;
-
-    // Linha "Cliente: CÓDIGO - NOME - CPF/CNPJ: XXX"
-    if (/^Cliente:/i.test(first)) {
-      flushBloco({}, "sem_total_cliente");
-      bufferTitulos = [];
-      clienteAtivo = parseClienteLinha(row);
-      continue;
-    }
-
-    // Linha "Total Cliente:" — extrai telefone e contato, fecha bloco
-    if (/^Total\s*Cliente/i.test(first) || firstNorm.startsWith("TOTALCLIENTE")) {
-      const dadosTotal = parseTotalCliente(row);
-      flushBloco(dadosTotal, "total_cliente");
-      clienteAtivo = null;
-      bufferTitulos = [];
-      continue;
-    }
-
-    // Linha de lançamento válida (começa com FAT, NFE, REC, NF...)
-    if (isFinr1253TitleToken(first)) {
-      if (!clienteAtivo) {
-        console.warn("FINR1253: título órfão sem cliente ativo. Linha ignorada.", row);
-        continue;
-      }
-      bufferTitulos.push(row);
-      continue;
-    }
-
-    // Qualquer outra linha (subtotais, observações) — ignorar
+      (joined.includes("VENCIMENTO") && joined.includes("VALORIA") && !firstNorm.startsWith("CLIENTE") && !isFinr1253TitleToken(first));
+    if (headerSkipped < 2 || isHeaderRow) { if (!isHeaderRow) headerSkipped++; continue; }
+    if (firstNorm.startsWith("TOTALEMPRESAS") || firstNorm.startsWith("DATAHORAEMISSAO") || firstNorm.startsWith("TOTALGERAL") || joined.includes("DATAHORAEMISSAO")) continue;
+    if (/^Cliente:/i.test(first)) { flushBloco({}, "sem_total_cliente"); bufferTitulos = []; clienteAtivo = parseClienteLinha(row); continue; }
+    if (/^Total\s*Cliente/i.test(first) || firstNorm.startsWith("TOTALCLIENTE")) { const dadosTotal = parseTotalCliente(row); flushBloco(dadosTotal, "total_cliente"); clienteAtivo = null; bufferTitulos = []; continue; }
+    if (isFinr1253TitleToken(first)) { if (clienteAtivo) bufferTitulos.push(row); continue; }
   }
-
-  // Fecha último bloco caso não haja linha Total Cliente no final
   flushBloco({}, "sem_total_cliente");
-
-  // Deduplica dentro do próprio arquivo antes de retornar
   const dedup = dedupeTitulos(items);
-  const dupCount = items.length - dedup.length;
-  if (dupCount > 0) console.info(`FINR1253: ${dupCount} duplicata(s) internas removidas do arquivo.`);
   console.info(`FINR1253: ${dedup.length} lançamentos importados com sucesso.`);
   return dedup;
 }
 
-// ─── RPT_7007_CONS_CAR_EB parser ───────────────────────────────────────────
-// Suporta qualquer layout tabular com cabeçalho em qualquer linha.
-// Normaliza os nomes dos cabeçalhos antes de mapear, aceitando variações com
-// acentos, pontuação, espaços e maiúsculas/minúsculas.
-
-// Normaliza cabeçalho para comparação: maiúsculo, sem acento, sem ponto/hífen, sem espaço duplo
-function normH(v) {
-  return String(v ?? "")
-    .toUpperCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[.\-_°ºª]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// Aliases normalizados para cada campo (aplicar normH antes de comparar)
 const H7007 = {
-  nomeCli: ["NOMCLI","NOME CLIENTE","RAZAO SOCIAL","CLIENTE","SACADO","NOME SACADO","DEVEDOR","NOME","RAZAO","NOME DO CLIENTE","NOME SACADO","FAVORECIDO"],
-  nrCli:   ["CODCLI","COD CLIENTE","CODIGO CLIENTE","CLIENTE CODIGO","COD","CODIGO","NRCLI","NRO CLIENTE","NR CLIENTE","N CLIENTE","NUM CLIENTE","NUMERO CLIENTE"],
-  titulo:  ["NUMTIT","NUM TIT","NUMERO TITULO","N TITULO","NR TITULO","NRO TITULO","DUPLICATA","NOTA","FATURA","DOCUMENTO","NR DOCUMENTO","NUMERO DOCUMENTO","NUM DOCUMENTO","TITULO","TITULOS"],
-  seq:     ["SEQ","SEQUENCIA","PARCELA","PARC","PRESTACAO","PAR","PARTE","PARCELA NR","NR PARCELA"],
-  venc:    ["DTVENC","DT VENC","DATA VENCIMENTO","VENCIMENTO","VENCTO","DT VENCTO","VENC","DATA VENC","DT VENCIMENTO","VENCIMENTO TITULO"],
-  saldo:   ["SLDTTT","SALDO","SALDO TITULO","SALDO TOTAL","VLR SALDO","VAL SALDO","VALOR SALDO","VALOR ABERTO","VALOR EM ABERTO","SALDO EM ABERTO","SALDO DEVEDOR"],
-  vlrTit:  ["VLRTIT","VLR TIT","VAL TITULO","VALOR TITULO","VAL ORIG","VALOR ORIGINAL","VLR ORIG","VALOR","TOTAL","VLR TOTAL","VALOR FACE","VALOR NOMINAL"],
-  tp:      ["TPTIT","TP","TIPO","TIPO TITULO","TIPO DOC","TIPO DOCUMENTO","ESPECIE","ESP"],
-  portador:["PORTAD","PORTADOR","BANCO","CARTEIRA","COBRANCA","COBRANÇA","COD BANCO","BANCO COBRADOR"],
-  serie:   ["SERTIT","SERIE","SER","SERIE TITULO","NR SERIE"],
-  emissao: ["DTEMIS","EMISSAO","DATA EMISSAO","DT EMISSAO","DATA EMIS","DT EMIS","DT EMISSAO","DATA DE EMISSAO"],
+  nomeCli: ["NOMCLI","NOME CLIENTE","RAZAO SOCIAL","CLIENTE","SACADO","NOME SACADO","DEVEDOR","NOME","RAZAO","NOME DO CLIENTE","FAVORECIDO"],
+  nrCli: ["CODCLI","COD CLIENTE","CODIGO CLIENTE","CLIENTE CODIGO","COD","CODIGO","NRCLI","NRO CLIENTE","NR CLIENTE","N CLIENTE","NUM CLIENTE","NUMERO CLIENTE"],
+  titulo: ["NUMTIT","NUM TIT","NUMERO TITULO","N TITULO","NR TITULO","NRO TITULO","DUPLICATA","NOTA","FATURA","DOCUMENTO","NR DOCUMENTO","NUMERO DOCUMENTO","NUM DOCUMENTO","TITULO","TITULOS"],
+  seq: ["SEQ","SEQUENCIA","PARCELA","PARC","PRESTACAO","PAR","PARTE","PARCELA NR","NR PARCELA"],
+  venc: ["DTVENC","DT VENC","DATA VENCIMENTO","VENCIMENTO","VENCTO","DT VENCTO","VENC","DATA VENC","DT VENCIMENTO","VENCIMENTO TITULO"],
+  saldo: ["SLDTTT","SALDO","SALDO TITULO","SALDO TOTAL","VLR SALDO","VAL SALDO","VALOR SALDO","VALOR ABERTO","VALOR EM ABERTO","SALDO EM ABERTO","SALDO DEVEDOR"],
+  vlrTit: ["VLRTIT","VLR TIT","VAL TITULO","VALOR TITULO","VAL ORIG","VALOR ORIGINAL","VLR ORIG","VALOR","TOTAL","VLR TOTAL","VALOR FACE","VALOR NOMINAL"],
+  valorRecebido: ["VALOR RECEBIDO","VLR RECEBIDO","VAL RECEBIDO","RECEBIDO","VLRREC","VALREC","VL REC","VL_RECEBIDO","RECEBIMENTOS","VALOR PAGO","VLR PAGO"],
+  tp: ["TPTIT","TP","TIPO","TIPO TITULO","TIPO DOC","TIPO DOCUMENTO","ESPECIE","ESP"],
+  portador: ["PORTAD","PORTADOR","BANCO","CARTEIRA","COBRANCA","COBRANÇA","COD BANCO","BANCO COBRADOR"],
+  serie: ["SERTIT","SERIE","SER","SERIE TITULO","NR SERIE"],
+  emissao: ["DTEMIS","EMISSAO","DATA EMISSAO","DT EMISSAO","DATA EMIS","DT EMIS","DATA DE EMISSAO"],
 };
 
-// Mapeia as chaves reais do objeto-linha para os campos internos, usando os aliases normalizados
 function buildHeaderMap7007(sampleRow) {
-  const map = {}; // field -> realKey
+  const map = {};
   const keys = Object.keys(sampleRow || {});
   for (const [field, aliases] of Object.entries(H7007)) {
     for (const realKey of keys) {
@@ -600,69 +419,47 @@ function buildHeaderMap7007(sampleRow) {
       if (aliases.includes(n)) { map[field] = realKey; break; }
     }
     if (!map[field]) {
-      // fallback: busca parcial (ex: "NR. TITULO" contém "TITULO")
       for (const realKey of keys) {
         const n = normH(realKey);
-        for (const alias of aliases) {
-          if (n.includes(alias) || alias.includes(n)) { map[field] = realKey; break; }
-        }
-        if (map[field]) break;
+        if (aliases.some((a) => n.includes(a) || a.includes(n))) { map[field] = realKey; break; }
       }
     }
   }
   return map;
 }
 
-// Detecta a linha de cabeçalho: procura primeira linha que tenha ao menos 2 campos reconhecidos
 function detectHeaderRow7007(rows) {
-  const minMatches = 2;
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const row = rows[i];
     if (!row || typeof row !== "object") continue;
-    const keys = Object.keys(row);
     let matches = 0;
-    for (const k of keys) {
+    for (const k of Object.keys(row)) {
       const n = normH(k);
       for (const aliases of Object.values(H7007)) {
         if (aliases.some((a) => n === a || n.includes(a) || a.includes(n))) { matches++; break; }
       }
     }
-    if (matches >= minMatches) return i;
+    if (matches >= 2) return i;
   }
-  return 0; // fallback: assume primeira linha
-}
-
-function getField(row, hmap, field) {
-  const k = hmap[field];
-  if (!k) return undefined;
-  const v = row[k];
-  return v === undefined || v === null ? undefined : v;
+  return 0;
 }
 
 export function parseRows7007(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
-
-  // --- Detecta linha de cabeçalho e constrói mapa de campos ---
   const headerIdx = detectHeaderRow7007(rows);
   const sampleRow = rows[headerIdx] || rows[0];
   const hmap = buildHeaderMap7007(sampleRow);
-
-  // --- Log de diagnóstico ---
   const camposMapeados = Object.entries(hmap).map(([f, k]) => `${f}="${k}"`).join(", ");
   const camposFaltando = Object.keys(H7007).filter((f) => !hmap[f]);
   console.info(`RPT_7007 diagnóstico: ${rows.length} linhas lidas | cabeçalho na linha ${headerIdx} | mapeados: [${camposMapeados}]${camposFaltando.length ? ` | NÃO mapeados: [${camposFaltando.join(", ")}]` : ""}`);
 
-  // --- Filtra linhas de cabeçalho, totais e vazias ---
   const isHeaderOrTotalRow = (row) => {
     if (!row) return true;
     const vals = Object.values(row).map((v) => normH(String(v ?? "")));
     const joined = vals.join(" ");
-    // Linhas de totais ou metadados
     if (joined.includes("TOTAL") && vals.some((v) => /^TOTAL/.test(v))) return true;
     if (joined.includes("EMPRESA") && joined.includes("TOTAL")) return true;
-    // Linha completamente vazia
-    if (vals.every((v) => !v)) return true;
-    return false;
+    return vals.every((v) => !v);
   };
 
   const dataRows = rows.slice(headerIdx + 1 > 0 ? headerIdx + 1 : 1);
@@ -673,96 +470,76 @@ export function parseRows7007(rows) {
 
   for (const row of dataRows) {
     if (isHeaderOrTotalRow(row)) continue;
-
-    // --- Nome do cliente ---
     let nome = "";
-    if (hmap.nomeCli) {
-      const v = row[hmap.nomeCli];
-      if (isValidClientName(v)) nome = String(v).trim();
-    }
-    // fallback: qualquer coluna com nome válido que se pareça com cliente
+    if (hmap.nomeCli && isValidClientName(row[hmap.nomeCli])) nome = String(row[hmap.nomeCli]).trim();
     if (!nome) {
       for (const k of Object.keys(row)) {
         if (isValidClientName(row[k])) { nome = String(row[k]).trim(); break; }
       }
     }
-
-    // --- Código do cliente ---
     let nrCli = "";
     if (hmap.nrCli) {
       const raw = row[hmap.nrCli];
       if (raw != null && String(raw).trim()) nrCli = String(raw).replace(/\D/g, "").trim();
     }
-
-    // --- Número do título ---
-    // Normaliza para usar apenas o número BASE (sem sufixo de barra ex: "10117/1" → "10117")
-    // O sufixo de barra só vira seq se não houver campo seq próprio no relatório
-    let titulo = "";
-    let seqDaBarra = "";
+    let titulo = "", seqDaBarra = "";
     if (hmap.titulo) {
       const v = row[hmap.titulo];
       if (v != null && String(v).trim() && !isDocToken(String(v).trim())) {
         const { base, sufixo } = normalizeTituloNumero(String(v).trim());
         titulo = base;
-        seqDaBarra = sufixo; // guarda para usar como seq apenas se não houver campo seq próprio
+        seqDaBarra = sufixo;
       }
     }
-
-    // --- Parcela/Sequência ---
-    // Prioridade: campo seq próprio do relatório > sufixo da barra (apenas como fallback)
-    // Se houver campo seq próprio E ele não for igual ao sufixo da barra, usa o campo próprio
     const seqProprio = hmap.seq ? String(row[hmap.seq] ?? "").trim() : "";
-    // Só usa sufixo da barra se NÃO houver campo seq próprio no relatório (hmap.seq não mapeado)
     const seq = seqProprio || (!hmap.seq && seqDaBarra ? seqDaBarra : "");
+    const vencimento = dateISO(hmap.venc ? row[hmap.venc] : undefined);
 
-    // --- Vencimento ---
-    const vencRaw = hmap.venc ? row[hmap.venc] : undefined;
-    const vencimento = dateISO(vencRaw);
-
-    // --- Valor ---
     const saldoRaw = hmap.saldo ? row[hmap.saldo] : undefined;
     const vlrTitRaw = hmap.vlrTit ? row[hmap.vlrTit] : undefined;
-    const valorRaw = saldoRaw ?? vlrTitRaw;
-    const valorOriginal = num(valorRaw);
+    const valorRecebidoRaw = hmap.valorRecebido ? row[hmap.valorRecebido] : undefined;
+    const valorTotalErp = num(vlrTitRaw);
+    const valorRecebidoErp = num(valorRecebidoRaw);
+    const saldoErp = num(saldoRaw);
+    let valorEmAberto = saldoErp > 0 ? saldoErp : valorTotalErp - valorRecebidoErp;
+    if (!Number.isFinite(valorEmAberto)) valorEmAberto = 0;
+    if (valorEmAberto < 0) valorEmAberto = 0;
+    const valorOriginal = valorTotalErp > 0 ? valorTotalErp : valorEmAberto;
 
-    // --- Tipo ---
     const tpRaw = hmap.tp ? row[hmap.tp] : undefined;
-    const tp = (tpRaw && String(tpRaw).trim() && !isDocToken(String(tpRaw).trim()))
-      ? String(tpRaw).trim().toUpperCase() : "EB";
-
-    // --- Portador ---
+    const tp = (tpRaw && String(tpRaw).trim() && !isDocToken(String(tpRaw).trim())) ? String(tpRaw).trim().toUpperCase() : "EB";
     const portadorRaw = hmap.portador ? row[hmap.portador] : undefined;
     const portador = (portadorRaw && String(portadorRaw).trim()) ? String(portadorRaw).trim() : "EB";
-
-    // --- Série ---
     const ser = hmap.serie ? String(row[hmap.serie] ?? "").trim() : "";
+    const emissao = dateISO(hmap.emissao ? row[hmap.emissao] : undefined);
 
-    // --- Emissão ---
-    const emissaoRaw = hmap.emissao ? row[hmap.emissao] : undefined;
-    const emissao = dateISO(emissaoRaw);
-
-    // --- Validação: regra mínima ---
-    // Deve ter (nome OU código) E título E (vencimento OU valor)
     if (!isValidClientName(nome) && !nrCli) { descartados++; addMotivo("sem_cliente"); continue; }
     if (!titulo) { descartados++; addMotivo("sem_titulo"); continue; }
-    if (!vencimento && valorOriginal <= 0) { descartados++; addMotivo("sem_venc_nem_valor"); continue; }
+    if (!vencimento && valorOriginal <= 0 && valorEmAberto <= 0) { descartados++; addMotivo("sem_venc_nem_valor"); continue; }
+    if (valorEmAberto <= 0) { descartados++; addMotivo("saldo_zerado"); continue; }
 
-    // seq: usa o valor limpo do arquivo (sem fallback para vencimento)
-    // getTituloKey já inclui vencimento na chave — não precisamos misturar seq+venc
-    const seqKey = String(seq || "").trim();
-
+    const nomeFinal = nome || `CLI_${nrCli}`;
+    const clientGroupKey = getClienteGroupKeyRPT7007({ nrCli, nomeCli: nomeFinal });
     out.push(buildItem({
       origem: "RPT_7007_CONS_CAR_EB",
       nrCli,
-      nomeCli: nome || `CLI_${nrCli}`,
+      nomeCli: nomeFinal,
+      clientGroupKey,
+      primaryClientCode: nrCli,
+      erpClientCodes: nrCli ? [nrCli] : [],
+      recordOrigin: "ERP",
       tp,
       ser,
       titulo,
-      seq: seqKey,
+      seq: String(seq || "").trim(),
       nfServico: "",
       emissao,
       vencimento,
       valorOriginal,
+      valorRecebido: valorRecebidoErp,
+      valorEmAberto,
+      saldoErp,
+      partialPaymentDetected: valorRecebidoErp > 0,
       portador
     }));
   }
@@ -773,8 +550,6 @@ export function parseRows7007(rows) {
     console.warn(`RPT_7007: Primeira linha de dados:`, dataRows[0]);
     return out;
   }
-
-  // Deduplica dentro do próprio arquivo antes de retornar
   const dedup = dedupeTitulos(out);
   const dupCount = out.length - dedup.length;
   if (dupCount > 0) console.info(`RPT_7007: ${dupCount} duplicata(s) internas removidas do arquivo.`);

@@ -1,56 +1,74 @@
 import React, { useMemo, useState } from "react";
-import ColHeader from "./ColHeader";
-import { Btn, PromBadge, ObsCell, Badge, SugestaoEncBadge } from "./UI";
-import { fmtM, fmtD, prioCor, sugestaoEncaminhamento } from "@/lib/cobranca";
+import { Btn, PromBadge, ObsCell, Badge } from "./UI";
+import { fmtM, fmtD, prioCor } from "@/lib/cobranca";
 
 const COLS_DEF = [
   { key: "check", label: "", width: 32, fixed: true },
   { key: "expand", label: "", width: 28, fixed: true },
-  { key: "nrCli", label: "Nº", width: 52 },
-  { key: "nomeCli", label: "CLIENTE", width: "13%", minWidth: 120 },
-  { key: "qtd", label: "QTD.", width: 36 },
-  { key: "venc", label: "VENCIMENTO", width: 80 },
-  { key: "atraso", label: "ATRASO", width: 56 },
-  { key: "vOrig", label: "VAL. ORIG", width: 80 },
-  { key: "multa", label: "MULTA", width: 68 },
-  { key: "juros", label: "JUROS", width: 64 },
-  { key: "total", label: "TOTAL", width: 84 },
-  { key: "status", label: "STATUS", width: 100 },
-  { key: "acao", label: "AÇÃO A FAZER", width: 120 },
-  { key: "enc", label: "ENCAMINHAR", width: 84 },
-  { key: "origem", label: "ORIG.", width: 52 },
-  { key: "cat", label: "CATEGORIA", width: 80 },
-  { key: "contato", label: "DT. CONTATO", width: 78 },
-  { key: "prom", label: "PROMESSA", width: 82 },
-  { key: "sugest", label: "SUGESTÃO", width: 86 },
-  { key: "obs", label: "OBSERVAÇÃO", width: "14%", minWidth: 100 },
+  { key: "nrCli", label: "Nº", width: 58 },
+  { key: "nomeCli", label: "CLIENTE", width: "18%", minWidth: 140 },
+  { key: "qtd", label: "QTD.", width: 48 },
+  { key: "venc", label: "VENCIMENTO", width: 90 },
+  { key: "atraso", label: "ATRASO", width: 64 },
+  { key: "vOrig", label: "VAL. ORIG", width: 92 },
+  { key: "multa", label: "MULTA", width: 76 },
+  { key: "juros", label: "JUROS", width: 76 },
+  { key: "total", label: "TOTAL A COBRAR", width: 112 },
+  { key: "status", label: "STATUS", width: 120 },
+  { key: "enc", label: "ENCAMINHAR", width: 96 },
+  { key: "origem", label: "ORIG.", width: 58 },
+  { key: "cat", label: "CATEGORIA", width: 90 },
+  { key: "contato", label: "DT. CONTATO", width: 88 },
+  { key: "prom", label: "PROMESSA", width: 88 },
+  { key: "obs", label: "OBSERVAÇÃO", width: "18%", minWidth: 120 },
   { key: "acoes", label: "AÇÕES", width: 96, fixed: true },
 ];
 
 const thS = (t) => ({ background: t.th, padding: "7px 8px", textAlign: "left", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .3, color: t.muted, position: "sticky", top: 0, zIndex: 10 });
 const tdS = (ex = {}) => ({ padding: "6px 8px", borderBottom: "1px solid #0002", fontSize: 11, ...ex });
 const cleanText = (v) => String(v ?? "").trim();
+const norm = (v) => cleanText(v).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
 const hasLetters = (v) => /[A-Za-zÀ-ÿ]/.test(cleanText(v));
-const normSimple = (v) => cleanText(v).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
 
-function encBadge(enc) {
-  if (enc === "verificacao") return <Badge label="→ Verificar" color="#3b82f6" />;
-  if (enc === "protesto") return <Badge label="→ Protesto" color="#ef4444" />;
-  if (enc === "assessoria") return <Badge label="→ Assessoria" color="#f97316" />;
-  return null;
+function isStatusForaCarteira(status) {
+  const s = norm(status);
+  return [
+    "BAIXADO",
+    "LIQUIDADO",
+    "CANCELADO",
+    "ENCERRADO",
+    "PAGO",
+    "RECEBIDO",
+    "PAGOAGUARDBAIXA",
+    "PAGOAGUARDANDABAIXA",
+    "INCOBRAVELBAIXAPORPERDA"
+  ].some((x) => s === x || s.includes(x));
 }
 
-function categoriaBadge(cat) {
-  const cores = { Portador: "#8b5cf6", Imobiliário: "#06b6d4", Parceiros: "#f59e0b", Bancos: "#10b981" };
-  if (!cat) return null;
-  return <Badge label={cat} color={cores[cat] || "#64748b"} />;
+function isTituloCarteiraGeral(item) {
+  if (!item) return false;
+  if (item.active === false) return false;
+  if (item.lossStatus || item.loss_status) return false;
+  if (isStatusForaCarteira(item.status || item.current_status)) return false;
+  if (isStatusForaCarteira(item.encaminhar || item.workflow_status)) return false;
+
+  const valorAberto = Number(
+    item.valorEmAberto ??
+    item.open_value ??
+    item.valorTotalDebito ??
+    item.valorOriginal ??
+    item.original_value ??
+    0
+  );
+
+  return Number.isFinite(valorAberto) && valorAberto > 0;
 }
 
 function isGenericClientName(v) {
   const s = cleanText(v);
-  const n = normSimple(s);
-  const termosQueNaoSaoCliente = new Set(["NFE", "NF", "FAT", "REC", "TC", "EB", "NFSE", "CTE", "DUP", "DUPL", "DUPLICATA", "TITULO", "PARCELA", "TOTAL", "TOTALEMPRESAS", "TOTALCLIENTE", "DATAHORAEMISSAO"]);
-  return !s || s === "—" || /^\d+$/.test(s) || /^cliente\s*\d+$/i.test(s) || termosQueNaoSaoCliente.has(n) || n.startsWith("TOTALEMPRESAS") || n.startsWith("TOTALCLIENTE") || n.startsWith("DATAHORAEMISSAO");
+  const n = norm(s);
+  const invalidos = new Set(["NFE", "NF", "FAT", "REC", "TC", "EB", "NFSE", "CTE", "DUP", "DUPL", "DUPLICATA", "TITULO", "PARCELA", "TOTAL", "TOTALEMPRESAS", "TOTALCLIENTE", "DATAHORAEMISSAO"]);
+  return !s || s === "—" || /^\d+$/.test(s) || /^cliente\s*\d+$/i.test(s) || invalidos.has(n) || n.startsWith("TOTAL") || n.startsWith("DATAHORAEMISSAO");
 }
 
 function splitCodeAndName(v) {
@@ -76,35 +94,37 @@ function getDisplayClient(g) {
   return { nrCli: best?.nrCli || cleanText(g.nrCli), nomeCli: best?.nomeCli || (!isGenericClientName(g.nomeCli) ? cleanText(g.nomeCli) : "—") };
 }
 
-function isLegacyOrInvalidFinr1253Title(item) {
-  if (!item || item.origem !== "FINR1253") return false;
-  const tp = normSimple(item.tp);
-  const portador = normSimple(item.portador);
-  const nome = normSimple(item.nomeCli);
-  const titulo = normSimple(item.titulo);
-  const numero = normSimple(item.numero);
-  const nfServico = normSimple(item.nfServico);
-
-  return (
-    tp === "TC" ||
-    portador === "TC" ||
-    nome.startsWith("TOTALEMPRESAS") ||
-    titulo.startsWith("TOTALEMPRESAS") ||
-    numero.startsWith("TOTALEMPRESAS") ||
-    nfServico.startsWith("TOTALEMPRESAS") ||
-    nome.startsWith("TOTALCLIENTE") ||
-    titulo.startsWith("TOTALCLIENTE") ||
-    nome.startsWith("DATAHORAEMISSAO") ||
-    titulo.startsWith("DATAHORAEMISSAO")
-  );
+function encBadge(enc) {
+  if (enc === "verificacao") return <Badge label="→ Verificar" color="#3b82f6" />;
+  if (enc === "protesto") return <Badge label="→ Protesto" color="#ef4444" />;
+  if (enc === "assessoria") return <Badge label="→ Assessoria" color="#f97316" />;
+  return <span style={{ color: "#94a3b8", fontSize: 10 }}>—</span>;
 }
 
-function sanitizeGroup(g) {
-  const titulos = (g.titulos || []).filter((item) => !isLegacyOrInvalidFinr1253Title(item));
+function categoriaBadge(cat) {
+  const cores = { Portador: "#8b5cf6", Imobiliário: "#06b6d4", Parceiros: "#f59e0b", Bancos: "#10b981" };
+  if (!cat) return null;
+  return <Badge label={cat} color={cores[cat] || "#64748b"} />;
+}
+
+function getOrigemLabel(origem) {
+  return origem === "FINR1253" ? "Topcon" : "EB";
+}
+
+function renderTituloDetalhe(item) {
+  const titulo = cleanText(item.titulo);
+  const seq = cleanText(item.seq);
+  if (titulo && seq) return `${titulo}/${seq}`;
+  return titulo || "—";
+}
+
+function sanitizeGroup(g, origemFiltro) {
+  let titulos = (g.titulos || []).filter(isTituloCarteiraGeral);
+  if (origemFiltro) titulos = titulos.filter((item) => item.origem === origemFiltro);
   if (!titulos.length) return null;
 
   const vencimentos = titulos.map((x) => x.vencimento).filter(Boolean).sort();
-  const dataContatos = titulos.map((x) => x.dataContato || "").filter(Boolean).sort();
+  const contatos = titulos.map((x) => x.dataContato || "").filter(Boolean).sort();
   const promessas = titulos.map((x) => x.dataPromessa || "").filter(Boolean).sort();
 
   return {
@@ -113,21 +133,17 @@ function sanitizeGroup(g) {
     valorOriginal: titulos.reduce((s, x) => s + Number(x.valorOriginal || 0), 0),
     valorMulta: titulos.reduce((s, x) => s + Number(x.valorMulta || 0), 0),
     valorJuros: titulos.reduce((s, x) => s + Number(x.valorJuros || 0), 0),
-    valorTotalDebito: titulos.reduce((s, x) => s + Number(x.valorTotalDebito || 0), 0),
+    valorTotalDebito: titulos.reduce((s, x) => s + Number(x.valorTotalDebito || x.valorEmAberto || x.valorOriginal || 0), 0),
     maiorAtraso: titulos.reduce((m, x) => Math.max(m, Number(x.diasAtraso || 0)), 0),
     qtdTitulos: titulos.length,
     qtdTotal: titulos.reduce((s, x) => s + Number(x.qtd || 0), 0),
-    ultimoContato: dataContatos.slice(-1)[0] || "",
+    ultimoContato: contatos.slice(-1)[0] || "",
     dataPromessa: promessas.slice(-1)[0] || "",
     primeiroVencimento: vencimentos[0] || "",
-    statusConsolidado: titulos.map((x) => x.status).filter(Boolean).sort().slice(-1)[0] || g.statusConsolidado || "Não Contatado",
+    statusConsolidado: titulos.map((x) => x.status).filter(Boolean).sort().slice(-1)[0] || "Não Contatado",
     obsConsolidada: titulos.map((x) => x.obs).filter(Boolean).slice(-1)[0] || "",
     encaminharConsolidado: titulos.map((x) => x.encaminhar).filter(Boolean).slice(-1)[0] || "",
   };
-}
-
-function sanitizeCart(arr) {
-  return (arr || []).map(sanitizeGroup).filter(Boolean);
 }
 
 function hasValidDisplayClient(g) {
@@ -135,223 +151,113 @@ function hasValidDisplayClient(g) {
   return !!cliente.nomeCli && cliente.nomeCli !== "—" && !isGenericClientName(cliente.nomeCli) && hasLetters(cliente.nomeCli);
 }
 
-function getOrigemLabel(origem) {
-  return origem === "FINR1253" ? "Topcon" : "EB";
-}
-
-function renderTituloDetalhe(item, grupo) {
-  const cliente = getDisplayClient(grupo);
-  const titulo = cleanText(item.titulo);
-  const seq = cleanText(item.seq);
-  const tituloPareceCliente = splitCodeAndName(`${titulo}/${seq}`);
-  if (tituloPareceCliente) {
-    const doc = cleanText(grupo.nrCli);
-    return doc ? `${doc}/1` : "—";
-  }
-  if (titulo && seq) return `${titulo}/${seq}`;
-  if (titulo && !isGenericClientName(titulo)) return titulo;
-  if (cliente.nrCli && cleanText(item.nrCli) !== cliente.nrCli) return cleanText(item.nrCli);
-  return "—";
-}
-
-function itemFilterValue(item, grupo, field) {
-  const cliente = getDisplayClient(grupo);
-  const sugestao = sugestaoEncaminhamento(Number(item.diasAtraso || 0), Number(item.valorTotalDebito || 0));
-  switch (field) {
-    case "nrCli": return cliente.nrCli || item.nrCli || "(Vazio)";
-    case "nomeCli": return cliente.nomeCli || "(Vazio)";
-    case "qtd": return "1";
-    case "venc": return item.vencimento ? fmtD(item.vencimento) : "(Vazio)";
-    case "atraso": return item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—";
-    case "vOrig": return fmtM(item.valorOriginal);
-    case "multa": return fmtM(item.valorMulta);
-    case "juros": return fmtM(item.valorJuros);
-    case "total": return fmtM(item.valorTotalDebito);
-    case "status": return item.status || "(Vazio)";
-    case "acao": return item.acaoAfazer || "(Vazio)";
-    case "enc": return item.encaminhar || "Sem encaminhamento";
-    case "origem": return getOrigemLabel(item.origem) || "(Vazio)";
-    case "cat": return item.clientCategory || "(Vazio)";
-    case "contato": return item.dataContato ? fmtD(item.dataContato) : "(Vazio)";
-    case "prom": return item.dataPromessa ? fmtD(item.dataPromessa) : "(Vazio)";
-    case "sugest": return sugestao ? sugestao.label : "(Sem sugestão)";
-    case "obs": return item.obs || grupo.obsConsolidada || item.portador || "(Sem observação)";
-    case "titulo": return renderTituloDetalhe(item, grupo);
-    default: return "";
-  }
-}
-
-function filterValue(g, field) {
+function matchesSearch(g, busca = "") {
+  const b = norm(busca);
+  if (!b) return true;
   const cliente = getDisplayClient(g);
-  const sugestao = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
-  switch (field) {
-    case "nrCli": return cliente.nrCli || g.nrCli || "(Vazio)";
-    case "nomeCli": return cliente.nomeCli || "(Vazio)";
-    case "qtd": return String(g.qtdTitulos ?? 0);
-    case "venc": return g.primeiroVencimento ? fmtD(g.primeiroVencimento) : "(Vazio)";
-    case "atraso": return g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—";
-    case "vOrig": return fmtM(g.valorOriginal);
-    case "multa": return fmtM(g.valorMulta);
-    case "juros": return fmtM(g.valorJuros);
-    case "total": return fmtM(g.valorTotalDebito);
-    case "status": return g.statusConsolidado || "(Vazio)";
-    case "acao": return g.acaoAfazer || "(Vazio)";
-    case "enc": return g.encaminharConsolidado || "Sem encaminhamento";
-    case "origem": return [...new Set((g.titulos || []).map(x => getOrigemLabel(x.origem)).filter(Boolean))].join(", ") || "(Vazio)";
-    case "cat": return [...new Set((g.titulos || []).map(x => x.clientCategory).filter(Boolean))].join(", ") || "(Vazio)";
-    case "contato": return g.ultimoContato ? fmtD(g.ultimoContato) : "(Vazio)";
-    case "prom": return g.dataPromessa ? fmtD(g.dataPromessa) : "(Vazio)";
-    case "sugest": return sugestao ? sugestao.label : "(Sem sugestão)";
-    case "obs": return g.obsConsolidada || "(Sem observação)";
-    default: return "";
-  }
+  const texto = [cliente.nrCli, cliente.nomeCli, g.nrCli, g.nomeCli, ...(g.codigosLista || []), ...(g.titulos || []).map(t => `${t.titulo} ${t.seq}`)].join(" ");
+  return norm(texto).includes(b);
 }
 
-function valuesForFilter(g, field) {
-  const values = [filterValue(g, field)];
-  for (const item of g.titulos || []) values.push(itemFilterValue(item, g, field));
-  return [...new Set(values.map(v => v == null || v === "" ? "(Vazio)" : String(v)))];
-}
+export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem }) {
+  const [buscaLocal, setBuscaLocal] = useState("");
+  const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
+  const colCount = visibleCols.length;
 
-function matchesAllFiltersByValues(valuesMap, filters) {
-  for (const [field, vals] of Object.entries(filters)) {
-    if (!vals) continue;
-    if (vals.length === 0) return false;
-    const values = valuesMap(field);
-    if (!values.some(v => vals.includes(v))) return false;
-  }
-  return true;
-}
+  const carteiraGeral = useMemo(() => {
+    return (sortedCart || [])
+      .map((g) => sanitizeGroup(g, filtroOrigem))
+      .filter(Boolean)
+      .filter(hasValidDisplayClient)
+      .filter((g) => matchesSearch(g, buscaLocal));
+  }, [sortedCart, filtroOrigem, buscaLocal]);
 
-function groupMatchesFilters(g, filters) {
-  return matchesAllFiltersByValues((field) => valuesForFilter(g, field), filters);
-}
-function itemMatchesFilters(item, grupo, filters) {
-  return matchesAllFiltersByValues((field) => [itemFilterValue(item, grupo, field)], filters);
-}
-function visibleTitlesForGroup(g, filters, origemFiltro) {
-  let validTitulos = (g.titulos || []).filter((item) => !isLegacyOrInvalidFinr1253Title(item));
-  // Filtro por origem: nas linhas filhas expandidas, mostra apenas títulos da origem selecionada
-  if (origemFiltro) validTitulos = validTitulos.filter((item) => item.origem === origemFiltro);
-  const hasActiveFilter = Object.values(filters).some(v => v !== null && v !== undefined);
-  if (!hasActiveFilter) return validTitulos;
-  const matchedItems = validTitulos.filter(item => itemMatchesFilters(item, g, filters));
-  return matchedItems.length > 0 ? matchedItems : validTitulos;
-}
-function applyLocalFilters(arr, filters) {
-  return arr.filter((g) => groupMatchesFilters(g, filters));
-}
-
-export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, onEncaminharSugestao, hiddenCols, onClickFilter, filtroOrigem }) {
-  const [tableFilters, setTableFilters] = useState({});
-  const hasAnyFilter = (f) => Object.values(f).some(v => v !== null && v !== undefined);
-  const hasAnyTableFilter = hasAnyFilter(tableFilters);
-  const visibleCols = COLS_DEF.filter(c => !["acao", "sugest"].includes(c.key) && (c.fixed || !hiddenCols.has(c.key)));
-  const CH = (props) => <ColHeader {...props} t={t} sortCfg={scCart} onSort={handleSort} />;
-  const vis = visibleCols;
-  const colCount = vis.length;
-  const validBaseCart = useMemo(() => sanitizeCart(baseCart).filter(hasValidDisplayClient), [baseCart]);
-  const validSortedCart = useMemo(() => sanitizeCart(sortedCart).filter(hasValidDisplayClient), [sortedCart]);
-  const filteredCart = useMemo(() => applyLocalFilters(validSortedCart, tableFilters), [validSortedCart, tableFilters]);
-  const headerData = useMemo(() => {
-    const source = validBaseCart?.length ? validBaseCart : validSortedCart;
-    return Object.fromEntries(COLS_DEF.map(c => [c.key, source.flatMap(g => valuesForFilter(g, c.key).map(value => ({ [c.key]: value })))]));
-  }, [validBaseCart, validSortedCart]);
+  const baseValida = useMemo(() => {
+    return (baseCart || [])
+      .map((g) => sanitizeGroup(g, filtroOrigem))
+      .filter(Boolean)
+      .filter(hasValidDisplayClient);
+  }, [baseCart, filtroOrigem]);
 
   function clearAllFilters() {
-    setTableFilters({});
+    setBuscaLocal("");
     setFCart && setFCart({});
   }
 
   function renderCell(key, g) {
-    const sugestao = sugestaoEncaminhamento(g.maiorAtraso, g.valorTotalDebito);
     const cliente = getDisplayClient(g);
     switch (key) {
-      case "nrCli": return <td style={{ ...tdS(), color: t.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cliente.nrCli || g.nrCli}</td>;
-      case "nomeCli": return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cliente.nomeCli}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(cliente.nomeCli)}>{cliente.nomeCli}</b></td>;
+      case "nrCli": return <td style={{ ...tdS(), color: t.muted }}>{cliente.nrCli || g.nrCli}</td>;
+      case "nomeCli": return <td style={tdS()} title={cliente.nomeCli}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(cliente.nomeCli)}>{cliente.nomeCli}</b></td>;
       case "qtd": return <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>;
-      case "venc": return <td style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtD(g.primeiroVencimento)}</td>;
+      case "venc": return <td style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(g.primeiroVencimento)}</td>;
       case "atraso": return <td style={{ ...tdS(), color: g.maiorAtraso > 0 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>;
-      case "vOrig": return <td style={{ ...tdS(), fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorOriginal)}</td>;
-      case "multa": return <td style={{ ...tdS(), color: "#f97316", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorMulta)}</td>;
-      case "juros": return <td style={{ ...tdS(), color: "#eab308", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorJuros)}</td>;
-      case "total": return <td style={{ ...tdS(), fontWeight: 800, color: t.p, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtM(g.valorTotalDebito)}</td>;
-      case "status": return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10 }}><span onClick={() => onClickFilter && onClickFilter(g.statusConsolidado)} style={{ cursor: "pointer" }}>{g.statusConsolidado}</span></td>;
-      case "enc": return <td onClick={() => g.encaminharConsolidado && onClickFilter && onClickFilter(g.encaminharConsolidado)} style={{ ...tdS(), cursor: g.encaminharConsolidado ? "pointer" : "default" }}>{encBadge(g.encaminharConsolidado)}</td>;
+      case "vOrig": return <td style={{ ...tdS(), fontWeight: 700 }}>{fmtM(g.valorOriginal)}</td>;
+      case "multa": return <td style={{ ...tdS(), color: "#f97316" }}>{fmtM(g.valorMulta)}</td>;
+      case "juros": return <td style={{ ...tdS(), color: "#eab308" }}>{fmtM(g.valorJuros)}</td>;
+      case "total": return <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(g.valorTotalDebito)}</td>;
+      case "status": return <td style={{ ...tdS(), fontSize: 10 }}>{g.statusConsolidado}</td>;
+      case "enc": return <td style={tdS()}>{encBadge(g.encaminharConsolidado)}</td>;
       case "origem": return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.origem))].map(o => <span key={o} style={{ display: "inline-block", fontSize: 8, background: o === "FINR1253" ? "#7c3aed22" : "#0369a122", color: o === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(o)}</span>)}</td>;
-      case "cat": return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.clientCategory).filter(Boolean))].map(cat => <div key={cat} style={{ marginBottom: 4 }}>{categoriaBadge(cat)}</div>)}</td>;
-      case "contato": return <td style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtD(g.ultimoContato)}</td>;
+      case "cat": return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.clientCategory).filter(Boolean))].map(cat => <div key={cat}>{categoriaBadge(cat)}</div>)}</td>;
+      case "contato": return <td style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(g.ultimoContato)}</td>;
       case "prom": return <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>;
-      case "obs": return <td style={{ ...tdS(), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><ObsCell text={g.obsConsolidada} t={t} /></td>;
-      case "sugest": return <td style={tdS()}>{sugestao ? <SugestaoEncBadge sugestao={sugestao} /> : null}</td>;
+      case "obs": return <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>;
       default: return null;
     }
   }
 
   return (
     <div>
-      {(hasAnyFilter(fCart) || hasAnyTableFilter) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: t.p }}>🔍 Filtros ativos</span>
-          <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "2px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>✕ Limpar</button>
-        </div>
-      )}
-      <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "hidden", width: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Baixados, pagos, liquidados, cancelados e saldo zerado ficam fora desta aba.</span>
+        <input value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)} placeholder="Buscar cliente/título" style={{ marginLeft: "auto", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 8px", fontSize: 11 }} />
+        {(buscaLocal || Object.keys(fCart || {}).length > 0) && <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "4px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Limpar</button>}
+      </div>
+
+      <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "auto", width: "100%" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-          <colgroup>{vis.map(c => <col key={c.key} style={{ width: c.width, minWidth: c.minWidth || undefined }} />)}</colgroup>
-          <thead style={{ position: "sticky", top: 0, zIndex: 20 }}>
-            <tr>
-              {vis.map(c => {
-                if (c.key === "check") return <th key="check" style={{ ...thS(t), textAlign: "center", width: 32 }}><input type="checkbox" checked={selected.size === filteredCart.length && filteredCart.length > 0} onChange={toggleAll} style={{ cursor: "pointer" }} /></th>;
-                if (c.key === "expand") return <th key="expand" style={thS(t)} />;
-                if (c.key === "acoes") return <th key="acoes" style={thS(t)}>AÇÕES</th>;
-                const sortMap = { nrCli: "numero", nomeCli: "cliente", atraso: "atraso", vOrig: "valorOriginal", total: "valorTotalDebito" };
-                return <CH key={c.key} label={c.label} field={c.key} data={headerData[c.key] || []} filters={tableFilters} setFilters={setTableFilters} sortKey={sortMap[c.key]} />;
-              })}
-            </tr>
-          </thead>
+          <colgroup>{visibleCols.map(c => <col key={c.key} style={{ width: c.width, minWidth: c.minWidth || undefined }} />)}</colgroup>
+          <thead><tr>{visibleCols.map(c => c.key === "check" ? <th key={c.key} style={thS(t)}><input type="checkbox" checked={selected.size === carteiraGeral.length && carteiraGeral.length > 0} onChange={toggleAll} /></th> : c.key === "expand" ? <th key={c.key} style={thS(t)} /> : <th key={c.key} style={thS(t)}>{c.label}</th>)}</tr></thead>
           <tbody>
-            {filteredCart.length === 0 && <tr><td colSpan={colCount} style={{ textAlign: "center", padding: 44, color: t.muted, background: t.surf }}>Nenhum resultado. Verifique os filtros.</td></tr>}
-            {filteredCart.map((g, i) => {
+            {carteiraGeral.length === 0 && <tr><td colSpan={colCount} style={{ textAlign: "center", padding: 44, color: t.muted, background: t.surf }}>Nenhum título em aberto para cobrar nesta carteira.</td></tr>}
+            {carteiraGeral.map((g, i) => {
               const open = !!openCli[g.clientKey];
               const isSel = selected.has(g.clientKey);
-              const leftClr = g.encaminharConsolidado === "verificacao" ? "#3b82f6" : g.encaminharConsolidado === "protesto" ? "#ef4444" : prioCor(g.prioridadeCliente);
               const rowBg = isSel ? (isDark ? "rgba(232,119,34,.15)" : "rgba(232,119,34,.07)") : (i % 2 === 0 ? t.surf : t.alt);
-              const titulosVisiveis = visibleTitlesForGroup(g, tableFilters, filtroOrigem);
+              const leftClr = g.encaminharConsolidado === "verificacao" ? "#3b82f6" : g.encaminharConsolidado === "protesto" ? "#ef4444" : prioCor(g.prioridadeCliente);
               return (
                 <React.Fragment key={g.clientKey}>
                   <tr style={{ background: rowBg, borderLeft: `4px solid ${leftClr}` }}>
-                    {vis.map(c => {
-                      if (c.key === "check") return <td key="check" style={{ ...tdS(), textAlign: "center" }}><input type="checkbox" checked={isSel} onChange={() => toggleSel(g.clientKey)} style={{ cursor: "pointer", accentColor: t.p }} /></td>;
-                      if (c.key === "expand") return <td key="expand" style={tdS()}><button onClick={() => setOpenCli(p => ({ ...p, [g.clientKey]: !p[g.clientKey] }))} title={open ? "Recolher títulos do cliente" : "Expandir títulos do cliente"} style={{ background: t.p, border: "none", color: "#fff", borderRadius: 8, cursor: "pointer", padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{open ? "−" : "+"}</button></td>;
-                      if (c.key === "acoes") return <td key="acoes" style={tdS()}><div style={{ display: "flex", gap: 3 }}><Btn t={t} sm onClick={() => { setModal(g); setForm({ ...emptyForm(), status: g.statusConsolidado || "", encaminhar: g.encaminharConsolidado || "", tipo: g.titulos[0]?.tipoContato || "", dataPromessa: g.dataPromessa || "", obs: g.obsConsolidada || "" }); }}>✏️</Btn><Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn>{setNegModal && <Btn t={t} sm onClick={() => setNegModal(g)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>🤝</Btn>}</div></td>;
+                    {visibleCols.map(c => {
+                      if (c.key === "check") return <td key={c.key} style={{ ...tdS(), textAlign: "center" }}><input type="checkbox" checked={isSel} onChange={() => toggleSel(g.clientKey)} /></td>;
+                      if (c.key === "expand") return <td key={c.key} style={tdS()}><button onClick={() => setOpenCli(p => ({ ...p, [g.clientKey]: !p[g.clientKey] }))} style={{ background: t.p, border: "none", color: "#fff", borderRadius: 8, cursor: "pointer", padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{open ? "−" : "+"}</button></td>;
+                      if (c.key === "acoes") return <td key={c.key} style={tdS()}><div style={{ display: "flex", gap: 3 }}><Btn t={t} sm onClick={() => { setModal(g); setForm({ ...emptyForm(), status: g.statusConsolidado || "", encaminhar: g.encaminharConsolidado || "", tipo: g.titulos[0]?.tipoContato || "", dataPromessa: g.dataPromessa || "", obs: g.obsConsolidada || "" }); }}>✏️</Btn><Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn>{setNegModal && <Btn t={t} sm onClick={() => setNegModal(g)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>🤝</Btn>}</div></td>;
                       return React.cloneElement(renderCell(c.key, g), { key: c.key });
                     })}
                   </tr>
-                  {open && titulosVisiveis.map(item => (
+                  {open && g.titulos.map(item => (
                     <tr key={item.id} style={{ background: t.surf2 }}>
-                      {vis.map(c => {
-                        const cliente = getDisplayClient(g);
-                        const tituloDetalhe = renderTituloDetalhe(item, g);
-                        if (c.key === "check" || c.key === "expand") return <td key={c.key} style={tdS()} />;
-                        if (c.key === "nrCli") return <td key="nrCli" style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tituloDetalhe}</td>;
-                        if (c.key === "nomeCli") return <td key="nomeCli" style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={cliente.nomeCli}>{cliente.nomeCli || "—"}</td>;
-                        if (c.key === "qtd") return <td key="qtd" style={{ ...tdS(), textAlign: "center" }}>1</td>;
-                        if (c.key === "venc") return <td key="venc" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
-                        if (c.key === "atraso") return <td key="atraso" style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;
-                        if (c.key === "vOrig") return <td key="vOrig" style={tdS()}>{fmtM(item.valorOriginal)}</td>;
-                        if (c.key === "multa") return <td key="multa" style={{ ...tdS(), color: "#f97316" }}>{fmtM(item.valorMulta)}</td>;
-                        if (c.key === "juros") return <td key="juros" style={{ ...tdS(), color: "#eab308" }}>{fmtM(item.valorJuros)}</td>;
-                        if (c.key === "total") return <td key="total" style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(item.valorTotalDebito)}</td>;
-                        if (c.key === "status") return <td key="status" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
-                        if (c.key === "enc") return <td key="enc" style={tdS()}>{encBadge(item.encaminhar)}</td>;
-                        if (c.key === "origem") return <td key="origem" style={tdS()}><span style={{ display: "inline-block", fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;
-                        if (c.key === "cat") return <td key="cat" style={tdS()}>{item.clientCategory ? categoriaBadge(item.clientCategory) : "—"}</td>;
-                        if (c.key === "contato") return <td key="contato" style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.dataContato)}</td>;
-                        if (c.key === "prom") return <td key="prom" style={tdS()}><PromBadge date={item.dataPromessa} t={t} /></td>;
-                        if (c.key === "obs") return <td key="obs" style={{ ...tdS(), color: t.muted, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.obs || item.portador || "—"}</td>;
-                        if (c.key === "acoes") return <td key="acoes" style={tdS()} />;
-                        return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>—</td>;
+                      {visibleCols.map(c => {
+                        if (["check", "expand"].includes(c.key)) return <td key={c.key} style={tdS()} />;
+                        if (c.key === "nrCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{renderTituloDetalhe(item)}</td>;
+                        if (c.key === "nomeCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{getDisplayClient(g).nomeCli}</td>;
+                        if (c.key === "qtd") return <td key={c.key} style={{ ...tdS(), textAlign: "center" }}>1</td>;
+                        if (c.key === "venc") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
+                        if (c.key === "atraso") return <td key={c.key} style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;
+                        if (c.key === "vOrig") return <td key={c.key} style={tdS()}>{fmtM(item.valorOriginal)}</td>;
+                        if (c.key === "multa") return <td key={c.key} style={{ ...tdS(), color: "#f97316" }}>{fmtM(item.valorMulta)}</td>;
+                        if (c.key === "juros") return <td key={c.key} style={{ ...tdS(), color: "#eab308" }}>{fmtM(item.valorJuros)}</td>;
+                        if (c.key === "total") return <td key={c.key} style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(item.valorTotalDebito)}</td>;
+                        if (c.key === "status") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
+                        if (c.key === "enc") return <td key={c.key} style={tdS()}>{encBadge(item.encaminhar)}</td>;
+                        if (c.key === "origem") return <td key={c.key} style={tdS()}><span style={{ display: "inline-block", fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;
+                        if (c.key === "cat") return <td key={c.key} style={tdS()}>{item.clientCategory ? categoriaBadge(item.clientCategory) : "—"}</td>;
+                        if (c.key === "contato") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.dataContato)}</td>;
+                        if (c.key === "prom") return <td key={c.key} style={tdS()}><PromBadge date={item.dataPromessa} t={t} /></td>;
+                        if (c.key === "obs") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.obs || item.portador || "—"}</td>;
+                        if (c.key === "acoes") return <td key={c.key} style={tdS()} />;
+                        return <td key={c.key} style={tdS()} />;
                       })}
                     </tr>
                   ))}
@@ -361,8 +267,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
           </tbody>
         </table>
         <div style={{ padding: "8px 12px", borderTop: `1px solid ${t.bor}`, fontSize: 11, color: t.muted, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span><b style={{ color: t.txt }}>{filteredCart.length}</b> de {validBaseCart.length} clientes válidos</span>
-          {(hasAnyFilter(fCart) || hasAnyTableFilter) && <button onClick={clearAllFilters} style={{ background: "none", border: `1px solid ${t.p}`, color: t.p, borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✕ Limpar filtros</button>}
+          <span><b style={{ color: t.txt }}>{carteiraGeral.length}</b> de {baseValida.length} clientes com títulos em aberto</span>
         </div>
       </div>
     </div>

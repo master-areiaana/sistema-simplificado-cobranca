@@ -16,7 +16,7 @@ const COLS_DEF = [
   { key: "total", label: "TOTAL A COBRAR", width: 112 },
   { key: "status", label: "STATUS", width: 120 },
   { key: "enc", label: "ENCAMINHAR", width: 96 },
-  { key: "origem", label: "ORIG.", width: 58 },
+  { key: "origem", label: "RELATÓRIO", width: 78 },
   { key: "cat", label: "CATEGORIA", width: 90 },
   { key: "contato", label: "DT. CONTATO", width: 88 },
   { key: "prom", label: "PROMESSA", width: 88 },
@@ -140,31 +140,6 @@ function matchesSearch(g, busca = "") {
   return norm(texto).includes(b);
 }
 
-function origemKey(origem) {
-  return origem === "FINR1253" ? "topcon" : origem === "RPT_7007_CONS_CAR_EB" ? "eb" : "outros";
-}
-
-function resumoPorRelatorio(grupos) {
-  const resumo = {
-    topcon: { label: "Topcon", valor: 0, titulos: 0, clientes: new Set(), color: "#7c3aed" },
-    eb: { label: "EB", valor: 0, titulos: 0, clientes: new Set(), color: "#0369a1" },
-    outros: { label: "Outros", valor: 0, titulos: 0, clientes: new Set(), color: "#64748b" },
-  };
-
-  for (const g of grupos || []) {
-    const cliente = getDisplayClient(g);
-    for (const item of g.titulos || []) {
-      const key = origemKey(item.origem);
-      const valor = Number(item.valorTotalDebito || item.valorEmAberto || item.valorOriginal || 0);
-      resumo[key].valor += Number.isFinite(valor) ? valor : 0;
-      resumo[key].titulos += 1;
-      resumo[key].clientes.add(`${cliente.nrCli || g.nrCli || ""}|${cliente.nomeCli || g.nomeCli || ""}`);
-    }
-  }
-
-  return Object.values(resumo).filter((r) => r.valor > 0 || r.titulos > 0).map((r) => ({ ...r, clientesQtd: r.clientes.size }));
-}
-
 export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem }) {
   const [buscaLocal, setBuscaLocal] = useState("");
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
@@ -184,8 +159,6 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       .filter(Boolean)
       .filter(hasValidDisplayClient);
   }, [baseCart, filtroOrigem]);
-
-  const relatoriosResumo = useMemo(() => resumoPorRelatorio(carteiraGeral), [carteiraGeral]);
 
   function clearAllFilters() {
     setBuscaLocal("");
@@ -217,17 +190,6 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
 
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, marginBottom: 10 }}>
-        {relatoriosResumo.map((r) => (
-          <div key={r.label} style={{ background: t.card || t.surf, border: `1px solid ${t.bor}`, borderLeft: `4px solid ${r.color}`, borderRadius: 8, padding: "12px 14px", boxShadow: t.shad }}>
-            <div style={{ fontSize: 10, fontWeight: 800, color: t.muted, textTransform: "uppercase", letterSpacing: .4 }}>Em aberto por relatório</div>
-            <div style={{ fontSize: 13, fontWeight: 900, color: r.color, marginTop: 4 }}>{r.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: r.color, marginTop: 2 }}>{fmtM(r.valor)}</div>
-            <div style={{ fontSize: 11, color: t.muted, marginTop: 3 }}>{r.clientesQtd} clientes · {r.titulos} títulos</div>
-          </div>
-        ))}
-      </div>
-
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Baixados, pagos, liquidados, cancelados e saldo zerado ficam fora desta aba.</span>
         <input value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)} placeholder="Buscar cliente/título" style={{ marginLeft: "auto", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 8px", fontSize: 11 }} />

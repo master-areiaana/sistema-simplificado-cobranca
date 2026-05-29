@@ -3,26 +3,26 @@ import { Btn, PromBadge, ObsCell, Badge } from "./UI";
 import { fmtM, fmtD, prioCor, getTituloKey } from "@/lib/cobranca";
 
 const COLS_DEF = [
-  { key: "check", label: "", width: 32, fixed: true },
-  { key: "expand", label: "", width: 28, fixed: true },
-  { key: "nrCli", label: "Nº", width: 58 },
-  { key: "nomeCli", label: "CLIENTE", width: "18%", minWidth: 140 },
-  { key: "qtd", label: "QTD.", width: 48 },
-  { key: "venc", label: "VENCIMENTO", width: 90 },
-  { key: "atraso", label: "ATRASO", width: 64 },
-  { key: "vOrig", label: "VAL. ORIG", width: 92 },
-  { key: "multa", label: "MULTA", width: 76 },
-  { key: "juros", label: "JUROS", width: 76 },
-  { key: "total", label: "TOTAL A COBRAR", width: 112 },
-  { key: "status", label: "STATUS", width: 120 },
-  { key: "enc", label: "ENCAMINHAR", width: 96 },
-  { key: "origem", label: "RELATÓRIO", width: 78 },
-  { key: "cat", label: "CATEGORIA", width: 90 },
-  { key: "contato", label: "DT. CONTATO", width: 88 },
-  { key: "prom", label: "PROMESSA", width: 88 },
-  { key: "obs", label: "OBSERVAÇÃO", width: "18%", minWidth: 120 },
-  { key: "acoes", label: "AÇÕES", width: 96, fixed: true },
-];
+{ key: "check", label: "", width: 32, fixed: true },
+{ key: "expand", label: "", width: 28, fixed: true },
+{ key: "nrCli", label: "Nº", width: 58 },
+{ key: "nomeCli", label: "CLIENTE", width: "18%", minWidth: 140 },
+{ key: "qtd", label: "QTD.", width: 48 },
+{ key: "venc", label: "VENCIMENTO", width: 90 },
+{ key: "atraso", label: "ATRASO", width: 64 },
+{ key: "vOrig", label: "VAL. ORIG", width: 92 },
+{ key: "multa", label: "MULTA", width: 76 },
+{ key: "juros", label: "JUROS", width: 76 },
+{ key: "total", label: "TOTAL A COBRAR", width: 112 },
+{ key: "status", label: "STATUS", width: 120 },
+{ key: "enc", label: "ENCAMINHAR", width: 96 },
+{ key: "origem", label: "RELATÓRIO", width: 78 },
+{ key: "cat", label: "CATEGORIA", width: 90 },
+{ key: "contato", label: "DT. CONTATO", width: 88 },
+{ key: "prom", label: "PROMESSA", width: 88 },
+{ key: "obs", label: "OBSERVAÇÃO", width: "18%", minWidth: 120 },
+{ key: "acoes", label: "AÇÕES", width: 96, fixed: true }];
+
 
 const cleanText = (v) => String(v ?? "").trim();
 const norm = (v) => cleanText(v).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
@@ -92,7 +92,7 @@ function getDisplayClient(g) {
     if (fromItemName) candidates.push(fromItemName);
     if (!isGenericClientName(item.nomeCli) && hasLetters(item.nomeCli)) candidates.push({ nrCli: cleanText(item.nrCli || g.nrCli), nomeCli: cleanText(item.nomeCli) });
   }
-  const best = candidates.filter(c => c.nomeCli && hasLetters(c.nomeCli) && !isGenericClientName(c.nomeCli)).sort((a, b) => b.nomeCli.length - a.nomeCli.length)[0];
+  const best = candidates.filter((c) => c.nomeCli && hasLetters(c.nomeCli) && !isGenericClientName(c.nomeCli)).sort((a, b) => b.nomeCli.length - a.nomeCli.length)[0];
   return { nrCli: best?.nrCli || cleanText(g.nrCli), nomeCli: best?.nomeCli || (!isGenericClientName(g.nomeCli) ? cleanText(g.nomeCli) : "—") };
 }
 
@@ -106,7 +106,7 @@ function dedupeTitulosCarteira(titulos) {
   for (const item of titulos || []) {
     const key = getTituloKey({ origem: item.origem, titulo: item.titulo, seq: item.seq, vencimento: item.vencimento });
     const prev = map.get(key);
-    if (!prev) { map.set(key, item); continue; }
+    if (!prev) {map.set(key, item);continue;}
     const keep = itemScore(item) > itemScore(prev) ? item : prev;
     const hide = keep === item ? prev : item;
     map.set(key, keep);
@@ -121,9 +121,9 @@ function encBadge(enc) {
   if (enc === "assessoria") return <Badge label="→ Assessoria" color="#f97316" />;
   return <span style={{ color: "#94a3b8", fontSize: 10 }}>—</span>;
 }
-function categoriaBadge(cat) { const cores = { Portador: "#8b5cf6", Imobiliário: "#06b6d4", Parceiros: "#f59e0b", Bancos: "#10b981" }; return cat ? <Badge label={cat} color={cores[cat] || "#64748b"} /> : null; }
-function getOrigemLabel(origem) { return origem === "FINR1253" ? "Topcon" : "EB"; }
-function renderTituloDetalhe(item) { const titulo = cleanText(item.titulo); const seq = cleanText(item.seq); return titulo && seq ? `${titulo}/${seq}` : titulo || "—"; }
+function categoriaBadge(cat) {const cores = { Portador: "#8b5cf6", Imobiliário: "#06b6d4", Parceiros: "#f59e0b", Bancos: "#10b981" };return cat ? <Badge label={cat} color={cores[cat] || "#64748b"} /> : null;}
+function getOrigemLabel(origem) {return origem === "FINR1253" ? "Topcon" : "EB";}
+function renderTituloDetalhe(item) {const titulo = cleanText(item.titulo);const seq = cleanText(item.seq);return titulo && seq ? `${titulo}/${seq}` : titulo || "—";}
 
 function sanitizeGroup(g, origemFiltro) {
   let titulos = (g.titulos || []).filter(isTituloCarteiraGeral);
@@ -151,17 +151,17 @@ function sanitizeGroup(g, origemFiltro) {
     primeiroVencimento: vencimentos[0] || "",
     statusConsolidado: status,
     obsConsolidada: titulos.map((x) => x.obs).filter(Boolean).slice(-1)[0] || "",
-    encaminharConsolidado: titulos.map((x) => x.encaminhar).filter(Boolean).slice(-1)[0] || "",
+    encaminharConsolidado: titulos.map((x) => x.encaminhar).filter(Boolean).slice(-1)[0] || ""
   };
 }
 
-function hasValidDisplayClient(g) { const cliente = getDisplayClient(g); return !!cliente.nomeCli && cliente.nomeCli !== "—" && !isGenericClientName(cliente.nomeCli) && hasLetters(cliente.nomeCli); }
-function matchesSearch(g, busca = "") { const b = norm(busca); if (!b) return true; const cliente = getDisplayClient(g); const texto = [cliente.nrCli, cliente.nomeCli, g.nrCli, g.nomeCli, ...(g.codigosLista || []), ...(g.titulos || []).map(t => `${t.titulo} ${t.seq}`)].join(" "); return norm(texto).includes(b); }
+function hasValidDisplayClient(g) {const cliente = getDisplayClient(g);return !!cliente.nomeCli && cliente.nomeCli !== "—" && !isGenericClientName(cliente.nomeCli) && hasLetters(cliente.nomeCli);}
+function matchesSearch(g, busca = "") {const b = norm(busca);if (!b) return true;const cliente = getDisplayClient(g);const texto = [cliente.nrCli, cliente.nomeCli, g.nrCli, g.nomeCli, ...(g.codigosLista || []), ...(g.titulos || []).map((t) => `${t.titulo} ${t.seq}`)].join(" ");return norm(texto).includes(b);}
 
 export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem, onEncaminharSugestao }) {
   const [buscaLocal, setBuscaLocal] = useState("");
   const [somenteDuplicatas, setSomenteDuplicatas] = useState(false);
-  const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
+  const visibleCols = COLS_DEF.filter((c) => c.fixed || !hiddenCols?.has?.(c.key));
   const colCount = visibleCols.length;
 
   const carteiraSanitizada = useMemo(() => (sortedCart || []).map((g) => sanitizeGroup(g, filtroOrigem)).filter(Boolean).filter(hasValidDisplayClient), [sortedCart, filtroOrigem]);
@@ -184,41 +184,41 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     window.dispatchEvent(new CustomEvent("carteira:totais", { detail }));
   }, [totaisCarteira, baseValida.length, duplicatasOcultas, clientesComDuplicata]);
 
-  function clearAllFilters() { setBuscaLocal(""); setSomenteDuplicatas(false); setFCart && setFCart({}); }
+  function clearAllFilters() {setBuscaLocal("");setSomenteDuplicatas(false);setFCart && setFCart({});}
   function renderCell(key, g) {
     const cliente = getDisplayClient(g);
     switch (key) {
-      case "nrCli": return <td style={{ ...tdS(), color: t.muted }}>{cliente.nrCli || g.nrCli}</td>;
-      case "nomeCli": return <td style={tdS()} title={cliente.nomeCli}><div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(cliente.nomeCli)}>{cliente.nomeCli}</b>{g.temDuplicataSubtitulo && <span title="Duplicata exata ocultada" style={{ background: "#f59e0b22", color: "#b45309", border: "1px solid #f59e0b66", borderRadius: 999, padding: "1px 6px", fontSize: 9, fontWeight: 900 }}>⚠ {g.subtitulosDuplicadosOcultos} dup.</span>}</div></td>;
-      case "qtd": return <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>;
-      case "venc": return <td style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(g.primeiroVencimento)}</td>;
-      case "atraso": return <td style={{ ...tdS(), color: g.maiorAtraso > 0 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>;
-      case "vOrig": return <td style={{ ...tdS(), fontWeight: 700 }}>{fmtM(g.valorOriginal)}</td>;
-      case "multa": return <td style={{ ...tdS(), color: "#f97316" }}>{fmtM(g.valorMulta)}</td>;
-      case "juros": return <td style={{ ...tdS(), color: "#eab308" }}>{fmtM(g.valorJuros)}</td>;
-      case "total": return <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(g.valorTotalDebito)}</td>;
-      case "status": return <td style={{ ...tdS(), fontSize: 10 }}>{g.statusConsolidado}</td>;
-      case "enc": return <td style={tdS()}>{encBadge(g.encaminharConsolidado)}</td>;
-      case "origem": return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.origem))].map(o => <span key={o} style={{ display: "inline-block", fontSize: 8, background: o === "FINR1253" ? "#7c3aed22" : "#0369a122", color: o === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(o)}</span>)}</td>;
-      case "cat": return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.clientCategory).filter(Boolean))].map(cat => <div key={cat}>{categoriaBadge(cat)}</div>)}</td>;
-      case "contato": return <td style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(g.ultimoContato)}</td>;
-      case "prom": return <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>;
-      case "obs": return <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>;
-      default: return null;
+      case "nrCli":return <td style={{ ...tdS(), color: t.muted }}>{cliente.nrCli || g.nrCli}</td>;
+      case "nomeCli":return <td style={tdS()} title={cliente.nomeCli}><div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(cliente.nomeCli)}>{cliente.nomeCli}</b>{g.temDuplicataSubtitulo && <span title="Duplicata exata ocultada" style={{ background: "#f59e0b22", color: "#b45309", border: "1px solid #f59e0b66", borderRadius: 999, padding: "1px 6px", fontSize: 9, fontWeight: 900 }}>⚠ {g.subtitulosDuplicadosOcultos} dup.</span>}</div></td>;
+      case "qtd":return <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>;
+      case "venc":return <td style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(g.primeiroVencimento)}</td>;
+      case "atraso":return <td style={{ ...tdS(), color: g.maiorAtraso > 0 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>;
+      case "vOrig":return <td style={{ ...tdS(), fontWeight: 700 }}>{fmtM(g.valorOriginal)}</td>;
+      case "multa":return <td style={{ ...tdS(), color: "#f97316" }}>{fmtM(g.valorMulta)}</td>;
+      case "juros":return <td style={{ ...tdS(), color: "#eab308" }}>{fmtM(g.valorJuros)}</td>;
+      case "total":return <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(g.valorTotalDebito)}</td>;
+      case "status":return <td style={{ ...tdS(), fontSize: 10 }}>{g.statusConsolidado}</td>;
+      case "enc":return <td style={tdS()}>{encBadge(g.encaminharConsolidado)}</td>;
+      case "origem":return <td style={tdS()}>{[...new Set(g.titulos.map((x) => x.origem))].map((o) => <span key={o} style={{ display: "inline-block", fontSize: 8, background: o === "FINR1253" ? "#7c3aed22" : "#0369a122", color: o === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(o)}</span>)}</td>;
+      case "cat":return <td style={tdS()}>{[...new Set(g.titulos.map((x) => x.clientCategory).filter(Boolean))].map((cat) => <div key={cat}>{categoriaBadge(cat)}</div>)}</td>;
+      case "contato":return <td style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(g.ultimoContato)}</td>;
+      case "prom":return <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>;
+      case "obs":return <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>;
+      default:return null;
     }
   }
   function renderFooterCell(key) {
     switch (key) {
-      case "check": case "expand": return <td key={key} style={footerTdS(t)} />;
-      case "nrCli": return <td key={key} style={footerTdS(t, { color: t.p })}>TOTAL</td>;
-      case "nomeCli": return <td key={key} style={footerTdS(t)}>{totaisCarteira.clientes} cliente(s)</td>;
-      case "qtd": return <td key={key} style={footerTdS(t, { textAlign: "center" })}>{totaisCarteira.titulos}</td>;
-      case "vOrig": return <td key={key} style={footerTdS(t)}>{fmtM(totaisCarteira.valorOriginal)}</td>;
-      case "multa": return <td key={key} style={footerTdS(t, { color: "#f97316" })}>{fmtM(totaisCarteira.multa)}</td>;
-      case "juros": return <td key={key} style={footerTdS(t, { color: "#eab308" })}>{fmtM(totaisCarteira.juros)}</td>;
-      case "total": return <td key={key} style={footerTdS(t, { color: t.p, fontSize: 12 })}>{fmtM(totaisCarteira.total)}</td>;
-      case "status": return <td key={key} style={footerTdS(t, { fontSize: 10, color: t.muted })}>Em aberto</td>;
-      default: return <td key={key} style={footerTdS(t, { color: t.muted })}>—</td>;
+      case "check":case "expand":return <td key={key} style={footerTdS(t)} />;
+      case "nrCli":return <td key={key} style={footerTdS(t, { color: t.p })}>TOTAL</td>;
+      case "nomeCli":return <td key={key} style={footerTdS(t)}>{totaisCarteira.clientes} cliente(s)</td>;
+      case "qtd":return <td key={key} style={footerTdS(t, { textAlign: "center" })}>{totaisCarteira.titulos}</td>;
+      case "vOrig":return <td key={key} style={footerTdS(t)}>{fmtM(totaisCarteira.valorOriginal)}</td>;
+      case "multa":return <td key={key} style={footerTdS(t, { color: "#f97316" })}>{fmtM(totaisCarteira.multa)}</td>;
+      case "juros":return <td key={key} style={footerTdS(t, { color: "#eab308" })}>{fmtM(totaisCarteira.juros)}</td>;
+      case "total":return <td key={key} style={footerTdS(t, { color: t.p, fontSize: 12 })}>{fmtM(totaisCarteira.total)}</td>;
+      case "status":return <td key={key} style={footerTdS(t, { fontSize: 10, color: t.muted })}>Em aberto</td>;
+      default:return <td key={key} style={footerTdS(t, { color: t.muted })} className="hidden">—</td>;
     }
   }
 
@@ -233,46 +233,46 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       </div>
       <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "auto", width: "100%" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-          <colgroup>{visibleCols.map(c => <col key={c.key} style={{ width: c.width, minWidth: c.minWidth || undefined }} />)}</colgroup>
-          <thead><tr>{visibleCols.map(c => c.key === "check" ? <th key={c.key} style={thS(t)}><input type="checkbox" checked={selected.size === carteiraGeral.length && carteiraGeral.length > 0} onChange={toggleAll} /></th> : c.key === "expand" ? <th key={c.key} style={thS(t)} /> : <th key={c.key} style={thS(t)}>{c.label}</th>)}</tr></thead>
+          <colgroup>{visibleCols.map((c) => <col key={c.key} style={{ width: c.width, minWidth: c.minWidth || undefined }} />)}</colgroup>
+          <thead><tr>{visibleCols.map((c) => c.key === "check" ? <th key={c.key} style={thS(t)}><input type="checkbox" checked={selected.size === carteiraGeral.length && carteiraGeral.length > 0} onChange={toggleAll} /></th> : c.key === "expand" ? <th key={c.key} style={thS(t)} /> : <th key={c.key} style={thS(t)}>{c.label}</th>)}</tr></thead>
           <tbody>
             {carteiraGeral.length === 0 && <tr><td colSpan={colCount} style={{ textAlign: "center", padding: 44, color: t.muted, background: t.surf }}>Nenhum título em aberto para cobrar nesta carteira.</td></tr>}
             {carteiraGeral.map((g, i) => {
               const open = !!openCli[g.clientKey];
               const isSel = selected.has(g.clientKey);
-              const rowBg = isSel ? (isDark ? "rgba(232,119,34,.15)" : "rgba(232,119,34,.07)") : (i % 2 === 0 ? t.surf : t.alt);
+              const rowBg = isSel ? isDark ? "rgba(232,119,34,.15)" : "rgba(232,119,34,.07)" : i % 2 === 0 ? t.surf : t.alt;
               const leftClr = g.temDuplicataSubtitulo ? "#f59e0b" : g.encaminharConsolidado === "verificacao" ? "#3b82f6" : g.encaminharConsolidado === "protesto" ? "#ef4444" : prioCor(g.prioridadeCliente);
-              return <React.Fragment key={g.clientKey}><tr style={{ background: rowBg, borderLeft: `4px solid ${leftClr}` }}>{visibleCols.map(c => {
-                if (c.key === "check") return <td key={c.key} style={{ ...tdS(), textAlign: "center" }}><input type="checkbox" checked={isSel} onChange={() => toggleSel(g.clientKey)} /></td>;
-                if (c.key === "expand") return <td key={c.key} style={tdS()}><button onClick={() => setOpenCli(p => ({ ...p, [g.clientKey]: !p[g.clientKey] }))} style={{ background: leftClr, border: "none", color: "#fff", borderRadius: 8, cursor: "pointer", padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{open ? "−" : "+"}</button></td>;
-                if (c.key === "acoes") return <td key={c.key} style={tdS()}><div style={{ display: "flex", gap: 3 }}><Btn t={t} sm onClick={() => { setModal(g); setForm({ ...emptyForm(), status: g.statusConsolidado || "", encaminhar: g.encaminharConsolidado || "", tipo: g.titulos[0]?.tipoContato || "", dataPromessa: g.dataPromessa || "", obs: g.obsConsolidada || "" }); }}>✏️</Btn><Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn>{setNegModal && <Btn t={t} sm onClick={() => setNegModal(g)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>🤝</Btn>}</div></td>;
-                return React.cloneElement(renderCell(c.key, g), { key: c.key });
-              })}</tr>
-              {open && g.titulos.map(item => <tr key={item.id} style={{ background: t.surf2 }}>{visibleCols.map(c => {
-                if (["check", "expand"].includes(c.key)) return <td key={c.key} style={tdS()} />;
-                if (c.key === "nrCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{renderTituloDetalhe(item)}</td>;
-                if (c.key === "nomeCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{getDisplayClient(g).nomeCli}</td>;
-                if (c.key === "qtd") return <td key={c.key} style={{ ...tdS(), textAlign: "center" }}>1</td>;
-                if (c.key === "venc") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
-                if (c.key === "atraso") return <td key={c.key} style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;
-                if (c.key === "vOrig") return <td key={c.key} style={tdS()}>{fmtM(valorOriginalReal(item))}</td>;
-                if (c.key === "multa") return <td key={c.key} style={{ ...tdS(), color: "#f97316" }}>{fmtM(item.valorMulta)}</td>;
-                if (c.key === "juros") return <td key={c.key} style={{ ...tdS(), color: "#eab308" }}>{fmtM(item.valorJuros)}</td>;
-                if (c.key === "total") return <td key={c.key} style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(valorAbertoReal(item))}</td>;
-                if (c.key === "status") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
-                if (c.key === "enc") return <td key={c.key} style={tdS()}>{encBadge(item.encaminhar)}</td>;
-                if (c.key === "origem") return <td key={c.key} style={tdS()}><span style={{ display: "inline-block", fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;
-                if (c.key === "cat") return <td key={c.key} style={tdS()}>{item.clientCategory ? categoriaBadge(item.clientCategory) : "—"}</td>;
-                if (c.key === "contato") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.dataContato)}</td>;
-                if (c.key === "prom") return <td key={c.key} style={tdS()}><PromBadge date={item.dataPromessa} t={t} /></td>;
-                if (c.key === "obs") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.obs || item.portador || "—"}</td>;
-                if (c.key === "acoes") return <td key={c.key} style={tdS()} />;
-                return <td key={c.key} style={tdS()} />;
-              })}</tr>)}
+              return <React.Fragment key={g.clientKey}><tr style={{ background: rowBg, borderLeft: `4px solid ${leftClr}` }}>{visibleCols.map((c) => {
+                    if (c.key === "check") return <td key={c.key} style={{ ...tdS(), textAlign: "center" }}><input type="checkbox" checked={isSel} onChange={() => toggleSel(g.clientKey)} /></td>;
+                    if (c.key === "expand") return <td key={c.key} style={tdS()}><button onClick={() => setOpenCli((p) => ({ ...p, [g.clientKey]: !p[g.clientKey] }))} style={{ background: leftClr, border: "none", color: "#fff", borderRadius: 8, cursor: "pointer", padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{open ? "−" : "+"}</button></td>;
+                    if (c.key === "acoes") return <td key={c.key} style={tdS()}><div style={{ display: "flex", gap: 3 }}><Btn t={t} sm onClick={() => {setModal(g);setForm({ ...emptyForm(), status: g.statusConsolidado || "", encaminhar: g.encaminharConsolidado || "", tipo: g.titulos[0]?.tipoContato || "", dataPromessa: g.dataPromessa || "", obs: g.obsConsolidada || "" });}}>✏️</Btn><Btn t={t} sm ghost onClick={() => setHistModal(g)}>🕐</Btn>{setNegModal && <Btn t={t} sm onClick={() => setNegModal(g)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>🤝</Btn>}</div></td>;
+                    return React.cloneElement(renderCell(c.key, g), { key: c.key });
+                  })}</tr>
+              {open && g.titulos.map((item) => <tr key={item.id} style={{ background: t.surf2 }}>{visibleCols.map((c) => {
+                    if (["check", "expand"].includes(c.key)) return <td key={c.key} style={tdS()} />;
+                    if (c.key === "nrCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{renderTituloDetalhe(item)}</td>;
+                    if (c.key === "nomeCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{getDisplayClient(g).nomeCli}</td>;
+                    if (c.key === "qtd") return <td key={c.key} style={{ ...tdS(), textAlign: "center" }}>1</td>;
+                    if (c.key === "venc") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
+                    if (c.key === "atraso") return <td key={c.key} style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;
+                    if (c.key === "vOrig") return <td key={c.key} style={tdS()}>{fmtM(valorOriginalReal(item))}</td>;
+                    if (c.key === "multa") return <td key={c.key} style={{ ...tdS(), color: "#f97316" }}>{fmtM(item.valorMulta)}</td>;
+                    if (c.key === "juros") return <td key={c.key} style={{ ...tdS(), color: "#eab308" }}>{fmtM(item.valorJuros)}</td>;
+                    if (c.key === "total") return <td key={c.key} style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(valorAbertoReal(item))}</td>;
+                    if (c.key === "status") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
+                    if (c.key === "enc") return <td key={c.key} style={tdS()}>{encBadge(item.encaminhar)}</td>;
+                    if (c.key === "origem") return <td key={c.key} style={tdS()}><span style={{ display: "inline-block", fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;
+                    if (c.key === "cat") return <td key={c.key} style={tdS()}>{item.clientCategory ? categoriaBadge(item.clientCategory) : "—"}</td>;
+                    if (c.key === "contato") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.dataContato)}</td>;
+                    if (c.key === "prom") return <td key={c.key} style={tdS()}><PromBadge date={item.dataPromessa} t={t} /></td>;
+                    if (c.key === "obs") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.obs || item.portador || "—"}</td>;
+                    if (c.key === "acoes") return <td key={c.key} style={tdS()} />;
+                    return <td key={c.key} style={tdS()} />;
+                  })}</tr>)}
               </React.Fragment>;
             })}
           </tbody>
-          <tfoot><tr>{visibleCols.map(c => renderFooterCell(c.key))}</tr></tfoot>
+          <tfoot><tr>{visibleCols.map((c) => renderFooterCell(c.key))}</tr></tfoot>
         </table>
         <div style={{ padding: "8px 12px", borderTop: `1px solid ${t.bor}`, fontSize: 11, color: t.muted, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <span><b style={{ color: t.txt }}>{carteiraGeral.length}</b> de {baseValida.length} clientes com títulos em aberto</span>
@@ -280,6 +280,6 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
           {duplicatasOcultas > 0 && <span><b style={{ color: "#f59e0b" }}>Duplicatas ocultas:</b> {duplicatasOcultas}</span>}
         </div>
       </div>
-    </div>
-  );
+    </div>);
+
 }

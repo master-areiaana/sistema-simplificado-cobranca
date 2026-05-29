@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { fmtD, fmtM, promAlerta, prioCor, promessaClassif, sugestaoEncaminhamento } from "@/lib/cobranca";
+import { useState } from "react";
+import { fmtD, promAlerta, prioCor, promessaClassif, sugestaoEncaminhamento } from "@/lib/cobranca";
 
 const KPI_OCULTOS = new Set([
   "COBRADO",
@@ -34,21 +34,12 @@ function normalizarInterfaceLabel(v) {
     .trim();
 }
 
-function extrairTotalFinalCarteira() {
-  const elementos = Array.from(document.querySelectorAll("div, span, b"));
-  const marcador = elementos.find((el) => normalizarInterfaceLabel(el.textContent).includes("TOTAL FINAL A COBRAR"));
-  const container = marcador?.closest("div");
-  const texto = container?.textContent || marcador?.parentElement?.textContent || "";
-  const match = texto.match(/R\$\s*[\d\.]+,\d{2}/);
-  return match ? match[0] : "";
-}
-
-export function Btn({ children, onClick, ghost = false, sm = false, style = {}, t, color }) {
+export function Btn({ children, onClick, ghost = false, sm = false, style = {}, t, color, disabled = false }) {
   const bg = color || (ghost ? "transparent" : t.p);
   const clr = ghost ? color || t.p : "#fff";
   const bdr = ghost ? `1px solid ${color || t.p}` : "none";
   return (
-    <button onClick={onClick} style={{ background: bg, color: clr, border: bdr, borderRadius: 5, padding: sm ? "3px 9px" : "7px 14px", cursor: "pointer", fontSize: sm ? 11 : 12, fontWeight: 700, whiteSpace: "nowrap", ...style }}>
+    <button disabled={disabled} onClick={onClick} style={{ background: bg, color: clr, border: bdr, borderRadius: 5, padding: sm ? "3px 9px" : "7px 14px", cursor: disabled ? "not-allowed" : "pointer", fontSize: sm ? 11 : 12, fontWeight: 700, whiteSpace: "nowrap", opacity: disabled ? 0.65 : 1, ...style }}>
       {children}
     </button>
   );
@@ -68,31 +59,7 @@ export function Lbl({ children, t }) {
 
 export function KPI({ label, value, sub, color, t, onClick, active }) {
   const labelNorm = normalizarInterfaceLabel(label);
-  const [valorSincronizado, setValorSincronizado] = useState("");
-
-  useEffect(() => {
-    if (!["A COBRAR", "TOTAL EM ABERTO"].includes(labelNorm)) return;
-
-    const sync = () => {
-      const totalFinal = extrairTotalFinalCarteira();
-      if (totalFinal) setValorSincronizado(totalFinal);
-    };
-
-    sync();
-    const timer = setInterval(sync, 500);
-    window.addEventListener("resize", sync);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("resize", sync);
-    };
-  }, [labelNorm]);
-
   if (KPI_OCULTOS.has(labelNorm)) return null;
-
-  const valorFinal = valorSincronizado || value;
-  const subFinal = valorSincronizado && ["A COBRAR", "TOTAL EM ABERTO"].includes(labelNorm)
-    ? "conforme rodapé da carteira"
-    : sub;
 
   return (
     <div
@@ -108,11 +75,11 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
         {label}
       </div>
       <div style={{ fontSize: 22, fontWeight: 900, color: color, marginBottom: 4, lineHeight: 1 }}>
-        {valorFinal}
+        {value}
       </div>
-      {subFinal && (
+      {sub && (
         <div style={{ fontSize: 11, color: t.muted, fontWeight: 500, lineHeight: 1.2 }}>
-          {subFinal}
+          {sub}
         </div>
       )}
     </div>

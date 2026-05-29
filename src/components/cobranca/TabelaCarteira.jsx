@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Btn, PromBadge, ObsCell, Badge } from "./UI";
-import { fmtM, fmtD, prioCor } from "@/lib/cobranca";
+import { fmtM, fmtD, prioCor, getTituloKey } from "@/lib/cobranca";
 
 const COLS_DEF = [
   { key: "check", label: "", width: 32, fixed: true },
@@ -29,20 +29,90 @@ const tdS = (ex = {}) => ({ padding: "6px 8px", borderBottom: "1px solid #0002",
 const cleanText = (v) => String(v ?? "").trim();
 const norm = (v) => cleanText(v).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
 const hasLetters = (v) => /[A-Za-zÀ-ÿ]/.test(cleanText(v));
+const toNumber = (v) => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  const n = Number(String(v ?? "").trim().replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+};
 
-function isStatusForaCarteira(status) {
-  const s = norm(status);
-  return ["BAIXADO", "LIQUIDADO", "CANCELADO", "ENCERRADO", "PAGO", "RECEBIDO", "PAGOAGUARDBAIXA", "PAGOAGUARDANDABAIXA", "INCOBRAVELBAIXAPORPERDA"].some((x) => s === x || s.includes(x));
+function isStatusForaCarteira(...values) {
+  const s = values.map(norm).filter(Boolean).join(" ");
+  if (!s) return false;
+
+  return [
+    "BAIX", "PAGO", "PAGAMENTO", "RECEB", "LIQUID", "QUIT", "ENCERR",
+    "CANCEL", "PERDA", "INCOBRAVEL", "DUPLIC", "CONFIRMADO", "ACORDOQUITADO"
+  ].some((x) => s.includes(x));
+}
+
+function valorAbertoReal(item) {
+  const camposAbertos = [
+    item?.valorEmAberto,
+    item?.open_value,
+    item?.saldoErp,
+    item?.erp_balance,
+    item?.valorReceber,
+    item?.valorTotalDebito,
+  ];
+
+  for (const campo of camposAbertos) {
+    if (campo !== undefined && campo !== null && campo !== "") return toNumber(campo);
+  }
+
+  return toNumber(item?.valorOriginal ?? item?.original_value ?? 0);
 }
 
 function isTituloCarteiraGeral(item) {
   if (!item) return false;
   if (item.active === false) return false;
   if (item.lossStatus || item.loss_status) return false;
-  if (isStatusForaCarteira(item.status || item.current_status)) return false;
-  if (isStatusForaCarteira(item.encaminhar || item.workflow_status)) return false;
-  const valorAberto = Number(item.valorEmAberto ?? item.open_value ?? item.valorTotalDebito ?? item.valorOriginal ?? item.original_value ?? 0);
-  return Number.isFinite(valorAberto) && valorAberto > 0;
+
+  if (isStatusForaCarteira(
+    item.status,
+    item.current_status,
+    item.current_motive,
+    item.encaminhar,
+    item.workflow_status,
+    item.obs,
+    item.last_note
+  )) return false;
+
+  const valorOriginal = toNumber(item.valorOriginal ?? item.original_value ?? 0);
+  const valorRecebido = toNumber(item.valorRecebido ?? item.received_value ?? 0);
+  const valorAberto = valorAbertoReal(item);
+
+  if (valorAberto <= 0) return false;
+  if (valorOriginal > 0 && valorRecebido >= valorOriginal - 0.01) return false;
+
+  return true;
+}
+
+function dedupeTitulosCarteira(titulos) {
+  const map = new Map();
+
+  for (const item of titulos || []) {
+    const keySistema = getTituloKey({ origem: item.origem, titulo: item.titulo, seq: item.seq, vencimento: item.vencimento });
+    const keySemOrigem = keySistema.replace(/^(FINR1253|EB)\|/, "");
+    const key = `${norm(item.nomeCli)}|${keySemOrigem}`;
+    const prev = map.get(key);
+
+    if (!prev) {
+      map.set(key, item);
+      continue;
+    }
+
+    const score = (x) =>
+      (x.origem === "FINR1253" ? 3 : 0) +
+      (x.dataContato ? 2 : 0) +
+      (x.obs ? 2 : 0) +
+      (x.dataPromessa ? 1 : 0) +
+      (x.encaminhar ? 1 : 0) +
+      (toNumber(x.valorEmAberto ?? x.valorTotalDebito) > 0 ? 1 : 0);
+
+    if (score(item) > score(prev)) map.set(key, item);
+  }
+
+  return Array.from(map.values());
 }
 
 function isGenericClientName(v) {
@@ -102,6 +172,7 @@ function renderTituloDetalhe(item) {
 function sanitizeGroup(g, origemFiltro) {
   let titulos = (g.titulos || []).filter(isTituloCarteiraGeral);
   if (origemFiltro) titulos = titulos.filter((item) => item.origem === origemFiltro);
+  titulos = dedupeTitulosCarteira(titulos);
   if (!titulos.length) return null;
 
   const vencimentos = titulos.map((x) => x.vencimento).filter(Boolean).sort();
@@ -111,10 +182,10 @@ function sanitizeGroup(g, origemFiltro) {
   return {
     ...g,
     titulos,
-    valorOriginal: titulos.reduce((s, x) => s + Number(x.valorOriginal || 0), 0),
-    valorMulta: titulos.reduce((s, x) => s + Number(x.valorMulta || 0), 0),
-    valorJuros: titulos.reduce((s, x) => s + Number(x.valorJuros || 0), 0),
-    valorTotalDebito: titulos.reduce((s, x) => s + Number(x.valorTotalDebito || x.valorEmAberto || x.valorOriginal || 0), 0),
+    valorOriginal: titulos.reduce((s, x) => s + toNumber(x.valorOriginal), 0),
+    valorMulta: titulos.reduce((s, x) => s + toNumber(x.valorMulta), 0),
+    valorJuros: titulos.reduce((s, x) => s + toNumber(x.valorJuros), 0),
+    valorTotalDebito: titulos.reduce((s, x) => s + valorAbertoReal(x), 0),
     maiorAtraso: titulos.reduce((m, x) => Math.max(m, Number(x.diasAtraso || 0)), 0),
     qtdTitulos: titulos.length,
     qtdTotal: titulos.reduce((s, x) => s + Number(x.qtd || 0), 0),
@@ -191,7 +262,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Baixados, pagos, liquidados, cancelados e saldo zerado ficam fora desta aba.</span>
+        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Baixados, pagos, liquidados, cancelados, duplicados e saldo zerado ficam fora desta aba.</span>
         <input value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)} placeholder="Buscar cliente/título" style={{ marginLeft: "auto", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 8px", fontSize: 11 }} />
         {(buscaLocal || Object.keys(fCart || {}).length > 0) && <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "4px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Limpar</button>}
       </div>
@@ -229,7 +300,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                         if (c.key === "vOrig") return <td key={c.key} style={tdS()}>{fmtM(item.valorOriginal)}</td>;
                         if (c.key === "multa") return <td key={c.key} style={{ ...tdS(), color: "#f97316" }}>{fmtM(item.valorMulta)}</td>;
                         if (c.key === "juros") return <td key={c.key} style={{ ...tdS(), color: "#eab308" }}>{fmtM(item.valorJuros)}</td>;
-                        if (c.key === "total") return <td key={c.key} style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(item.valorTotalDebito)}</td>;
+                        if (c.key === "total") return <td key={c.key} style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(valorAbertoReal(item))}</td>;
                         if (c.key === "status") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
                         if (c.key === "enc") return <td key={c.key} style={tdS()}>{encBadge(item.encaminhar)}</td>;
                         if (c.key === "origem") return <td key={c.key} style={tdS()}><span style={{ display: "inline-block", fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;

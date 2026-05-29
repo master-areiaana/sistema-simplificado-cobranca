@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fmtD, fmtM, promAlerta, prioCor, promessaClassif } from "@/lib/cobranca";
+import { fmtD, fmtM, promAlerta, prioCor, promessaClassif, sugestaoEncaminhamento } from "@/lib/cobranca";
 
 const KPI_OCULTOS = new Set([
   "COBRADO",
@@ -147,6 +147,23 @@ export function PromessaClassifBadge({ qtd }) {
   const c = promessaClassif(qtd);
   if (!c) return <span style={{ color: "#64748b", fontSize: 10 }}>—</span>;
   return <Badge label={c.label} color={c.cor} />;
+}
+
+export function ObsCell({ text, t }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return <span style={{ color: t.muted }}>—</span>;
+  const short = text.length > 60 ? text.slice(0, 60) + "…" : text;
+  return (
+    <span onClick={() => setExpanded((x) => !x)} style={{ cursor: text.length > 60 ? "pointer" : "default", color: t.txt, fontSize: 11 }} title={text}>
+      {expanded ? text : short}
+    </span>
+  );
+}
+
+export function SugestaoEncBadge({ diasAtraso, valor }) {
+  const s = sugestaoEncaminhamento(diasAtraso, valor);
+  if (!s) return null;
+  return <Badge label={s.label} color={s.cor} />;
 }
 
 export function TabBtn({ active, children, badge, badgeColor = "#ef4444", onClick, t }) {

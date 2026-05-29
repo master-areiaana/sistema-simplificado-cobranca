@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmtD, fmtM, promAlerta, prioCor, promessaClassif } from "@/lib/cobranca";
 
 const KPI_OCULTOS = new Set([
@@ -34,6 +34,15 @@ function normalizarInterfaceLabel(v) {
     .trim();
 }
 
+function extrairTotalFinalCarteira() {
+  const elementos = Array.from(document.querySelectorAll("div, span, b"));
+  const marcador = elementos.find((el) => normalizarInterfaceLabel(el.textContent).includes("TOTAL FINAL A COBRAR"));
+  const container = marcador?.closest("div");
+  const texto = container?.textContent || marcador?.parentElement?.textContent || "";
+  const match = texto.match(/R\$\s*[\d\.]+,\d{2}/);
+  return match ? match[0] : "";
+}
+
 export function Btn({ children, onClick, ghost = false, sm = false, style = {}, t, color }) {
   const bg = color || (ghost ? "transparent" : t.p);
   const clr = ghost ? color || t.p : "#fff";
@@ -59,7 +68,31 @@ export function Lbl({ children, t }) {
 
 export function KPI({ label, value, sub, color, t, onClick, active }) {
   const labelNorm = normalizarInterfaceLabel(label);
+  const [valorSincronizado, setValorSincronizado] = useState("");
+
+  useEffect(() => {
+    if (!["A COBRAR", "TOTAL EM ABERTO"].includes(labelNorm)) return;
+
+    const sync = () => {
+      const totalFinal = extrairTotalFinalCarteira();
+      if (totalFinal) setValorSincronizado(totalFinal);
+    };
+
+    sync();
+    const timer = setInterval(sync, 500);
+    window.addEventListener("resize", sync);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("resize", sync);
+    };
+  }, [labelNorm]);
+
   if (KPI_OCULTOS.has(labelNorm)) return null;
+
+  const valorFinal = valorSincronizado || value;
+  const subFinal = valorSincronizado && ["A COBRAR", "TOTAL EM ABERTO"].includes(labelNorm)
+    ? "conforme rodapé da carteira"
+    : sub;
 
   return (
     <div
@@ -75,11 +108,11 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
         {label}
       </div>
       <div style={{ fontSize: 22, fontWeight: 900, color: color, marginBottom: 4, lineHeight: 1 }}>
-        {value}
+        {valorFinal}
       </div>
-      {sub && (
+      {subFinal && (
         <div style={{ fontSize: 11, color: t.muted, fontWeight: 500, lineHeight: 1.2 }}>
-          {sub}
+          {subFinal}
         </div>
       )}
     </div>
@@ -118,26 +151,9 @@ export function PromessaClassifBadge({ qtd }) {
 
 export function TabBtn({ active, children, badge, badgeColor = "#ef4444", onClick, t }) {
   return (
-    <button onClick={onClick} style={{ position: "relative", background: active ? t.p : "transparent", color: active ? "#fff" : t.txt, border: "none", borderBottom: `3px solid ${active ? t.p : "transparent"}`, borderRadius: 0, padding: "10px 16px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, lineHeight: 1.3, transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <button onClick={onClick} style={{ position: "relative", background: active ? t.p : t.surf, color: active ? "#fff" : t.txt, border: `1px solid ${active ? t.p : t.bor}`, borderRadius: 6, padding: "8px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
       {children}
-      {badge > 0 && <span style={{ position: "absolute", top: -8, right: 4, background: badgeColor, color: "#fff", borderRadius: "50%", minWidth: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, padding: "0 4px", boxShadow: "0 2px 6px rgba(0,0,0,.3)", border: "2px solid " + t.bg, zIndex: 1 }}>{badge}</span>}
+      {badge > 0 && <span style={{ position: "absolute", top: -6, right: -6, background: badgeColor, color: "#fff", borderRadius: 999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, padding: "0 4px" }}>{badge}</span>}
     </button>
   );
-}
-
-export function ObsCell({ text, t }) {
-  const [exp, setExp] = useState(false);
-  if (!text) return <span style={{ color: t.muted }}>—</span>;
-  const short = text.length > 45 ? text.slice(0, 45) + "…" : text;
-  return (
-    <div style={{ maxWidth: 220 }}>
-      <span style={{ fontSize: 11, color: t.txt, whiteSpace: exp ? "normal" : "nowrap", overflow: "hidden", display: "block" }}>{exp ? text : short}</span>
-      {text.length > 45 && <button onClick={(e) => { e.stopPropagation(); setExp((x) => !x); }} style={{ background: "none", border: "none", color: t.p, cursor: "pointer", fontSize: 10, padding: "1px 0", fontWeight: 700 }}>{exp ? "▲ menos" : "▼ mais"}</button>}
-    </div>
-  );
-}
-
-export function SugestaoEncBadge({ sugestao }) {
-  if (!sugestao) return <span style={{ color: "#64748b", fontSize: 10 }}>—</span>;
-  return <Badge label={sugestao.label} color={sugestao.cor} />;
 }

@@ -114,10 +114,7 @@ function dedupeSubtitulosPorCliente(titulos, clienteNome) {
   for (const item of titulos || []) {
     const key = [norm(clienteNome || item.nomeCli), cleanText(item.vencimento), moneyKey(item.valorOriginal)].join("|");
     const prev = map.get(key);
-    if (!prev) {
-      map.set(key, item);
-      continue;
-    }
+    if (!prev) { map.set(key, item); continue; }
     const keep = itemScore(item) > itemScore(prev) ? item : prev;
     const hide = keep === item ? prev : item;
     map.set(key, keep);
@@ -144,7 +141,6 @@ function sanitizeGroup(g, origemFiltro) {
   const dedupeSub = dedupeSubtitulosPorCliente(titulos, clienteDisplayInicial.nomeCli || g.nomeCli);
   titulos = dedupeSub.titulos;
   if (!titulos.length) return null;
-
   const vencimentos = titulos.map((x) => x.vencimento).filter(Boolean).sort();
   const contatos = titulos.map((x) => x.dataContato || "").filter(Boolean).sort();
   const promessas = titulos.map((x) => x.dataPromessa || "").filter(Boolean).sort();
@@ -184,12 +180,10 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   const baseValida = useMemo(() => (baseCart || []).map((g) => sanitizeGroup(g, filtroOrigem)).filter(Boolean).filter(hasValidDisplayClient), [baseCart, filtroOrigem]);
   const duplicatasSubtitulosOcultas = useMemo(() => carteiraSanitizada.reduce((s, g) => s + Number(g.subtitulosDuplicadosOcultos || 0), 0), [carteiraSanitizada]);
   const clientesComDuplicata = useMemo(() => carteiraSanitizada.filter((g) => g.temDuplicataSubtitulo).length, [carteiraSanitizada]);
-
-  const totaisCarteira = useMemo(() => carteiraGeral.reduce((acc, g) => {
-    acc.clientes += 1; acc.titulos += Number(g.qtdTitulos || 0); acc.valorOriginal += toNumber(g.valorOriginal); acc.multa += toNumber(g.valorMulta); acc.juros += toNumber(g.valorJuros); acc.total += toNumber(g.valorTotalDebito); return acc;
-  }, { clientes: 0, titulos: 0, valorOriginal: 0, multa: 0, juros: 0, total: 0 }), [carteiraGeral]);
+  const totaisCarteira = useMemo(() => carteiraGeral.reduce((acc, g) => { acc.clientes += 1; acc.titulos += Number(g.qtdTitulos || 0); acc.valorOriginal += toNumber(g.valorOriginal); acc.multa += toNumber(g.valorMulta); acc.juros += toNumber(g.valorJuros); acc.total += toNumber(g.valorTotalDebito); return acc; }, { clientes: 0, titulos: 0, valorOriginal: 0, multa: 0, juros: 0, total: 0 }), [carteiraGeral]);
 
   function clearAllFilters() { setBuscaLocal(""); setSomenteDuplicatas(false); setFCart && setFCart({}); }
+  const totalBoxStyle = (borderColor) => ({ background: t.card || t.surf, border: `1px solid ${borderColor}`, borderRadius: 8, padding: "6px 10px", minWidth: 150, display: "flex", flexDirection: "column", gap: 2 });
 
   function renderCell(key, g) {
     const cliente = getDisplayClient(g);
@@ -290,10 +284,12 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
           </tbody>
           <tfoot><tr>{visibleCols.map(c => renderFooterCell(c.key))}</tr></tfoot>
         </table>
-        <div style={{ padding: "8px 12px", borderTop: `1px solid ${t.bor}`, fontSize: 11, color: t.muted, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span><b style={{ color: t.txt }}>{carteiraGeral.length}</b> de {baseValida.length} clientes com títulos em aberto</span>
-          <span><b style={{ color: "#f59e0b" }}>Duplicatas ocultas:</b> {duplicatasSubtitulosOcultas} subtítulo(s)</span>
-          <span><b style={{ color: t.p }}>Total a cobrar:</b> {fmtM(totaisCarteira.total)}</span>
+        <div style={{ padding: "10px 12px", borderTop: `2px solid ${t.p}`, background: t.surf2, fontSize: 11, color: t.muted, display: "flex", justifyContent: "space-between", alignItems: "stretch", gap: 10, flexWrap: "wrap", position: "sticky", bottom: 0, zIndex: 12 }}>
+          <div style={totalBoxStyle(t.bor)}><span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", color: t.muted }}>Clientes com títulos em aberto</span><b style={{ color: t.txt, fontSize: 13 }}>{carteiraGeral.length} de {baseValida.length}</b></div>
+          <div style={totalBoxStyle(t.bor)}><span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", color: t.muted }}>Qtd. de títulos</span><b style={{ color: t.txt, fontSize: 13 }}>{totaisCarteira.titulos}</b></div>
+          <div style={totalBoxStyle("#11182755")}><span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", color: t.muted }}>Valor original total</span><b style={{ color: t.txt, fontSize: 13 }}>{fmtM(totaisCarteira.valorOriginal)}</b></div>
+          <div style={totalBoxStyle(t.p)}><span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", color: t.muted }}>Total final a cobrar</span><b style={{ color: t.p, fontSize: 15 }}>{fmtM(totaisCarteira.total)}</b></div>
+          <div style={totalBoxStyle("#f59e0b66")}><span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", color: t.muted }}>Duplicatas ocultas</span><b style={{ color: "#f59e0b", fontSize: 13 }}>{duplicatasSubtitulosOcultas} subtítulo(s)</b></div>
         </div>
       </div>
     </div>

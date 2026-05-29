@@ -26,6 +26,7 @@ const COLS_DEF = [
 
 const thS = (t) => ({ background: t.th, padding: "7px 8px", textAlign: "left", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .3, color: t.muted, position: "sticky", top: 0, zIndex: 10 });
 const tdS = (ex = {}) => ({ padding: "6px 8px", borderBottom: "1px solid #0002", fontSize: 11, ...ex });
+const footerTdS = (t, ex = {}) => ({ padding: "8px 8px", borderTop: `2px solid ${t.p}`, borderBottom: `1px solid ${t.bor}`, background: t.surf2, fontSize: 11, fontWeight: 900, position: "sticky", bottom: 0, zIndex: 8, ...ex });
 const cleanText = (v) => String(v ?? "").trim();
 const norm = (v) => cleanText(v).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
 const hasLetters = (v) => /[A-Za-zÀ-ÿ]/.test(cleanText(v));
@@ -231,6 +232,18 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       .filter(hasValidDisplayClient);
   }, [baseCart, filtroOrigem]);
 
+  const totaisCarteira = useMemo(() => {
+    return carteiraGeral.reduce((acc, g) => {
+      acc.clientes += 1;
+      acc.titulos += Number(g.qtdTitulos || 0);
+      acc.valorOriginal += toNumber(g.valorOriginal);
+      acc.multa += toNumber(g.valorMulta);
+      acc.juros += toNumber(g.valorJuros);
+      acc.total += toNumber(g.valorTotalDebito);
+      return acc;
+    }, { clientes: 0, titulos: 0, valorOriginal: 0, multa: 0, juros: 0, total: 0 });
+  }, [carteiraGeral]);
+
   function clearAllFilters() {
     setBuscaLocal("");
     setFCart && setFCart({});
@@ -256,6 +269,34 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       case "prom": return <td style={tdS()}><PromBadge date={g.dataPromessa} t={t} /></td>;
       case "obs": return <td style={tdS()}><ObsCell text={g.obsConsolidada} t={t} /></td>;
       default: return null;
+    }
+  }
+
+  function renderFooterCell(key) {
+    switch (key) {
+      case "check":
+      case "expand":
+        return <td key={key} style={footerTdS(t)} />;
+      case "nrCli":
+        return <td key={key} style={footerTdS(t, { color: t.p })}>TOTAL</td>;
+      case "nomeCli":
+        return <td key={key} style={footerTdS(t)}>{totaisCarteira.clientes} cliente(s)</td>;
+      case "qtd":
+        return <td key={key} style={footerTdS(t, { textAlign: "center" })}>{totaisCarteira.titulos}</td>;
+      case "vOrig":
+        return <td key={key} style={footerTdS(t)}>{fmtM(totaisCarteira.valorOriginal)}</td>;
+      case "multa":
+        return <td key={key} style={footerTdS(t, { color: "#f97316" })}>{fmtM(totaisCarteira.multa)}</td>;
+      case "juros":
+        return <td key={key} style={footerTdS(t, { color: "#eab308" })}>{fmtM(totaisCarteira.juros)}</td>;
+      case "total":
+        return <td key={key} style={footerTdS(t, { color: t.p, fontSize: 12 })}>{fmtM(totaisCarteira.total)}</td>;
+      case "status":
+        return <td key={key} style={footerTdS(t, { fontSize: 10, color: t.muted })}>Em aberto</td>;
+      case "acoes":
+        return <td key={key} style={footerTdS(t)} />;
+      default:
+        return <td key={key} style={footerTdS(t, { color: t.muted })}>—</td>;
     }
   }
 
@@ -317,9 +358,13 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
               );
             })}
           </tbody>
+          <tfoot>
+            <tr>{visibleCols.map(c => renderFooterCell(c.key))}</tr>
+          </tfoot>
         </table>
-        <div style={{ padding: "8px 12px", borderTop: `1px solid ${t.bor}`, fontSize: 11, color: t.muted, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ padding: "8px 12px", borderTop: `1px solid ${t.bor}`, fontSize: 11, color: t.muted, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span><b style={{ color: t.txt }}>{carteiraGeral.length}</b> de {baseValida.length} clientes com títulos em aberto</span>
+          <span><b style={{ color: t.p }}>Total a cobrar:</b> {fmtM(totaisCarteira.total)}</span>
         </div>
       </div>
     </div>

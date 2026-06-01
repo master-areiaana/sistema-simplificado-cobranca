@@ -643,33 +643,53 @@ export default function Dashboard() {
     }
     lap("updates");
 
+    // Baixa automática: todos os títulos ATIVOS da mesma origem que não vieram na nova planilha
     let deact = 0, baixados = 0, valorBaixado = 0;
-    const isCarteirCompleta = existMap.size === 0 || deduped.length >= existMap.size * 0.5;
-    if (isCarteirCompleta) {
-      const toBaixa = (existingAll || []).filter((r) => {
-        const key = getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
-        return !importKeys.has(key) && r.active && !["Baixado","Recebido","Pago","Encerrado"].includes(r.current_status);
-      });
-      if (toBaixa.length > 0) {
-        onProgress(`📉 Baixando ${toBaixa.length} títulos removidos...`);
-        const BAIXA_BATCH = 20;
-        for (let i = 0; i < toBaixa.length; i += BAIXA_BATCH) {
-          const lote = toBaixa.slice(i, i + BAIXA_BATCH);
-          await Promise.all(lote.map((r) => base44.entities.Titulo.update(r.id, { active: false, current_status: "Baixado", current_motive: "Saiu da carteira — baixa automática por importação", last_contact_date: hojeISO, workflow_status: "baixado", updated_by: "Importação" })));
-          await Promise.all(lote.map((r) => {
-            const valorTit = Number(r.original_value || 0);
-            valorBaixado += valorTit; deact++; baixados++;
-            return base44.entities.ChargeEvent.create({ titulo_id: r.id, client_code: r.client_code, client_name: r.client_name, event_type: "BAIXA", event_subtype: "SAIU_IMPORTACAO", event_date: hojeISO, status: "Baixado", motive: "Título não presente na nova importação", note: `Arquivo: ${fileName}. Valor: R$ ${valorTit.toFixed(2).replace(".",",")}`, event_user: "Importação Automática" });
-          }));
-          await yieldUI();
-        }
+    const toBaixa = (existingAll || []).filter((r) => {
+      if (!r.active) return false;
+      if (["Baixado","Recebido","Pago","Encerrado"].includes(r.current_status)) return false;
+      const key = getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
+      return !importKeys.has(key);
+    });
+    if (toBaixa.length > 0) {
+      onProgress(`📉 Baixando ${toBaixa.length} títulos que saíram da planilha...`);
+      const BAIXA_BATCH = 20;
+      for (let i = 0; i < toBaixa.length; i += BAIXA_BATCH) {
+        const lote = toBaixa.slice(i, i + BAIXA_BATCH);
+        await Promise.all(lote.map((r) =>
+          base44.entities.Titulo.update(r.id, {
+            active: false,
+            current_status: "Baixado",
+            current_motive: "Título não presente na nova importação",
+            workflow_status: "baixado",
+            updated_by: "Importação Automática"
+          })
+        ));
+        await Promise.all(lote.map((r) => {
+          const valorTit = Number(r.original_value || 0);
+          valorBaixado += valorTit; deact++; baixados++;
+          return base44.entities.ChargeEvent.create({
+            titulo_id: r.id,
+            client_code: r.client_code,
+            client_name: r.client_name,
+            event_type: "BAIXA",
+            event_subtype: "SAIU_IMPORTACAO",
+            event_date: hojeISO,
+            status: "Baixado",
+            motive: "Título não presente na nova importação",
+            total_value: valorTit,
+            note: "Baixa automática porque o título não veio mais na planilha importada.",
+            event_user: "Importação Automática"
+          });
+        }));
+        await yieldUI();
       }
     }
     lap("baixa");
 
     await base44.entities.ImportLog.create({ file_name: fileName, source, total_read: imported.length, inserted_count: ins, updated_count: upd, deactivated_count: deact });
     const elapsed = ((Date.now() - T.t0) / 1000).toFixed(1);
-    return { ins, upd, deact, baixados, valorBaixado, isCarteirCompleta, elapsed, skipped: skipped.length, dupArquivo };
+    return { ins, upd, deact, baixados, valorBaixado, elapsed, skipped: skipped.length, dupArquivo };
   }
 
   async function importarArquivo(e) {
@@ -767,8 +787,7 @@ export default function Dashboard() {
         const baixaMsg = r.baixados > 0 ? ` | ${r.baixados} baixados (${fmtM(r.valorBaixado)})` : "";
         const ignoradosMsg = r.skipped > 0 ? ` | ${r.skipped} ignorados` : "";
         const dupArqMsg = r.dupArquivo > 0 ? ` | ${r.dupArquivo} dup. ignoradas` : "";
-        const parcialMsg = !r.isCarteirCompleta ? " ⚠️ Parcial: baixa automática desabilitada." : "";
-        setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${rawRows.length} linhas | ${imported.length} válidos | ${r.ins} novos | ${r.upd} atualizados${ignoradosMsg}${dupArqMsg}${baixaMsg}${parcialMsg} — ⏱ ${r.elapsed}s` });
+        setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${rawRows.length} linhas | ${imported.length} válidos | ${r.ins} novos | ${r.upd} atualizados${ignoradosMsg}${dupArqMsg}${baixaMsg} — ⏱ ${r.elapsed}s` });
       }
       e.target.value = "";
       setSyncMsg("⏳ Importação concluída. Atualizando carteira...");

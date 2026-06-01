@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { fmtD, promAlerta, prioCor, promessaClassif, sugestaoEncaminhamento } from "@/lib/cobranca";
 
 const KPI_OCULTOS = new Set([
@@ -43,33 +43,11 @@ export function Lbl({ children, t }) {
 
 export function KPI({ label, value, sub, color, t, onClick, active }) {
   const labelNorm = normalizarInterfaceLabel(label);
-  const [totaisCarteira, setTotaisCarteira] = useState(null);
-
-  useEffect(() => {
-    const handler = (ev) => setTotaisCarteira(ev.detail || null);
-    window.addEventListener("carteira:totais", handler);
-    return () => window.removeEventListener("carteira:totais", handler);
-  }, []);
 
   if (KPI_OCULTOS.has(labelNorm)) return null;
 
-  let valorFinal = value;
-  let subFinal = sub;
-
-  if (totaisCarteira && labelNorm === "A COBRAR") {
-    valorFinal = fmtReal(totaisCarteira.valorOriginal);
-    subFinal = "soma do Val. Orig da carteira";
-  }
-
-  if (totaisCarteira && labelNorm === "TOTAL EM ABERTO") {
-    valorFinal = fmtReal(totaisCarteira.total);
-    subFinal = "Val. Orig + multa + juros";
-  }
-
-  if (totaisCarteira && labelNorm === "FALTAM COBRAR") {
-    valorFinal = totaisCarteira.clientes;
-    subFinal = "clientes em aberto";
-  }
+  const valorFinal = value;
+  const subFinal = sub;
 
   return (
     <div className={`kpi-card ${active ? "active" : ""} ${onClick ? "cursor-pointer" : ""}`} onClick={onClick} style={{ order: KPI_ORDEM[labelNorm] || 99, borderLeft: `4px solid ${color} !important`, background: `${t.card} !important` }}>

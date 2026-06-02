@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
-import { fmtM } from "@/lib/cobranca";
+import { fmtM, fmtD } from "@/lib/cobranca";
 import { rankingConfiancaCliente } from "@/lib/rankingConfianca";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -9,18 +9,6 @@ function addDias(dateStr, dias) {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + dias);
   return d.toISOString().slice(0, 10);
-}
-
-function parseValorBaixa(e) {
-  const direto = Number(e?.total_value || e?.totalValue || e?.valor || e?.amount || 0);
-  if (Number.isFinite(direto) && direto > 0) return direto;
-
-  const note = String(e?.note || "");
-  const match = note.match(/Valor(?:\s+original)?\s*:\s*R\$\s*([\d.,]+)/i);
-  if (!match) return 0;
-
-  const v = Number(match[1].replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(v) ? v : 0;
 }
 
 const hoje = new Date().toISOString().slice(0, 10);
@@ -54,7 +42,14 @@ export default function PrevisaoFluxo({ grouped, events = [], t }) {
     ];
 
     const baixaDoMes = baixaEvents.filter(e => e.event_date && e.event_date.startsWith(mesAtual));
-    const recuperadoImportacao = baixaDoMes.reduce((s, e) => s + parseValorBaixa(e), 0);
+    const recuperadoImportacao = baixaDoMes.reduce((s, e) => {
+      const match = (e.note || "").match(/Valor original: R\$ ([\d.,]+)/);
+      if (match) {
+        const v = Number(match[1].replace(/\./g, "").replace(",", "."));
+        return s + (isFinite(v) ? v : 0);
+      }
+      return s;
+    }, 0);
 
     const gruposRanking = [
       { nivel: 1, key: "rank1", label: "Ranking 1", desc: "Cliente confiável", cor: "#10b981" },

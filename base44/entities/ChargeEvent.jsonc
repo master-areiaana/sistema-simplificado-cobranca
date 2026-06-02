@@ -42,10 +42,6 @@
     },
     "event_user": {
       "type": "string"
-    },
-    "total_value": {
-      "type": "number",
-      "description": "Valor total do t\u00edtulo no momento do evento (usado para baixas autom\u00e1ticas)"
     }
   },
   "required": [

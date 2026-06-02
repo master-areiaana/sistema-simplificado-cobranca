@@ -344,7 +344,12 @@ export default function Dashboard() {
         if (filtroSentinela && g.maiorAtraso <= 90) return false;
         if (filtroCategoria && !g.titulos.some((ti) => ti.clientCategory === filtroCategoria)) return false;
         if (!showPaid) {
-          const temPagamento = g.statusConsolidado === "Encerrado" || g.statusConsolidado === "Baixado" || g.statusConsolidado === "Pago Aguard. Baixa" || g.historicoCliente.some((h) => h.motivo === "Confirmado");
+          const temPagamento =
+            g.statusConsolidado === "Encerrado" ||
+            g.statusConsolidado === "Baixado" ||
+            g.statusConsolidado === "Pago Aguard. Baixa" ||
+            g.titulos.some((ti) => ti.encaminhar === "pago_importacao") ||
+            g.historicoCliente.some((h) => h.motivo === "Confirmado");
           if (temPagamento) return false;
         }
         return true;
@@ -727,23 +732,30 @@ export default function Dashboard() {
     }
     lap("updates");
 
+    // ── 7. Títulos que saíram da carteira (não estão no arquivo) → Pago / Impacto no Caixa ──
+    // NÃO inativa (active continua true) — apenas muda status para "Pago Aguard. Baixa"
+    // e workflow_status para "pago_importacao" para aparecer na aba Impacto no Caixa
     let deact = 0, baixados = 0, valorBaixado = 0;
     const isCarteirCompleta = existMap.size === 0 || deduped.length >= existMap.size * 0.5;
     if (isCarteirCompleta) {
       const toBaixa = (existingAll || []).filter((r) => {
         const key = getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
+        // Só marca como pago se: sumiu do arquivo E não está já encerrado/baixado/pago
         return !importKeys.has(key) && r.active &&
-          !["Baixado","Recebido","Pago","Encerrado"].includes(r.current_status);
+          !["Baixado","Recebido","Pago","Encerrado","Pago Aguard. Baixa"].includes(r.current_status);
       });
       if (toBaixa.length > 0) {
-        onProgress(`📉 Baixando ${toBaixa.length} títulos removidos...`);
+        onProgress(`💰 Marcando ${toBaixa.length} títulos como pagos (saíram da carteira)...`);
         const BAIXA_BATCH = 20;
         for (let i = 0; i < toBaixa.length; i += BAIXA_BATCH) {
           const lote = toBaixa.slice(i, i + BAIXA_BATCH);
+          // Mantém active: true — aparece na aba Impacto no Caixa
           await Promise.all(lote.map((r) => base44.entities.Titulo.update(r.id, {
-            active: false, current_status: "Baixado",
-            current_motive: "Saiu da carteira — baixa automática por importação",
-            last_contact_date: hojeISO, workflow_status: "baixado", updated_by: "Importação"
+            current_status: "Pago Aguard. Baixa",
+            current_motive: "Título saiu da carteira — provável pagamento",
+            last_contact_date: hojeISO,
+            workflow_status: "pago_importacao",
+            updated_by: "Importação Automática"
           })));
           await Promise.all(lote.map((r) => {
             const valorTit = Number(r.original_value || 0);
@@ -751,9 +763,10 @@ export default function Dashboard() {
             deact++; baixados++;
             return base44.entities.ChargeEvent.create({
               titulo_id: r.id, client_code: r.client_code, client_name: r.client_name,
-              event_type: "BAIXA", event_subtype: "SAIU_IMPORTACAO", event_date: hojeISO,
-              status: "Baixado", motive: "Título não presente na nova importação",
-              note: `Arquivo: ${fileName}. Valor: R$ ${valorTit.toFixed(2).replace(".",",")}`,
+              event_type: "BAIXA", event_subtype: "PAGO_IMPORTACAO", event_date: hojeISO,
+              status: "Pago Aguard. Baixa",
+              motive: "Título não presente na nova importação — cliente provavelmente pagou",
+              note: `Arquivo: ${fileName}. Valor original: R$ ${valorTit.toFixed(2).replace(".",",")}. Aguardando confirmação de baixa.`,
               event_user: "Importação Automática"
             });
           }));
@@ -865,7 +878,7 @@ export default function Dashboard() {
         await yieldUI();
         const r = await syncImport(source, imported, file.name, setStep);
         const elapsed = r.elapsed;
-        const baixaMsg = r.baixados > 0 ? ` | ${r.baixados} baixados (${fmtM(r.valorBaixado)})` : "";
+        const baixaMsg = r.baixados > 0 ? ` | ${r.baixados} marcados como pagos → Impacto no Caixa (${fmtM(r.valorBaixado)})` : "";
         const ignoradosMsg = r.skipped > 0 ? ` | ${r.skipped} ignorados (sem alteração)` : "";
         const dupArqMsg = r.dupArquivo > 0 ? ` | ${r.dupArquivo} dup. do arquivo ignoradas` : "";
         const parcialMsg = !r.isCarteirCompleta ? " ⚠️ Parcial: baixa automática desabilitada." : "";
@@ -920,7 +933,26 @@ export default function Dashboard() {
         {activeTab === "verificacao" && <TabelaVerificacao data={verifLista} t={t} setRespModal={setRespModal} setRespForm={setRespForm} />}
         {activeTab === "protesto" && <TabelaProtesto data={protestoLista} t={t} setRespModal={setRespModal} setRespForm={setRespForm} />}
         {activeTab === "produtividade" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}><div className="kpi-container kpi-container-4"><KPI t={t} label="Total de Contatos" color="#3B82F6" value={events.filter((e) => e.event_type === "COBRANCA").length} sub="no período" /><KPI t={t} label="Promessas Obtidas" color="#FBBF24" value={events.filter((e) => e.status === "Prometeu Pagar" || e.status === "Promessa ativa").length} sub="confirmadas" /><KPI t={t} label="Pagamentos Confirmados" color="#10B981" value={events.filter((e) => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Pagamento confirmado").length} sub="verificados" /><KPI t={t} label="Taxa de Sucesso" color="#A78BFA" value={`${events.length > 0 ? (events.filter((e) => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Prometeu Pagar" || e.status === "Promessa ativa" || e.status === "Pagamento confirmado").length / events.length * 100).toFixed(1) : 0}%`} sub="conversão" /></div><div style={{ display: "flex", gap: 6 }}><button onClick={() => setSubTabProd("produtividade")} style={{ background: subTabProd === "produtividade" ? t.p : t.surf2, color: subTabProd === "produtividade" ? "#fff" : t.txt, border: `1px solid ${subTabProd === "produtividade" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>👤 Produtividade por Usuário</button><button onClick={() => setSubTabProd("metas")} style={{ background: subTabProd === "metas" ? t.p : t.surf2, color: subTabProd === "metas" ? "#fff" : t.txt, border: `1px solid ${subTabProd === "metas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>🎯 Metas de Cobrança</button></div>{subTabProd === "produtividade" && <><PainelProdutividade events={events} t={t} /><div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}><div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📊 Analytics & Exportação</div><AnalyticsDashboard grouped={grouped} events={events} t={t} /></div></>}{subTabProd === "metas" && <PainelMetas grouped={grouped} events={events} t={t} />}</div>}
-        {activeTab === "fluxo" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}><div className="kpi-container kpi-container-4"><KPI t={t} label="Previsão 30 Dias" color="#3B82F6" value={fmtM(grouped.filter((g) => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="próximo mês" /><KPI t={t} label="Previsão 60 Dias" color="#FBBF24" value={fmtM(grouped.filter((g) => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 60 dias" /><KPI t={t} label="Previsão 90 Dias" color="#A78BFA" value={fmtM(grouped.filter((g) => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 90 dias" /><KPI t={t} label="Débitos Críticos" color="#EF4444" value={fmtM(grouped.filter((g) => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="acima 90 dias" /></div><PrevisaoFluxo grouped={grouped} events={events} t={t} />{(() => { const pagosArr = grouped.filter((g) => g.statusConsolidado === "Encerrado" || g.statusConsolidado === "Baixado" || g.statusConsolidado === "Pago Aguard. Baixa" || g.statusConsolidado === "Confirmado" || g.statusConsolidado === "Pagamento confirmado"); const totalPagosVal = pagosArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0); const totalPagosTit = pagosArr.reduce((s, g) => s + (g.qtdTitulos || 0), 0); return <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "14px 16px" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}><div style={{ fontSize: 13, fontWeight: 800, color: t.txt }}>💰 Clientes Pagos (Impacto no Caixa)</div><div style={{ display: "flex", gap: 12, fontSize: 11, color: t.muted }}><span><b style={{ color: "#10b981" }}>{pagosArr.length}</b> clientes</span><span><b style={{ color: "#10b981" }}>{totalPagosTit}</b> títulos</span><span>Total: <b style={{ color: "#10b981" }}>{fmtM(totalPagosVal)}</b></span></div></div>{pagosArr.length === 0 ? <div style={{ padding: 24, textAlign: "center", color: t.muted, fontSize: 12 }}>Nenhum cliente pago no momento.</div> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}><thead><tr style={{ background: t.th, color: t.muted, textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}><th style={{ padding: "8px 10px", textAlign: "left", borderBottom: `1px solid ${t.bor}` }}>N°</th><th style={{ padding: "8px 10px", textAlign: "left", borderBottom: `1px solid ${t.bor}` }}>Cliente</th><th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Qtd. Títulos</th><th style={{ padding: "8px 10px", textAlign: "right", borderBottom: `1px solid ${t.bor}` }}>Val. Original</th><th style={{ padding: "8px 10px", textAlign: "right", borderBottom: `1px solid ${t.bor}` }}>Total Pago</th><th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Último Contato</th><th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Status</th></tr></thead><tbody>{pagosArr.sort((a, b) => (b.valorTotalDebito || 0) - (a.valorTotalDebito || 0)).map((g) => <tr key={g.clientKey} style={{ borderBottom: `1px solid ${t.bor}` }}><td style={{ padding: "8px 10px", color: t.txt, fontWeight: 600 }}>{g.nrCli}</td><td style={{ padding: "8px 10px", color: t.txt }}>{g.nomeCli}</td><td style={{ padding: "8px 10px", textAlign: "center", color: t.txt }}>{g.qtdTitulos}</td><td style={{ padding: "8px 10px", textAlign: "right", color: t.muted }}>{fmtM(g.valorOriginal)}</td><td style={{ padding: "8px 10px", textAlign: "right", color: "#10b981", fontWeight: 700 }}>{fmtM(g.valorTotalDebito)}</td><td style={{ padding: "8px 10px", textAlign: "center", color: t.muted }}>{g.ultimoContato ? fmtD(g.ultimoContato) : "—"}</td><td style={{ padding: "8px 10px", textAlign: "center" }}><span style={{ background: "#10b98122", color: "#10b981", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700 }}>{g.statusConsolidado || "Pago"}</span></td></tr>)}</tbody></table></div>}</div>; })()}</div>}
+        {activeTab === "fluxo" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}><div className="kpi-container kpi-container-4"><KPI t={t} label="Previsão 30 Dias" color="#3B82F6" value={fmtM(grouped.filter((g) => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="próximo mês" /><KPI t={t} label="Previsão 60 Dias" color="#FBBF24" value={fmtM(grouped.filter((g) => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 60 dias" /><KPI t={t} label="Previsão 90 Dias" color="#A78BFA" value={fmtM(grouped.filter((g) => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="até 90 dias" /><KPI t={t} label="Débitos Críticos" color="#EF4444" value={fmtM(grouped.filter((g) => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))} sub="acima 90 dias" /></div><PrevisaoFluxo grouped={grouped} events={events} t={t} />{(() => { const pagosArr = grouped.filter((g) =>
+  g.statusConsolidado === "Encerrado" ||
+  g.statusConsolidado === "Baixado" ||
+  g.statusConsolidado === "Pago Aguard. Baixa" ||
+  g.statusConsolidado === "Confirmado" ||
+  g.statusConsolidado === "Pagamento confirmado" ||
+  g.titulos.some((ti) => ti.encaminhar === "pago_importacao" || ti.workflow_status === "pago_importacao")
+); const totalPagosVal = pagosArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0); const totalPagosTit = pagosArr.reduce((s, g) => s + (g.qtdTitulos || 0), 0); return <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "14px 16px" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}><div style={{ fontSize: 13, fontWeight: 800, color: t.txt }}>💰 Clientes Pagos (Impacto no Caixa)</div><div style={{ display: "flex", gap: 12, fontSize: 11, color: t.muted }}><span><b style={{ color: "#10b981" }}>{pagosArr.length}</b> clientes</span><span><b style={{ color: "#10b981" }}>{totalPagosTit}</b> títulos</span><span>Total: <b style={{ color: "#10b981" }}>{fmtM(totalPagosVal)}</b></span></div></div>{pagosArr.length === 0 ? <div style={{ padding: 24, textAlign: "center", color: t.muted, fontSize: 12 }}>Nenhum cliente pago no momento.</div> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}><thead><tr style={{ background: t.th, color: t.muted, textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}><th style={{ padding: "8px 10px", textAlign: "left", borderBottom: `1px solid ${t.bor}` }}>N°</th><th style={{ padding: "8px 10px", textAlign: "left", borderBottom: `1px solid ${t.bor}` }}>Cliente</th><th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Qtd. Títulos</th><th style={{ padding: "8px 10px", textAlign: "right", borderBottom: `1px solid ${t.bor}` }}>Val. Original</th><th style={{ padding: "8px 10px", textAlign: "right", borderBottom: `1px solid ${t.bor}` }}>Total Pago</th><th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Último Contato</th><th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Status</th><th style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${t.bor}` }}>Origem</th></tr></thead><tbody>{pagosArr.sort((a, b) => (b.valorTotalDebito || 0) - (a.valorTotalDebito || 0)).map((g) => {
+  const pagoViaImportacao = g.titulos.some((ti) => ti.encaminhar === "pago_importacao");
+  return <tr key={g.clientKey} style={{ borderBottom: `1px solid ${t.bor}`, background: pagoViaImportacao ? (isDark ? "#052e1622" : "#f0fdf4") : "transparent" }}>
+    <td style={{ padding: "8px 10px", color: t.txt, fontWeight: 600 }}>{g.nrCli}</td>
+    <td style={{ padding: "8px 10px", color: t.txt }}>{g.nomeCli}</td>
+    <td style={{ padding: "8px 10px", textAlign: "center", color: t.txt }}>{g.qtdTitulos}</td>
+    <td style={{ padding: "8px 10px", textAlign: "right", color: t.muted }}>{fmtM(g.valorOriginal)}</td>
+    <td style={{ padding: "8px 10px", textAlign: "right", color: "#10b981", fontWeight: 700 }}>{fmtM(g.valorTotalDebito)}</td>
+    <td style={{ padding: "8px 10px", textAlign: "center", color: t.muted }}>{g.ultimoContato ? fmtD(g.ultimoContato) : "—"}</td>
+    <td style={{ padding: "8px 10px", textAlign: "center" }}><span style={{ background: "#10b98122", color: "#10b981", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700 }}>{g.statusConsolidado || "Pago"}</span></td>
+    <td style={{ padding: "8px 10px", textAlign: "center" }}>{pagoViaImportacao ? <span style={{ background: "#dbeafe", color: "#1d4ed8", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700 }}>📥 Importação</span> : <span style={{ color: t.muted, fontSize: 10 }}>Manual</span>}</td>
+  </tr>;
+})}</tbody></table></div>}</div>; })()}</div>}
       </main>
       {modal && <ModalCobranca title="✏️ Registrar Cobrança" frm={form} setFrm={setForm} onSave={() => salvarCobranca(form, modal.titulos, () => setModal(null))} onClose={() => setModal(null)} t={t} isDark={isDark} info={<div style={{ background: t.surf2, borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: `1px solid ${t.bor}` }}><b>{modal.nomeCli}</b><div style={{ color: t.muted, fontSize: 12, marginTop: 3 }}>Cliente {modal.nrCli} · {modal.qtdTitulos} título(s) · <b style={{ color: t.p }}>{fmtM(modal.valorTotalDebito)}</b></div></div>} />}
       {batchModal && <ModalCobranca title={`✏️ Cobrança em Lote — ${selGroups.length} clientes`} frm={batchForm} setFrm={setBatchForm} onSave={() => salvarCobranca(batchForm, selGroups.flatMap((g) => g.titulos), () => { setBatchModal(false); setSelected(new Set()); })} onClose={() => setBatchModal(false)} t={t} isDark={isDark} info={<div style={{ background: t.surf2, borderRadius: 8, padding: "8px 12px", marginBottom: 14, border: `1px solid ${t.bor}`, maxHeight: 100, overflowY: "auto" }}>{selGroups.map((g) => <div key={g.clientKey} style={{ fontSize: 12, padding: "3px 0", borderBottom: `1px solid ${t.bor}`, display: "flex", justifyContent: "space-between" }}><b>{g.nomeCli}</b><span style={{ color: t.p, fontWeight: 700 }}>{fmtM(g.valorTotalDebito)}</span></div>)}</div>} />}

@@ -1,0 +1,145 @@
+import { useMemo } from "react";
+import { fmtM, fmtD } from "@/lib/cobranca";
+import PrevisaoFluxo from "@/components/cobranca/PrevisaoFluxo";
+import { KPI } from "@/components/cobranca/UI";
+
+const th = (t) => ({ padding: "8px 10px", textAlign: "left", borderBottom: `1px solid ${t.bor}` });
+const thR = (t) => ({ ...th(t), textAlign: "right" });
+const thC = (t) => ({ ...th(t), textAlign: "center" });
+
+function TabelaImpacto({ rows, t, isDark, corValor, corBadgeBg, corBadgeTxt, renderTipo }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: t.th, color: t.muted, textTransform: "uppercase", fontSize: 10, letterSpacing: 0.5 }}>
+            <th style={th(t)}>N°</th>
+            <th style={th(t)}>Cliente</th>
+            <th style={thC(t)}>Qtd.</th>
+            <th style={thR(t)}>Val. Original</th>
+            <th style={thR(t)}>Total Atualizado</th>
+            <th style={thC(t)}>Último Contato</th>
+            <th style={thC(t)}>Status</th>
+            <th style={thC(t)}>Tipo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.sort((a, b) => (b.valorTotalDebito || 0) - (a.valorTotalDebito || 0)).map((g) => (
+            <tr key={g.clientKey} style={{ borderBottom: `1px solid ${t.bor}` }}>
+              <td style={{ padding: "8px 10px", color: t.txt, fontWeight: 600 }}>{g.nrCli || "—"}</td>
+              <td style={{ padding: "8px 10px", color: t.txt, fontWeight: 700 }}>{g.nomeCli}</td>
+              <td style={{ padding: "8px 10px", textAlign: "center", color: t.txt }}>{g.qtdTitulos}</td>
+              <td style={{ padding: "8px 10px", textAlign: "right", color: t.muted }}>{fmtM(g.valorOriginal)}</td>
+              <td style={{ padding: "8px 10px", textAlign: "right", color: corValor, fontWeight: 700 }}>{fmtM(g.valorTotalDebito)}</td>
+              <td style={{ padding: "8px 10px", textAlign: "center", color: t.muted }}>{g.ultimoContato ? fmtD(g.ultimoContato) : "—"}</td>
+              <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                <span style={{ background: `${corValor}22`, color: corValor, padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700 }}>
+                  {g.statusConsolidado || "Não Contatado"}
+                </span>
+              </td>
+              <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                {renderTipo(g)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function ImpactoCaixaTab({ grouped, events, t, isDark }) {
+  const pagosArr = useMemo(() => grouped.filter((g) =>
+    g.statusConsolidado === "Encerrado" ||
+    g.statusConsolidado === "Baixado" ||
+    g.statusConsolidado === "Pago Aguard. Baixa" ||
+    g.statusConsolidado === "Confirmado" ||
+    g.statusConsolidado === "Pagamento confirmado" ||
+    g.titulos.some((ti) => ti.encaminhar === "pago_importacao" || ti.workflow_status === "pago_importacao")
+  ), [grouped]);
+
+  const semCarteiraArr = useMemo(() => grouped.filter((g) => {
+    if (pagosArr.some((p) => p.clientKey === g.clientKey)) return false;
+    return g.titulos.some((ti) => ti.workflow_status === "sem_carteira");
+  }), [grouped, pagosArr]);
+
+  const totalPagosVal = pagosArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0);
+  const totalSCVal = semCarteiraArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* KPIs */}
+      <div className="kpi-container kpi-container-4">
+        <KPI t={t} label="Previsão 30 Dias" color="#3B82F6"
+          value={fmtM(grouped.filter((g) => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))}
+          sub="próximo mês" />
+        <KPI t={t} label="Previsão 60 Dias" color="#FBBF24"
+          value={fmtM(grouped.filter((g) => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))}
+          sub="até 60 dias" />
+        <KPI t={t} label="Previsão 90 Dias" color="#A78BFA"
+          value={fmtM(grouped.filter((g) => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))}
+          sub="até 90 dias" />
+        <KPI t={t} label="Débitos Críticos" color="#EF4444"
+          value={fmtM(grouped.filter((g) => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))}
+          sub="acima 90 dias" />
+      </div>
+
+      <PrevisaoFluxo grouped={grouped} events={events} t={t} />
+
+      {/* ── Seção 1: Sem Carteira (cruzamento EB x TOPCON) ── */}
+      <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderLeft: "4px solid #f59e0b", borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: t.txt }}>⚠️ Sem Carteira — Clientes não distribuídos (EB ↔ TOPCON)</div>
+          <div style={{ display: "flex", gap: 16, fontSize: 11, color: t.muted }}>
+            <span><b style={{ color: "#f59e0b" }}>{semCarteiraArr.length}</b> clientes</span>
+            <span>Total: <b style={{ color: "#f59e0b" }}>{fmtM(totalSCVal)}</b></span>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>
+          Clientes presentes em apenas uma carteira (EB ou TOPCON) — ausentes na outra. Cruzamento automático por código e nome normalizado. Estes clientes precisam ser distribuídos manualmente.
+        </div>
+        {semCarteiraArr.length === 0
+          ? <div style={{ padding: 16, textAlign: "center", color: t.muted, fontSize: 12 }}>Nenhum cliente sem carteira correspondente. ✅</div>
+          : <TabelaImpacto
+              rows={semCarteiraArr}
+              t={t}
+              isDark={isDark}
+              corValor="#f59e0b"
+              renderTipo={(g) => {
+                const origens = [...new Set(g.titulos.map((ti) => ti.origem))].map((o) => o === "FINR1253" ? "TOPCON" : "EB").join(", ");
+                return <span style={{ background: "#fef3c7", color: "#92400e", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700 }}>⚠️ Só {origens}</span>;
+              }}
+            />
+        }
+      </div>
+
+      {/* ── Seção 2: Pagos / Baixados ── */}
+      <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: t.txt }}>💰 Clientes Pagos</div>
+          <div style={{ display: "flex", gap: 16, fontSize: 11, color: t.muted }}>
+            <span><b style={{ color: "#10b981" }}>{pagosArr.length}</b> clientes</span>
+            <span>Total: <b style={{ color: "#10b981" }}>{fmtM(totalPagosVal)}</b></span>
+          </div>
+        </div>
+        {pagosArr.length === 0
+          ? <div style={{ padding: 24, textAlign: "center", color: t.muted, fontSize: 12 }}>Nenhum cliente pago no momento.</div>
+          : <TabelaImpacto
+              rows={pagosArr}
+              t={t}
+              isDark={isDark}
+              corValor="#10b981"
+              renderTipo={(g) => {
+                const pagoViaImportacao = g.titulos.some((ti) => ti.encaminhar === "pago_importacao" || ti.workflow_status === "pago_importacao");
+                return pagoViaImportacao
+                  ? <span style={{ background: "#dbeafe", color: "#1d4ed8", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700 }}>📥 Importação</span>
+                  : <span style={{ color: t.muted, fontSize: 10 }}>Manual</span>;
+              }}
+            />
+        }
+      </div>
+
+    </div>
+  );
+}

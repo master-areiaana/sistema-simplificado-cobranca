@@ -348,7 +348,7 @@ export default function Dashboard() {
             g.statusConsolidado === "Encerrado" ||
             g.statusConsolidado === "Baixado" ||
             g.statusConsolidado === "Pago Aguard. Baixa" ||
-            g.titulos.some((ti) => ti.encaminhar === "pago_importacao") ||
+            g.titulos.every((ti) => ti.encaminhar === "pago_importacao" || ti.workflow_status === "pago_importacao") ||
             g.historicoCliente.some((h) => h.motivo === "Confirmado");
           if (temPagamento) return false;
         }

@@ -233,6 +233,7 @@ export function buildItem(o) {
     recordOrigin: o.recordOrigin || o.record_origin || "ERP",
     status: o.status || "Não Contatado",
     encaminhar: o.encaminhar || "",
+    workflow_status: o.workflow_status || o.encaminhar || "",
     dataContato: o.dataContato || "",
     dataPromessa: o.dataPromessa || "",
     obs: o.obs || "",
@@ -247,7 +248,7 @@ export function dbToItem(r) {
     clientGroupKey: r.client_group_key || "", primaryClientCode: r.primary_client_code || r.client_code || "", erpClientCodes: r.erp_client_codes || (r.client_code ? [r.client_code] : []), recordOrigin: r.record_origin || "ERP",
     tp: r.doc_type, ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico, emissao: r.issue_date, vencimento: r.due_date,
     valorOriginal: r.open_value || r.original_value, valorRecebido: r.received_value, valorEmAberto: r.open_value || r.original_value, saldoErp: r.erp_balance, partialPaymentDetected: r.partial_payment_detected,
-    portador: r.portador, status: r.current_status || "Não Contatado", encaminhar: r.workflow_status || "", tipoContato: r.current_contact_type || "", dataContato: r.last_contact_date || "", dataPromessa: r.promise_date || "", obs: r.last_note || "", qtd: r.contact_count || 0, solicitanteProtesto: r.protest_requested_by || "", clientCategory: r.client_category || ""
+    portador: r.portador, status: r.current_status || "Não Contatado", encaminhar: r.workflow_status || "", workflow_status: r.workflow_status || "", tipoContato: r.current_contact_type || "", dataContato: r.last_contact_date || "", dataPromessa: r.promise_date || "", obs: r.last_note || "", qtd: r.contact_count || 0, solicitanteProtesto: r.protest_requested_by || "", clientCategory: r.client_category || ""
   });
 }
 

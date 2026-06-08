@@ -125,6 +125,42 @@ export default function AnalyticsDashboard({ grouped, events, t }) {
 
   function exportExcel() {
     const data = getFilteredData();
+
+    // Aba "Sistema" — layout padronizado por título (não agrupado), igual para FINR1253 e RPT_7007
+    const sistemaHeader = [
+      "Origem","Numero_Cliente","Cliente","Tipo_Documento","Titulo","Sequencia",
+      "Vencimento","Dias_Atraso","Valor_Original","Multa","Juros","Total_Atualizado",
+      "Status","Encaminhamento","Ultimo_Contato","Promessa","Categoria","Observacao","Portador"
+    ];
+    const sistemaRows = [];
+    for (const g of data) {
+      for (const ti of (g.titulos || [])) {
+        sistemaRows.push([
+          ti.origem === "FINR1253" ? "TOPCON" : "EB",
+          g.nrCli || "",
+          g.nomeCli || "",
+          ti.tp || "",
+          ti.titulo || "",
+          ti.seq || "",
+          ti.vencimento || "",
+          ti.diasAtraso || 0,
+          Number(ti.valorOriginal || 0),
+          Number(ti.valorMulta || 0),
+          Number(ti.valorJuros || 0),
+          Number(ti.valorTotalDebito || 0),
+          g.statusConsolidado || "",
+          g.encaminharConsolidado || "",
+          g.ultimoContato || "",
+          g.dataPromessa || "",
+          ti.clientCategory || "",
+          g.obsConsolidada || "",
+          ti.portador || "",
+        ]);
+      }
+    }
+    const sistema = [sistemaHeader, ...sistemaRows];
+
+    // Aba "Carteira" — resumo por cliente
     const carteira = [
       ["Nº","Nome","Qtd.","Val. Original","Val. Total","Atraso (dias)","Status","Encaminhar","Último Contato","Promessa","Observação","Prioridade"],
       ...data.map(g => [g.nrCli||"",g.nomeCli,g.qtdTitulos,g.valorOriginal,g.valorTotalDebito,g.maiorAtraso,g.statusConsolidado,g.encaminharConsolidado||"",g.ultimoContato||"",g.dataPromessa||"",g.obsConsolidada||"",g.prioridadeCliente])
@@ -142,6 +178,7 @@ export default function AnalyticsDashboard({ grouped, events, t }) {
       ...tendenciaMensal.map(m => [m.label, m.contatos, m.promessas, m.pagos, m.clientes, m.recuperado])
     ];
     dlExcel(`analytics_cobranca_${hojeISO}.xlsx`, [
+      { name: "Sistema", data: sistema },
       { name: "Carteira", data: carteira },
       { name: "Aging", data: aging },
       { name: "Status", data: status },
@@ -279,7 +316,7 @@ export default function AnalyticsDashboard({ grouped, events, t }) {
           </button>
         </div>
         <div style={{ marginTop: 8, fontSize: 10, color: t.muted }}>
-          O Excel exporta 4 abas: <b>Carteira</b>, <b>Aging</b>, <b>Status</b> e <b>Tendência Mensal</b>.
+          O Excel exporta 5 abas: <b>Sistema</b> (por título, colunas padronizadas FINR1253/EB), <b>Carteira</b>, <b>Aging</b>, <b>Status</b> e <b>Tendência Mensal</b>.
         </div>
       </div>
 

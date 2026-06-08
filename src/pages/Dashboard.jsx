@@ -344,12 +344,13 @@ export default function Dashboard() {
         }
         if (filtroSentinela && g.maiorAtraso <= 90) return false;
         if (filtroCategoria && !g.titulos.some((ti) => ti.clientCategory === filtroCategoria)) return false;
+                if (g.titulos.some((ti) => ti.workflow_status === "sem_carteira")) return false;
         if (!showPaid) {
           const temPagamento =
             g.statusConsolidado === "Encerrado" ||
             g.statusConsolidado === "Baixado" ||
             g.statusConsolidado === "Pago Aguard. Baixa" ||
-            g.titulos.every((ti) => ti.encaminhar === "pago_importacao" || ti.workflow_status === "pago_importacao") ||
+            g.titulos.some((ti) => ti.encaminhar === "pago_importacao" || ti.workflow_status === "pago_importacao") ||
             g.historicoCliente.some((h) => h.motivo === "Confirmado");
           if (temPagamento) return false;
         }

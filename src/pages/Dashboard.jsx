@@ -1,4 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, Component } from "react";
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 32, textAlign: "center", color: "#ef4444" }}>
+          <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>❌ Erro no sistema</div>
+          <div style={{ fontSize: 12, color: "#888", marginBottom: 16 }}>{String(this.state.error?.message || this.state.error)}</div>
+          <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }} style={{ background: "#E87722", color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", fontWeight: 700, cursor: "pointer" }}>🔄 Recarregar</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import * as XLSX from "xlsx";
 import { base44 } from "@/api/base44Client";
 import {
@@ -969,6 +986,7 @@ export default function Dashboard() {
   function encBadge(enc) { if (enc === "verificacao") return <Badge label="→ Verificar" color="#3b82f6" />; if (enc === "protesto") return <Badge label="→ Protesto" color="#ef4444" />; return <span style={{ color: t.muted, fontSize: 11 }}>—</span>; }
 
   return (
+    <ErrorBoundary>
     <div style={{ fontFamily: "'Segoe UI',system-ui,sans-serif", background: t.bg, minHeight: "100vh", color: t.txt }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={importarArquivo} />
       <header style={{ background: t.head, borderBottom: `1px solid ${t.bor}`, padding: "0 20px", height: 50, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: t.shad }}>
@@ -1011,5 +1029,6 @@ export default function Dashboard() {
       {negModal && <ModalNegociacao grupo={negModal} onClose={() => setNegModal(null)} t={t} isDark={isDark} />}
       {emailModal && <ModalEnviarPDF grouped={grouped} filteredCart={sortedCart} dash={dash} faixaAtraso={faixaAtraso} filtroOrigem={filtroOrigem} hojeISO={hojeISO} t={t} onClose={() => setEmailModal(false)} />}
     </div>
+    </ErrorBoundary>
   );
 }

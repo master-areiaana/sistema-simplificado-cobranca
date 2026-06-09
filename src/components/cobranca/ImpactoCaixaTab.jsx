@@ -24,7 +24,7 @@ function TabelaImpacto({ rows, t, isDark, corValor, corBadgeBg, corBadgeTxt, ren
           </tr>
         </thead>
         <tbody>
-          {rows.sort((a, b) => (b.valorTotalDebito || 0) - (a.valorTotalDebito || 0)).map((g) => (
+          {[...rows].sort((a, b) => (b.valorTotalDebito || 0) - (a.valorTotalDebito || 0)).map((g) => (
             <tr key={g.clientKey} style={{ borderBottom: `1px solid ${t.bor}` }}>
               <td style={{ padding: "8px 10px", color: t.txt, fontWeight: 600 }}>{g.nrCli || "—"}</td>
               <td style={{ padding: "8px 10px", color: t.txt, fontWeight: 700 }}>{g.nomeCli}</td>

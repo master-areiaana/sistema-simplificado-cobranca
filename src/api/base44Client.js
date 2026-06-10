@@ -7,7 +7,7 @@ const rawBase44 = createClient({
   appId,
   token,
   functionsVersion,
-  serverUrl: '',
+  serverUrl: appBaseUrl || '',
   requiresAuth: false,
   appBaseUrl
 });

@@ -32,6 +32,10 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_BASE44_APP_ID: 69f14ec85dcdced93f9de899
+          VITE_BASE44_APP_BASE_URL: https://blazing-cred-flow-pro.base44.app
+          VITE_BASE44_FUNCTIONS_VERSION: prod
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -539,7 +539,11 @@ export default function Dashboard() {
       const gruposDup = [];
       for (const [, group] of byKey) {
         if (group.length <= 1) continue;
-        group.sort((a, b) => String(b.updated_date || b.created_date || "").localeCompare(String(a.updated_date || a.created_date || "")));
+        group.sort((a, b) =>
+          Number(isValidClientName(b.client_name)) - Number(isValidClientName(a.client_name)) ||
+          Number(temDadosManuais(b)) - Number(temDadosManuais(a)) ||
+          String(b.updated_date || b.created_date || "").localeCompare(String(a.updated_date || a.created_date || ""))
+        );
         gruposDup.push(group);
       }
       const totalUnicos = byKey.size;

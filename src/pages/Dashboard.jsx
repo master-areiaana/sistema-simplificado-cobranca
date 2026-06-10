@@ -241,17 +241,21 @@ export default function Dashboard() {
     function getClienteKey(item) {
       const doc = String(item.cpfCnpj || "").replace(/\D/g, "");
       if (doc.length >= 11) return `DOC:${doc}`;
-      const nomeNorm = normNomeKey(extractNomeCli(item.nomeCli));
-      if (nomeNorm.replace(/\s/g, "").length >= 3 && /[A-Za-z]/.test(nomeNorm)) return `NOME:${nomeNorm}`;
+      const nomeExtraido = extractNomeCli(item.nomeCli);
+      const nomeNorm = normNomeKey(nomeExtraido);
+      if (isValidClientName(nomeExtraido) && nomeNorm.replace(/\s/g, "").length >= 3 && /[A-Za-z]/.test(nomeNorm)) return `NOME:${nomeNorm}`;
       const cod = normCod(item.nrCli);
       if (cod) return `COD:${cod}`;
       return `ID:${item.id || Math.random()}`;
     }
 
     records.forEach((item) => {
-      const nomeExibicao = extractNomeCli(item.nomeCli) || item.nomeCli || "";
+      let nomeExibicao = extractNomeCli(item.nomeCli) || item.nomeCli || "";
       const cod = normCod(item.nrCli);
-      if (!isValidClientName(nomeExibicao) && !cod) return;
+      if (!isValidClientName(nomeExibicao)) {
+        if (!cod) return;
+        nomeExibicao = `Cliente ${cod}`;
+      }
       const k = getClienteKey(item);
       if (!map.has(k)) {
         map.set(k, { clientKey: k, nrCli: cod, nomeCli: nomeExibicao, _codigos: new Set(), titulos: [], _nomes: [] });

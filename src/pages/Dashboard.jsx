@@ -22,7 +22,7 @@ import {
   hoje, hojeISO, fmtM, fmtD, normText, cliKey, buildItem, buildId, dbToItem,
   detectSrc, parseRows1253, parseRows7007, calcFin, dateISO, num, pick,
   dlCsv, openPrint, prioLabel, prioCor, sugestaoEncaminhamento, diffDias,
-  getTituloKey, dedupeTitulos } from
+  getTituloKey, dedupeTitulos, isValidClientName } from
 "@/lib/cobranca";
 import { DARK, LIGHT, loadL, saveL } from "@/lib/theme";
 import { KPI, TabBtn, Badge, PrioBadge, PromBadge, ObsCell, Btn, SugestaoEncBadge } from "@/components/cobranca/UI";
@@ -241,17 +241,22 @@ export default function Dashboard() {
     function getClienteKey(item) {
       const doc = String(item.cpfCnpj || "").replace(/\D/g, "");
       if (doc.length >= 11) return `DOC:${doc}`;
-      const nomeNorm = normNomeKey(extractNomeCli(item.nomeCli));
-      if (nomeNorm.replace(/\s/g, "").length >= 3 && /[A-Za-z]/.test(nomeNorm)) return `NOME:${nomeNorm}`;
+      const nomeExtraido = extractNomeCli(item.nomeCli);
+      const nomeNorm = normNomeKey(nomeExtraido);
+      if (isValidClientName(nomeExtraido) && nomeNorm.replace(/\s/g, "").length >= 3 && /[A-Za-z]/.test(nomeNorm)) return `NOME:${nomeNorm}`;
       const cod = normCod(item.nrCli);
       if (cod) return `COD:${cod}`;
       return `ID:${item.id || Math.random()}`;
     }
 
     records.forEach((item) => {
-      const k = getClienteKey(item);
-      const nomeExibicao = extractNomeCli(item.nomeCli) || item.nomeCli || "";
+      let nomeExibicao = extractNomeCli(item.nomeCli) || item.nomeCli || "";
       const cod = normCod(item.nrCli);
+      if (!isValidClientName(nomeExibicao)) {
+        if (!cod) return;
+        nomeExibicao = `Cliente ${cod}`;
+      }
+      const k = getClienteKey(item);
       if (!map.has(k)) {
         map.set(k, { clientKey: k, nrCli: cod, nomeCli: nomeExibicao, _codigos: new Set(), titulos: [], _nomes: [] });
       }
@@ -356,7 +361,11 @@ export default function Dashboard() {
         if (filtroOrigem && !g.titulos.some((ti) => ti.origem === filtroOrigem)) return false;
         if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente) && !(g.codigosLista || []).some((c) => c.includes(buscaCliente))) return false;
         if (buscaTit) {
-          const temTituloMatch = g.titulos.some((ti) => normText(ti.titulo || "").includes(buscaTit) || String(ti.titulo || "").includes(buscaTitulo));
+          const temTituloMatch = g.titulos.some((ti) =>
+            [ti.titulo, ti.seq, ti.tp, ti.nfServico].some((v) =>
+              normText(v || "").includes(buscaTit) || String(v || "").includes(buscaTitulo)
+            )
+          );
           if (!temTituloMatch) return false;
         }
         if (filtroSentinela && g.maiorAtraso <= 90) return false;
@@ -504,6 +513,17 @@ export default function Dashboard() {
       const allTitulos = await base44.entities.Titulo.filter({ active: true }, "client_name", 5000);
       const fetchMs = (performance.now() - t1).toFixed(0);
 
+      const temDadosManuais = (r) =>
+        !!(r.last_note?.trim()) || !!(r.promise_date) || !!(r.last_contact_date) ||
+        !!(r.protest_requested_by?.trim()) || !!(r.current_contact_type?.trim()) ||
+        !!(r.client_category?.trim()) || (Number(r.contact_count) > 0) ||
+        (r.current_status && r.current_status !== "Não Contatado" && r.current_status !== "Baixado") ||
+        (r.workflow_status && !["normal", "baixado", "duplicata", ""].includes(r.workflow_status));
+
+      const invalidos = (allTitulos || []).filter((r) => !isValidClientName(r.client_name));
+      const invalidosSemDados = invalidos.filter((r) => !temDadosManuais(r));
+      const invalidosComDados = invalidos.filter(temDadosManuais);
+
       const totalFisico = (allTitulos || []).length;
       setCleanupMsg(`🔍 ${totalFisico} registros ativos encontrados (${fetchMs}ms). Agrupando...`);
       await yieldUI();
@@ -519,7 +539,11 @@ export default function Dashboard() {
       const gruposDup = [];
       for (const [, group] of byKey) {
         if (group.length <= 1) continue;
-        group.sort((a, b) => String(b.updated_date || b.created_date || "").localeCompare(String(a.updated_date || a.created_date || "")));
+        group.sort((a, b) =>
+          Number(isValidClientName(b.client_name)) - Number(isValidClientName(a.client_name)) ||
+          Number(temDadosManuais(b)) - Number(temDadosManuais(a)) ||
+          String(b.updated_date || b.created_date || "").localeCompare(String(a.updated_date || a.created_date || ""))
+        );
         gruposDup.push(group);
       }
       const totalUnicos = byKey.size;
@@ -527,24 +551,17 @@ export default function Dashboard() {
       const totalDupRegistros = gruposDup.reduce((s, g) => s + g.length - 1, 0);
       const groupMs = (performance.now() - t2).toFixed(0);
 
-      if (totalDupRegistros === 0) {
-        setCleanupMsg(`✅ Limpeza finalizada: ${totalFisico} registros analisados — nenhuma duplicata. ⏱${((performance.now() - tTotal) / 1000).toFixed(1)}s`);
+      if (totalDupRegistros === 0 && invalidosSemDados.length === 0) {
+        setCleanupMsg(`✅ Limpeza finalizada: ${totalFisico} registros analisados — nenhuma duplicata ou cliente inválido sem dados manuais. ${invalidosComDados.length} inválidos preservados. ⏱${((performance.now() - tTotal) / 1000).toFixed(1)}s`);
         return;
       }
 
       const ok = window.confirm(
-        `📊 DIAGNÓSTICO\n\nRegistros ativos: ${totalFisico}\nRegistros únicos: ${totalUnicos}\nGrupos com duplicata: ${totalDupGrupos}\nDuplicatas a inativar: ${totalDupRegistros}\n\n⚠️ Duplicatas com dados manuais serão preservadas.\nDeseja prosseguir?`
+        `📊 DIAGNÓSTICO\n\nRegistros ativos: ${totalFisico}\nRegistros únicos: ${totalUnicos}\nGrupos com duplicata: ${totalDupGrupos}\nDuplicatas candidatas a inativar: ${totalDupRegistros}\nClientes inválidos sem dados manuais candidatos a inativar: ${invalidosSemDados.length}\nClientes inválidos com dados manuais preservados: ${invalidosComDados.length}\n\n⚠️ Duplicatas e clientes inválidos com dados manuais serão preservados.\nDeseja prosseguir?`
       );
-      if (!ok) { setCleanupMsg("ℹ️ Limpeza cancelada."); return; }
+      if (!ok) { setCleanupMsg(`ℹ️ Limpeza cancelada — diagnóstico: ${totalDupRegistros} duplicatas candidatas | ${invalidosSemDados.length} inválidos sem dados manuais | ${invalidosComDados.length} inválidos preservados.`); return; }
 
       const t4 = performance.now();
-      const temDadosManuais = (r) =>
-        !!(r.last_note?.trim()) || !!(r.promise_date) || !!(r.last_contact_date) ||
-        !!(r.protest_requested_by?.trim()) || !!(r.current_contact_type?.trim()) ||
-        !!(r.client_category?.trim()) || (Number(r.contact_count) > 0) ||
-        (r.current_status && r.current_status !== "Não Contatado" && r.current_status !== "Baixado") ||
-        (r.workflow_status && !["normal", "baixado", "duplicata", ""].includes(r.workflow_status));
-
       const toInativar = [];
       const toMigrar = [];
       let preservadosManuais = 0, conflitos = 0;
@@ -571,7 +588,7 @@ export default function Dashboard() {
               updated_by: `Limpeza ${hojeISO}`,
             }});
           }
-          toInativar.push({ id: dup.id, payload: {
+          toInativar.push({ id: dup.id, principalId: principal.id, payload: {
             active: false,
             current_motive: `Duplicata inativada ${hojeISO} — principal: ${principal.id}`,
             workflow_status: "duplicata",
@@ -580,8 +597,25 @@ export default function Dashboard() {
         }
       }
 
-      if (toInativar.length === 0) {
-        setCleanupMsg(`✅ Limpeza finalizada: todas preservadas por dados manuais (${preservadosManuais}) ou conflito (${conflitos}). ⏱${((performance.now() - tTotal) / 1000).toFixed(1)}s`);
+      const alvosMigracao = new Set(toMigrar.map(({ targetId }) => targetId));
+      const invalidosMigrados = new Set(invalidosSemDados.filter((r) => alvosMigracao.has(r.id)).map((r) => r.id));
+      const invalidosToInativar = invalidosSemDados.filter((r) => !alvosMigracao.has(r.id)).map((r) => ({ id: r.id, payload: {
+        active: false,
+        current_motive: `Cliente inválido inativado ${hojeISO}`,
+        workflow_status: "saneamento_automatico",
+        updated_by: `Limpeza ${hojeISO}`,
+      }}));
+      const invalidosToInativarIds = new Set(invalidosToInativar.map(({ id }) => id));
+      const invalidosComDadosIds = new Set(invalidosComDados.map((r) => r.id));
+      const duplicatasToInativar = toInativar.filter(({ id, principalId }) =>
+        !invalidosToInativarIds.has(id) &&
+        !invalidosComDadosIds.has(id) &&
+        !invalidosToInativarIds.has(principalId)
+      );
+      const invalidosPreservados = invalidosComDados.length + invalidosMigrados.size;
+
+      if (duplicatasToInativar.length === 0 && invalidosToInativar.length === 0) {
+        setCleanupMsg(`✅ Limpeza finalizada: ${preservadosManuais} duplicatas e ${invalidosPreservados} clientes inválidos preservados por dados manuais | ${conflitos} conflitos. ⏱${((performance.now() - tTotal) / 1000).toFixed(1)}s`);
         return;
       }
 
@@ -595,16 +629,37 @@ export default function Dashboard() {
         }
       }
 
-      const totalLotes = Math.ceil(toInativar.length / LOTE);
-      for (let i = 0; i < toInativar.length; i += LOTE) {
+      const totalLotes = Math.ceil(duplicatasToInativar.length / LOTE);
+      for (let i = 0; i < duplicatasToInativar.length; i += LOTE) {
         const loteNum = Math.floor(i / LOTE) + 1;
         setCleanupMsg(`⏳ Inativando duplicatas — lote ${loteNum}/${totalLotes}...`);
-        await Promise.all(toInativar.slice(i, i + LOTE).map(({ id, payload }) => base44.entities.Titulo.update(id, payload)));
+        await Promise.all(duplicatasToInativar.slice(i, i + LOTE).map(({ id, payload }) => base44.entities.Titulo.update(id, payload)));
         await yieldUI();
       }
 
+      const totalLotesInvalidos = Math.ceil(invalidosToInativar.length / LOTE);
+      for (let i = 0; i < invalidosToInativar.length; i += LOTE) {
+        const loteNum = Math.floor(i / LOTE) + 1;
+        setCleanupMsg(`⏳ Saneando clientes inválidos — lote ${loteNum}/${totalLotesInvalidos}...`);
+        await Promise.all(invalidosToInativar.slice(i, i + LOTE).map(({ id, payload }) => base44.entities.Titulo.update(id, payload)));
+        await yieldUI();
+      }
+
+      try {
+        await base44.entities.ImportLog.create({
+          file_name: `limpeza_bd_${hojeISO}`,
+          source: "LIMPEZA_BD",
+          total_read: totalFisico,
+          inserted_count: 0,
+          updated_count: toMigrar.length,
+          deactivated_count: duplicatasToInativar.length + invalidosToInativar.length,
+        });
+      } catch (logErr) {
+        console.warn("Não foi possível registrar ImportLog da limpeza:", logErr);
+      }
+
       const elapsed = ((performance.now() - tTotal) / 1000).toFixed(1);
-      setCleanupMsg(`✅ Limpeza concluída — ${toInativar.length} inativados | ${preservadosManuais} preservadas | ${conflitos} conflitos | ⏱${elapsed}s`);
+      setCleanupMsg(`✅ Limpeza concluída — ${duplicatasToInativar.length} duplicatas inativadas | ${invalidosToInativar.length} clientes inválidos inativados | ${preservadosManuais} duplicatas preservadas por dados manuais | ${invalidosPreservados} clientes inválidos preservados | ${conflitos} conflitos | ⏱${elapsed}s`);
       await loadData();
     } catch (err) {
       console.error("Erro no Limpar BD:", err);

@@ -123,7 +123,7 @@ function isFinr1253TitleToken(v) {
   return FINR1253_TITLE_TOKENS.has(normToken(v));
 }
 
-function isValidClientName(v) {
+export function isValidClientName(v) {
   const s = String(v ?? "").trim();
   if (!s || isDocToken(s) || /^\d+$/.test(s)) return false;
   return /[A-Za-zÀ-ÿ]/.test(s) && s.replace(/[^A-Za-zÀ-ÿ]/g, "").length >= 3;

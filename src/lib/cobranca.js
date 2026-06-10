@@ -209,11 +209,22 @@ export function buildItem(o) {
   const totalInformado = o.valorTotalDebito !== undefined && o.valorTotalDebito !== null ? num(o.valorTotalDebito) : null;
   const usaValorDoRelatorio = ["FINR1253", "RPT_7007_CONS_CAR_EB"].includes(String(o.origem || ""));
   const diasAtraso = diffDias(o.vencimento);
-  const f = totalInformado !== null
-    ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: totalInformado, diasAtraso }
-    : usaValorDoRelatorio
-      ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: valorEmAberto || valorOriginal, diasAtraso }
-      : calcFin(valorEmAberto || valorOriginal, o.vencimento);
+  const reportTemEncargos = num(o.valorMulta) > 0 || num(o.valorJuros) > 0;
+  const baseEncargos = valorEmAberto || valorOriginal;
+  const deveRecalcularEncargos = diasAtraso > 0 && baseEncargos > 0 && !reportTemEncargos;
+  const encargosRecalculados = deveRecalcularEncargos ? calcFin(baseEncargos, o.vencimento) : null;
+  const f = encargosRecalculados
+    ? {
+        valorMulta: encargosRecalculados.valorMulta,
+        valorJuros: encargosRecalculados.valorJuros,
+        valorTotalDebito: totalInformado !== null ? (baseEncargos + encargosRecalculados.valorMulta + encargosRecalculados.valorJuros) : encargosRecalculados.valorTotalDebito,
+        diasAtraso
+      }
+    : totalInformado !== null
+      ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: totalInformado, diasAtraso }
+      : usaValorDoRelatorio
+        ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: valorEmAberto || valorOriginal, diasAtraso }
+        : calcFin(valorEmAberto || valorOriginal, o.vencimento);
 
   return {
     ...o,

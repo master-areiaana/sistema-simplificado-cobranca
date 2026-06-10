@@ -22,7 +22,7 @@ import {
   hoje, hojeISO, fmtM, fmtD, normText, cliKey, buildItem, buildId, dbToItem,
   detectSrc, parseRows1253, parseRows7007, calcFin, dateISO, num, pick,
   dlCsv, openPrint, prioLabel, prioCor, sugestaoEncaminhamento, diffDias,
-  getTituloKey, dedupeTitulos, isValidClientName } from
+  getTituloKey, dedupeTitulos, isValidClientName, isTituloCarteiraGeral, sanitizeCarteiraGroup } from
 "@/lib/cobranca";
 import { DARK, LIGHT, loadL, saveL } from "@/lib/theme";
 import { KPI, TabBtn, Badge, PrioBadge, PromBadge, ObsCell, Btn, SugestaoEncBadge } from "@/components/cobranca/UI";
@@ -122,8 +122,6 @@ export default function Dashboard() {
   const [fProt, setFProt] = useState({});
   const [kpiFilter, setKpiFilter] = useState(null);
   const [cleanupMsg, setCleanupMsg] = useState(null);
-  const [showPaid, setShowPaid] = useState(false);
-
   const importingRef = useRef(false);
 
   const loadData = useCallback(async () => {
@@ -143,6 +141,7 @@ export default function Dashboard() {
         const prev = tituloKeyMap.get(key);
         if (!prev) { tituloKeyMap.set(key, r); continue; }
         const sc = (rec) => (
+          (isTituloCarteiraGeral(rec) ? 100 : 0) +
           (rec.current_status && rec.current_status !== "Não Contatado" ? 1 : 0) +
           (rec.last_note ? 1 : 0) + (rec.promise_date ? 1 : 0) +
           (rec.last_contact_date ? 1 : 0) +
@@ -249,14 +248,23 @@ export default function Dashboard() {
       return `ID:${item.id || Math.random()}`;
     }
 
+    const nomeValidoPorCodigo = new Map();
+    records.forEach((item) => {
+      const nome = extractNomeCli(item.nomeCli) || item.nomeCli || "";
+      const cod = normCod(item.nrCli);
+      if (!cod || !isValidClientName(nome)) return;
+      const atual = nomeValidoPorCodigo.get(cod) || "";
+      if (nome.length > atual.length) nomeValidoPorCodigo.set(cod, nome);
+    });
+
     records.forEach((item) => {
       let nomeExibicao = extractNomeCli(item.nomeCli) || item.nomeCli || "";
       const cod = normCod(item.nrCli);
       if (!isValidClientName(nomeExibicao)) {
         if (!cod) return;
-        nomeExibicao = `Cliente ${cod}`;
+        nomeExibicao = nomeValidoPorCodigo.get(cod) || `Cliente ${cod}`;
       }
-      const k = getClienteKey(item);
+      const k = getClienteKey({ ...item, nomeCli: nomeExibicao });
       if (!map.has(k)) {
         map.set(k, { clientKey: k, nrCli: cod, nomeCli: nomeExibicao, _codigos: new Set(), titulos: [], _nomes: [] });
       }
@@ -352,13 +360,16 @@ export default function Dashboard() {
     });
   }
 
+  const groupedCarteira = useMemo(() =>
+    grouped.map((g) => sanitizeCarteiraGroup(g, filtroOrigem)).filter(Boolean),
+  [grouped, filtroOrigem]);
+
   const groupedFiltrado = useMemo(() => {
     const busca = normText(buscaCliente);
     const buscaTit = normText(buscaTitulo);
-    return grouped
+    return groupedCarteira
       .filter((g) => {
         if (faixaAtraso > 0 && g.maiorAtraso < faixaAtraso) return false;
-        if (filtroOrigem && !g.titulos.some((ti) => ti.origem === filtroOrigem)) return false;
         if (busca && !normText(g.nomeCli).includes(busca) && !String(g.nrCli || "").includes(buscaCliente) && !(g.codigosLista || []).some((c) => c.includes(buscaCliente))) return false;
         if (buscaTit) {
           const temTituloMatch = g.titulos.some((ti) =>
@@ -370,36 +381,9 @@ export default function Dashboard() {
         }
         if (filtroSentinela && g.maiorAtraso <= 90) return false;
         if (filtroCategoria && !g.titulos.some((ti) => ti.clientCategory === filtroCategoria)) return false;
-                if (g.titulos.some((ti) => ti.workflow_status === "sem_carteira")) return false;
-        // Clientes marcados como pagos pela importação SEMPRE saem da carteira geral
-        if (g.titulos.every((ti) => ti.workflow_status === "pago_importacao")) return false;
-        if (!showPaid) {
-          const temPagamento =
-            g.statusConsolidado === "Encerrado" ||
-            g.statusConsolidado === "Baixado" ||
-            g.statusConsolidado === "Pago Aguard. Baixa" ||
-            g.titulos.some((ti) => ti.encaminhar === "pago_importacao" || ti.workflow_status === "pago_importacao") ||
-            g.historicoCliente.some((h) => h.motivo === "Confirmado");
-          if (temPagamento) return false;
-        }
         return true;
-      })
-      .map((g) => {
-        if (!filtroOrigem) return g;
-        const tsFilt = g.titulos.filter((ti) => ti.origem === filtroOrigem);
-        if (tsFilt.length === g.titulos.length) return g;
-        return {
-          ...g,
-          valorOriginal: tsFilt.reduce((s, x) => s + Number(x.valorOriginal || 0), 0),
-          valorMulta: tsFilt.reduce((s, x) => s + Number(x.valorMulta || 0), 0),
-          valorJuros: tsFilt.reduce((s, x) => s + Number(x.valorJuros || 0), 0),
-          valorTotalDebito: tsFilt.reduce((s, x) => s + Number(x.valorTotalDebito || 0), 0),
-          maiorAtraso: tsFilt.reduce((m, x) => Math.max(m, Number(x.diasAtraso || 0)), 0),
-          qtdTitulos: tsFilt.length,
-          primeiroVencimento: tsFilt.map((x) => x.vencimento).filter(Boolean).sort()[0] || "",
-        };
       });
-  }, [grouped, faixaAtraso, filtroOrigem, buscaCliente, buscaTitulo, filtroSentinela, filtroCategoria, showPaid]);
+  }, [groupedCarteira, faixaAtraso, buscaCliente, buscaTitulo, filtroSentinela, filtroCategoria]);
 
   const baseCart = useMemo(() => {
     let arr = [...groupedFiltrado];

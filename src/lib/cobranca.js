@@ -129,6 +129,34 @@ export function isValidClientName(v) {
   return /[A-Za-zÀ-ÿ]/.test(s) && s.replace(/[^A-Za-zÀ-ÿ]/g, "").length >= 3;
 }
 
+export function isStatusForaCarteira(...values) {
+  const status = values.map(normToken).filter(Boolean).join(" ");
+  if (!status) return false;
+  return [
+    "BAIX", "PAGO", "PAGAMENTO", "RECEB", "LIQUID", "QUIT", "ENCERR",
+    "CANCEL", "PERDA", "INCOBRAVEL", "DUPLIC", "CONFIRMADO", "ACORDOQUITADO", "SEMCARTEIRA"
+  ].some((token) => status.includes(token));
+}
+
+export function valorAbertoReal(item) {
+  for (const value of [item?.valorEmAberto, item?.open_value]) {
+    if (value !== undefined && value !== null && value !== "") return num(value);
+  }
+  for (const value of [item?.saldoErp, item?.erp_balance]) {
+    if (value !== undefined && value !== null && value !== "") return num(value);
+  }
+  return Math.max(0, num(item?.valorOriginal ?? item?.original_value) - num(item?.valorRecebido ?? item?.received_value));
+}
+
+export function isTituloCarteiraGeral(item) {
+  if (!item || item.active === false || item.lossStatus || item.loss_status) return false;
+  if (isStatusForaCarteira(item.status, item.current_status, item.encaminhar, item.workflow_status)) return false;
+  if (valorAbertoReal(item) <= 0) return false;
+  const original = num(item.valorOriginal ?? item.original_value);
+  const recebido = num(item.valorRecebido ?? item.received_value);
+  return !(original > 0 && recebido >= original - 0.01);
+}
+
 export function pick(row, names) {
   for (const n of names) if (row[n] != null && String(row[n]).trim() !== "") return row[n];
   return "";
@@ -193,6 +221,51 @@ export function dedupeTitulos(items) {
   return Array.from(map.values());
 }
 
+export function dedupeTitulosCarteira(items) {
+  const map = new Map();
+  for (const item of items || []) {
+    const key = getTituloKey(item).replace(/^(FINR1253|EB)\|/, "");
+    const prev = map.get(key);
+    if (!prev) { map.set(key, item); continue; }
+    const score = (x) =>
+      (x.origem === "FINR1253" ? 3 : 0) +
+      (x.dataContato ? 2 : 0) +
+      (x.obs ? 2 : 0) +
+      (x.dataPromessa ? 1 : 0) +
+      (x.encaminhar ? 1 : 0);
+    if (score(item) > score(prev)) map.set(key, item);
+  }
+  return Array.from(map.values());
+}
+
+export function sanitizeCarteiraGroup(group, origem = "") {
+  let titulos = (group?.titulos || []).filter(isTituloCarteiraGeral);
+  if (origem) titulos = titulos.filter((item) => item.origem === origem);
+  titulos = dedupeTitulosCarteira(titulos);
+  if (!titulos.length) return null;
+
+  const vencimentos = titulos.map((x) => x.vencimento).filter(Boolean).sort();
+  const contatos = titulos.map((x) => x.dataContato || "").filter(Boolean).sort();
+  const promessas = titulos.map((x) => x.dataPromessa || "").filter(Boolean).sort();
+  return {
+    ...group,
+    titulos,
+    valorOriginal: titulos.reduce((s, x) => s + num(x.valorOriginal), 0),
+    valorMulta: titulos.reduce((s, x) => s + num(x.valorMulta), 0),
+    valorJuros: titulos.reduce((s, x) => s + num(x.valorJuros), 0),
+    valorTotalDebito: titulos.reduce((s, x) => s + num(x.valorTotalDebito), 0),
+    maiorAtraso: titulos.reduce((m, x) => Math.max(m, Number(x.diasAtraso || 0)), 0),
+    qtdTitulos: titulos.length,
+    qtdTotal: titulos.reduce((s, x) => s + Number(x.qtd || 0), 0),
+    ultimoContato: contatos.slice(-1)[0] || "",
+    dataPromessa: promessas.slice(-1)[0] || "",
+    primeiroVencimento: vencimentos[0] || "",
+    statusConsolidado: titulos.map((x) => x.status).filter(Boolean).sort().slice(-1)[0] || "Não Contatado",
+    obsConsolidada: titulos.map((x) => x.obs).filter(Boolean).slice(-1)[0] || "",
+    encaminharConsolidado: titulos.map((x) => x.encaminhar).filter(Boolean).slice(-1)[0] || "",
+  };
+}
+
 export function buildId({ origem, nrCli, tp, titulo, seq }) {
   return [origem, nrCli, tp, titulo, seq].map(keyPart).join("|");
 }
@@ -204,16 +277,31 @@ export function cliKey(item) {
 export function buildItem(o) {
   const valorOriginal = num(o.valorOriginal ?? o.original_value ?? 0);
   const valorRecebido = num(o.valorRecebido ?? o.received_value ?? 0);
-  const saldoErp = num(o.saldoErp ?? o.erp_balance ?? 0);
-  const valorEmAberto = num(o.valorEmAberto ?? o.open_value ?? (saldoErp > 0 ? saldoErp : valorOriginal));
+  const saldoInformado = o.saldoErp ?? o.erp_balance;
+  const saldoErp = saldoInformado === undefined || saldoInformado === null || saldoInformado === "" ? null : num(saldoInformado);
+  const abertoInformado = o.valorEmAberto ?? o.open_value;
+  const valorEmAberto = abertoInformado !== undefined && abertoInformado !== null && abertoInformado !== ""
+    ? num(abertoInformado)
+    : saldoErp !== null
+      ? saldoErp
+      : Math.max(0, valorOriginal - valorRecebido);
   const totalInformado = o.valorTotalDebito !== undefined && o.valorTotalDebito !== null ? num(o.valorTotalDebito) : null;
   const usaValorDoRelatorio = ["FINR1253", "RPT_7007_CONS_CAR_EB"].includes(String(o.origem || ""));
   const diasAtraso = diffDias(o.vencimento);
-  const f = totalInformado !== null
-    ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: totalInformado, diasAtraso }
-    : usaValorDoRelatorio
-      ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: valorEmAberto || valorOriginal, diasAtraso }
-      : calcFin(valorEmAberto || valorOriginal, o.vencimento);
+  const valorMulta = num(o.valorMulta);
+  const valorJuros = num(o.valorJuros);
+  const status = o.status || o.current_status || "Não Contatado";
+  const workflowStatus = o.workflow_status || o.encaminhar || "";
+  const emAberto = o.active !== false && !o.lossStatus && !o.loss_status &&
+    !isStatusForaCarteira(status, workflowStatus) && valorEmAberto > 0;
+  const deveRecalcularEncargos = emAberto && diasAtraso > 0 && valorMulta <= 0 && valorJuros <= 0;
+  const f = deveRecalcularEncargos
+    ? calcFin(valorEmAberto, o.vencimento)
+    : totalInformado !== null
+      ? { valorMulta, valorJuros, valorTotalDebito: totalInformado, diasAtraso }
+      : usaValorDoRelatorio || !emAberto
+        ? { valorMulta, valorJuros, valorTotalDebito: valorEmAberto + valorMulta + valorJuros, diasAtraso }
+        : calcFin(valorEmAberto, o.vencimento);
 
   return {
     ...o,
@@ -231,9 +319,9 @@ export function buildItem(o) {
     primaryClientCode: o.primaryClientCode || o.primary_client_code || o.nrCli || "",
     erpClientCodes: o.erpClientCodes || o.erp_client_codes || (o.nrCli ? [String(o.nrCli)] : []),
     recordOrigin: o.recordOrigin || o.record_origin || "ERP",
-    status: o.status || "Não Contatado",
+    status,
     encaminhar: o.encaminhar || "",
-    workflow_status: o.workflow_status || o.encaminhar || "",
+    workflow_status: workflowStatus,
     dataContato: o.dataContato || "",
     dataPromessa: o.dataPromessa || "",
     obs: o.obs || "",
@@ -247,7 +335,8 @@ export function dbToItem(r) {
     _dbId: r.id, origem: r.source, nrCli: r.client_code, nomeCli: r.client_name,
     clientGroupKey: r.client_group_key || "", primaryClientCode: r.primary_client_code || r.client_code || "", erpClientCodes: r.erp_client_codes || (r.client_code ? [r.client_code] : []), recordOrigin: r.record_origin || "ERP",
     tp: r.doc_type, ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico, emissao: r.issue_date, vencimento: r.due_date,
-    valorOriginal: r.open_value || r.original_value, valorRecebido: r.received_value, valorEmAberto: r.open_value || r.original_value, saldoErp: r.erp_balance, partialPaymentDetected: r.partial_payment_detected,
+    valorOriginal: r.original_value ?? r.open_value ?? 0, valorRecebido: r.received_value, valorEmAberto: r.open_value, saldoErp: r.erp_balance, partialPaymentDetected: r.partial_payment_detected,
+    active: r.active, lossStatus: r.loss_status, current_status: r.current_status, current_motive: r.current_motive,
     portador: r.portador, status: r.current_status || "Não Contatado", encaminhar: r.workflow_status || "", workflow_status: r.workflow_status || "", tipoContato: r.current_contact_type || "", dataContato: r.last_contact_date || "", dataPromessa: r.promise_date || "", obs: r.last_note || "", qtd: r.contact_count || 0, solicitanteProtesto: r.protest_requested_by || "", clientCategory: r.client_category || ""
   });
 }

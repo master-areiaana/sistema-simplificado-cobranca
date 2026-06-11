@@ -141,6 +141,23 @@ test("RPT_7007 calcula encargos usando percentuais informados ao parser", () => 
   assert.equal(record["Total a Receber (R$)"], 716.33);
 });
 
+test("RPT_7007 aceita datas sem zero à esquerda", () => {
+  for (const date of ["1/6/2026", "01/6/2026", "1/06/2026", "01/06/2026"]) {
+    const [record] = parseRPT7007Canonical([{
+      "Tipo Documento": "NF",
+      "Número Documento": `DATA-${date}`,
+      "Código Cliente": "30",
+      "Nome Cliente": "Cliente Data",
+      "Data Emissão": date,
+      "Data Vencimento": date,
+      "Valor Total": 100,
+    }]);
+
+    assert.equal(record["Data Emissão"], "2026-06-01");
+    assert.equal(record["Data Vencimento"], "2026-06-01");
+  }
+});
+
 test("FINR1253 produz registro canônico preservando cliente, contato e valores", () => {
   const rows = [
     ["Relatório FINR1253"],
@@ -168,6 +185,17 @@ test("FINR1253 produz registro canônico preservando cliente, contato e valores"
   assert.equal(record["Total a Receber (R$)"], 700);
   assert.equal(record["Telefone"], "(11) 3333-4444");
   assert.equal(record["Contato"], "Ana");
+});
+
+test("FINR1253 aceita datas sem zero à esquerda", () => {
+  const [record] = parseFINR1253Canonical([
+    ["Tp", "Ser", "Número", "Seq", "NF Serviço", "Operação", "Vencto", "Vlr. Título", "", "Receb.Prc.", "", "", "Atraso", "", "Portador"],
+    ["Cliente: 40 - Cliente Data FINR - CPF/CNPJ: 40.000.000/0001-40"],
+    ["NF", "A", "400", "1", "", "1/6/2026", "1/6/2026", 100, "", 0, "", "", 0, "", "P1"],
+  ]);
+
+  assert.equal(record["Data Emissão"], "2026-06-01");
+  assert.equal(record["Data Vencimento"], "2026-06-01");
 });
 
 test("FINR1253 mantém títulos de clientes consecutivos sem linha de total", () => {

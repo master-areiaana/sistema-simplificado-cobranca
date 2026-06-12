@@ -48,7 +48,7 @@ function TabelaImpacto({ rows, t, isDark, corValor, corBadgeBg, corBadgeTxt, ren
   );
 }
 
-export default function ImpactoCaixaTab({ grouped, events, t, isDark }) {
+export default function ImpactoCaixaTab({ grouped, baixadosImportacao = [], events, t, isDark }) {
   const pagosArr = useMemo(() => grouped.filter((g) =>
     g.statusConsolidado === "Encerrado" ||
     g.statusConsolidado === "Baixado" ||
@@ -65,6 +65,7 @@ export default function ImpactoCaixaTab({ grouped, events, t, isDark }) {
 
   const totalPagosVal = pagosArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0);
   const totalSCVal = semCarteiraArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0);
+  const totalBaixadosImportacao = baixadosImportacao.reduce((sum, item) => sum + Number(item.valorEmAberto || item.valorOriginal || 0), 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -138,6 +139,46 @@ export default function ImpactoCaixaTab({ grouped, events, t, isDark }) {
               }}
             />
         }
+      </div>
+
+      <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderLeft: "4px solid #64748b", borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: t.txt }}>Baixados por importação</div>
+          <div style={{ display: "flex", gap: 16, fontSize: 11, color: t.muted }}>
+            <span><b style={{ color: "#64748b" }}>{baixadosImportacao.length}</b> título(s)</span>
+            <span>Saldo anterior: <b style={{ color: "#64748b" }}>{fmtM(totalBaixadosImportacao)}</b></span>
+          </div>
+        </div>
+        <div style={{ color: t.muted, fontSize: 11, marginBottom: 10 }}>
+          Títulos ausentes em uma importação completa e confirmada. Os registros não foram apagados.
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: t.th, color: t.muted, textTransform: "uppercase", fontSize: 10 }}>
+                <th style={th(t)}>Cliente</th>
+                <th style={th(t)}>Título</th>
+                <th style={thC(t)}>Vencimento</th>
+                <th style={thR(t)}>Saldo anterior</th>
+                <th style={thC(t)}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {baixadosImportacao.length === 0 && (
+                <tr><td colSpan={5} style={{ color: t.muted, padding: 16, textAlign: "center" }}>Nenhum título baixado por ausência.</td></tr>
+              )}
+              {baixadosImportacao.map((item) => (
+                <tr key={item._dbId || item.id} style={{ borderBottom: `1px solid ${t.bor}` }}>
+                  <td style={{ padding: "8px 10px", color: t.txt, fontWeight: 700 }}>{item.nrCli || "—"} · {item.nomeCli}</td>
+                  <td style={{ padding: "8px 10px", color: t.txt }}>{item.titulo}{item.seq ? `/${item.seq}` : ""}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "center", color: t.muted }}>{item.vencimento ? fmtD(item.vencimento) : "—"}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", color: "#64748b", fontWeight: 700 }}>{fmtM(item.valorEmAberto || item.valorOriginal || 0)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "center", color: "#64748b", fontWeight: 700 }}>Baixado</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
     </div>

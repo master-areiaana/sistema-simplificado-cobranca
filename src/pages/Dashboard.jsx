@@ -19,14 +19,13 @@ class ErrorBoundary extends Component {
 import * as XLSX from "xlsx";
 import { base44 } from "@/api/base44Client";
 import {
-  hoje, hojeISO, fmtM, fmtD, normText, cliKey, buildItem, buildId, dbToItem,
-  detectSrc, parseRows1253, parseRows7007, calcFin, dateISO, num, pick,
-  dlCsv, openPrint, prioLabel, prioCor, sugestaoEncaminhamento, diffDias,
-  getTituloKey, dedupeTitulos, isValidClientName } from
+  hojeISO, fmtM, fmtD, normText, dbToItem,
+  detectSrc, parseRows1253, parseRows7007, dateISO, num, pick,
+  dlCsv, sugestaoEncaminhamento,
+  getTituloKey, isValidClientName } from
 "@/lib/cobranca";
 import { DARK, LIGHT, loadL, saveL } from "@/lib/theme";
-import { KPI, TabBtn, Badge, PrioBadge, PromBadge, ObsCell, Btn, SugestaoEncBadge } from "@/components/cobranca/UI";
-import ColHeader from "@/components/cobranca/ColHeader";
+import { KPI, TabBtn, Badge, Btn } from "@/components/cobranca/UI";
 import TabelaCarteira from "@/components/cobranca/TabelaCarteira";
 import ModalCobranca from "@/components/cobranca/ModalCobranca";
 import ModalResposta from "@/components/cobranca/ModalResposta";
@@ -36,8 +35,6 @@ import MonitorPromessas from "@/components/cobranca/MonitorPromessas";
 import exportarPDFExecutivo from "@/components/cobranca/ExportPDF";
 import PainelProdutividade from "@/components/cobranca/PainelProdutividade";
 import ModalNegociacao from "@/components/cobranca/ModalNegociacao";
-import PainelNotificacoes from "@/components/cobranca/PainelNotificacoes";
-import PrevisaoFluxo from "@/components/cobranca/PrevisaoFluxo";
 import AnalyticsDashboard from "@/components/cobranca/AnalyticsDashboard";
 import PainelMetas from "@/components/cobranca/PainelMetas";
 import ModalEnviarPDF from "@/components/cobranca/ModalEnviarPDF";
@@ -45,6 +42,12 @@ import TabelaCobrados from "@/components/cobranca/TabelaCobrados";
 import TabelaVerificacao from "@/components/cobranca/TabelaVerificacao";
 import TabelaProtesto from "@/components/cobranca/TabelaProtesto";
 import ImpactoCaixaTab from "@/components/cobranca/ImpactoCaixaTab";
+import ImportPreviewPanel from "@/components/importacao/ImportPreviewPanel";
+import {
+  PARTIAL_APPLICATION_FAILURE_MESSAGE,
+  assertApplicationPlanStillCurrent,
+  buildImportApplicationPlan,
+} from "@/lib/importacao/applyImport";
 
 const LOCAL_THEME = "sc_theme";
 const LOCAL_TAB = "sc_tab";
@@ -83,6 +86,7 @@ export default function Dashboard() {
   const t = isDark ? DARK : LIGHT;
 
   const [records, setRecords] = useState([]);
+  const [baixadosImportacao, setBaixadosImportacao] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncMsg, setSyncMsg] = useState("");
@@ -131,9 +135,10 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const t1 = performance.now();
-      const [titulos, evts] = await Promise.all([
+      const [titulos, evts, baixados] = await Promise.all([
         base44.entities.Titulo.filter({ active: true }, "client_name", 3000),
-        base44.entities.ChargeEvent.list("-created_date", 2000)
+        base44.entities.ChargeEvent.list("-created_date", 2000),
+        base44.entities.Titulo.filter({ workflow_status: "baixado_importacao" }, "-updated_date", 1000)
       ]);
       const t2 = performance.now();
 
@@ -161,6 +166,7 @@ export default function Dashboard() {
       const t4 = performance.now();
 
       setRecords(titulosFinais);
+      setBaixadosImportacao((baixados || []).map((r) => dbToItem(r)));
       setEvents(evts || []);
 
       const dupCount = (titulos || []).length - titulosFinais.length;
@@ -926,6 +932,63 @@ export default function Dashboard() {
     return { ins, upd, deact, baixados, valorBaixado, isCarteirCompleta, elapsed, skipped: skipped.length, dupArquivo };
   }
 
+  async function prepararPlanoNovaImportacao(preview, importFile) {
+    const existingTitles = await base44.entities.Titulo.list("-updated_date", 5000);
+    return buildImportApplicationPlan({ preview, existingTitles, importFile });
+  }
+
+  async function aplicarNovaImportacao(plan, preview, importFile) {
+    if (!plan?.canApply) throw new Error("O plano de aplicação não possui registros consolidados.");
+    const currentTitles = await base44.entities.Titulo.list("-updated_date", 5000);
+    const revalidatedPlan = assertApplicationPlanStillCurrent(
+      plan,
+      buildImportApplicationPlan({ preview, existingTitles: currentTitles, importFile }),
+    );
+    if (revalidatedPlan.safety?.importacaoParcial && revalidatedPlan.absences.length > 0) {
+      throw new Error("Plano parcial inválido: a baixa automática deve permanecer bloqueada.");
+    }
+
+    setIsImporting(true);
+    importingRef.current = true;
+    let writeStarted = false;
+    try {
+      const CREATE_BATCH = 50;
+      for (let i = 0; i < revalidatedPlan.creates.length; i += CREATE_BATCH) {
+        writeStarted = true;
+        await base44.entities.Titulo.bulkCreate(revalidatedPlan.creates.slice(i, i + CREATE_BATCH).map((item) => item.payload));
+        await yieldUI();
+      }
+
+      const updates = [...revalidatedPlan.updates, ...revalidatedPlan.absences];
+      const UPDATE_BATCH = 15;
+      for (let i = 0; i < updates.length; i += UPDATE_BATCH) {
+        writeStarted = true;
+        await Promise.all(updates.slice(i, i + UPDATE_BATCH).map((item) =>
+          base44.entities.Titulo.update(item.id, item.payload),
+        ));
+        await yieldUI();
+      }
+
+      const result = {
+        created: revalidatedPlan.creates.length,
+        updated: revalidatedPlan.updates.length,
+        lowered: revalidatedPlan.absences.length,
+      };
+      setImportStatus({
+        ok: true,
+        msg: `✅ Nova importação aplicada — ${result.created} criado(s), ${result.updated} atualizado(s), ${result.lowered} baixado(s) por ausência.`,
+      });
+      await loadData();
+      return result;
+    } catch (error) {
+      if (writeStarted) throw new Error(PARTIAL_APPLICATION_FAILURE_MESSAGE, { cause: error });
+      throw error;
+    } finally {
+      importingRef.current = false;
+      setIsImporting(false);
+    }
+  }
+
   async function importarArquivo(e) {
     if (isImporting) return;
     const file = e.target.files?.[0]; if (!file) return;
@@ -1058,6 +1121,12 @@ export default function Dashboard() {
         {importStatus && <div style={{ background: importStatus.ok ? isDark ? "#052e16" : "#f0fdf4" : isDark ? "#2d0a0a" : "#fef2f2", border: `1px solid ${importStatus.ok ? "#16a34a" : "#dc2626"}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: importStatus.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{importStatus.msg}</span><button onClick={() => setImportStatus(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
         {cleanupMsg && <div style={{ background: isDark ? "#0c1a2e" : "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#3b82f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{cleanupMsg}</span><button onClick={() => setCleanupMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
         <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{loading && !isImporting ? "⏳ Carregando..." : syncMsg}</div>
+        <ImportPreviewPanel
+          totalAtivosAnteriores={records.length}
+          onPreparePlan={prepararPlanoNovaImportacao}
+          onApplyPlan={aplicarNovaImportacao}
+          t={t}
+        />
         <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto", paddingBottom: 8, paddingTop: 8, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "stretch", justifyContent: "flex-start", borderBottom: `1px solid ${t.bor}` }} className="bg-transparent">
           <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")} badge={dash.devolvidos} badgeColor="#10b981">📋 Carteira Geral</TabBtn>
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico / Promessas</TabBtn>
@@ -1075,7 +1144,7 @@ export default function Dashboard() {
         {activeTab === "verificacao" && <TabelaVerificacao data={verifLista} t={t} setRespModal={setRespModal} setRespForm={setRespForm} />}
         {activeTab === "protesto" && <TabelaProtesto data={protestoLista} t={t} setRespModal={setRespModal} setRespForm={setRespForm} />}
         {activeTab === "produtividade" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}><div className="kpi-container kpi-container-4"><KPI t={t} label="Total de Contatos" color="#3B82F6" value={events.filter((e) => e.event_type === "COBRANCA").length} sub="no período" /><KPI t={t} label="Promessas Obtidas" color="#FBBF24" value={events.filter((e) => e.status === "Prometeu Pagar" || e.status === "Promessa ativa").length} sub="confirmadas" /><KPI t={t} label="Pagamentos Confirmados" color="#10B981" value={events.filter((e) => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Pagamento confirmado").length} sub="verificados" /><KPI t={t} label="Taxa de Sucesso" color="#A78BFA" value={`${events.length > 0 ? (events.filter((e) => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Prometeu Pagar" || e.status === "Promessa ativa" || e.status === "Pagamento confirmado").length / events.length * 100).toFixed(1) : 0}%`} sub="conversão" /></div><div style={{ display: "flex", gap: 6 }}><button onClick={() => setSubTabProd("produtividade")} style={{ background: subTabProd === "produtividade" ? t.p : t.surf2, color: subTabProd === "produtividade" ? "#fff" : t.txt, border: `1px solid ${subTabProd === "produtividade" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>👤 Produtividade por Usuário</button><button onClick={() => setSubTabProd("metas")} style={{ background: subTabProd === "metas" ? t.p : t.surf2, color: subTabProd === "metas" ? "#fff" : t.txt, border: `1px solid ${subTabProd === "metas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>🎯 Metas de Cobrança</button></div>{subTabProd === "produtividade" && <><PainelProdutividade events={events} t={t} /><div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}><div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📊 Analytics & Exportação</div><AnalyticsDashboard grouped={grouped} events={events} t={t} /></div></>}{subTabProd === "metas" && <PainelMetas grouped={grouped} events={events} t={t} />}</div>}
-        {activeTab === "fluxo" && <ImpactoCaixaTab grouped={grouped} events={events} t={t} isDark={isDark} />}
+        {activeTab === "fluxo" && <ImpactoCaixaTab grouped={grouped} baixadosImportacao={baixadosImportacao} events={events} t={t} isDark={isDark} />}
       </main>
       {modal && <ModalCobranca title="✏️ Registrar Cobrança" frm={form} setFrm={setForm} onSave={() => salvarCobranca(form, modal.titulos, () => setModal(null))} onClose={() => setModal(null)} t={t} isDark={isDark} info={<div style={{ background: t.surf2, borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: `1px solid ${t.bor}` }}><b>{modal.nomeCli}</b><div style={{ color: t.muted, fontSize: 12, marginTop: 3 }}>Cliente {modal.nrCli} · {modal.qtdTitulos} título(s) · <b style={{ color: t.p }}>{fmtM(modal.valorTotalDebito)}</b></div></div>} />}
       {batchModal && <ModalCobranca title={`✏️ Cobrança em Lote — ${selGroups.length} clientes`} frm={batchForm} setFrm={setBatchForm} onSave={() => salvarCobranca(batchForm, selGroups.flatMap((g) => g.titulos), () => { setBatchModal(false); setSelected(new Set()); })} onClose={() => setBatchModal(false)} t={t} isDark={isDark} info={<div style={{ background: t.surf2, borderRadius: 8, padding: "8px 12px", marginBottom: 14, border: `1px solid ${t.bor}`, maxHeight: 100, overflowY: "auto" }}>{selGroups.map((g) => <div key={g.clientKey} style={{ fontSize: 12, padding: "3px 0", borderBottom: `1px solid ${t.bor}`, display: "flex", justifyContent: "space-between" }}><b>{g.nomeCli}</b><span style={{ color: t.p, fontWeight: 700 }}>{fmtM(g.valorTotalDebito)}</span></div>)}</div>} />}

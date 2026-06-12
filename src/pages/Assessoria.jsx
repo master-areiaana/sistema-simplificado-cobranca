@@ -322,6 +322,32 @@ export default function Assessoria() {
           <Card label="Saldo em Assessoria" value={fmtM(resumo.total)} color="#f97316" />
         </div>
 
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 14 }}>
+          <section style={box}>
+            <h3 style={{ margin: "0 0 7px" }}>Envio para Assessoria</h3>
+            <div style={{ color: "#666", fontSize: 12, lineHeight: 1.5 }}>
+              Use os filtros e a tabela abaixo para preparar os títulos e clientes. A exportação do relatório não marca títulos como enviados automaticamente.
+            </div>
+            <button onClick={baixarRelatorioAssessoria} style={{ ...topBtn, background: "#16a34a", color: "#fff", border: 0, marginTop: 10 }}>
+              Exportar relatório para envio
+            </button>
+          </section>
+          <section style={box}>
+            <h3 style={{ margin: "0 0 7px" }}>Portal da Assessoria</h3>
+            <div style={{ color: "#666", fontSize: 12, lineHeight: 1.5 }}>
+              Acompanhe a cobrança diretamente no portal externo RecuperaCob.
+            </div>
+            <a
+              href="https://portal-recuperacob.cobcloud.com.br/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ ...topBtn, background: "#0ea5e9", color: "#fff", border: 0, display: "inline-block", marginTop: 10 }}
+            >
+              Acessar Portal RecuperaCob
+            </a>
+          </section>
+        </div>
+
         {showAdmin && isEmpresa && (
           <section style={box}>
             <h3 style={{ margin: "0 0 10px" }}>Controle de acesso da assessoria</h3>

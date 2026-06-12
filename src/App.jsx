@@ -72,7 +72,7 @@ function AssessoriaTabInjector() {
         btn = document.createElement("button");
         btn.id = "tab-assessoria-interno";
         btn.type = "button";
-        btn.onclick = () => { window.location.href = "/assessoria"; };
+        btn.onclick = () => { window.location.hash = "/assessoria"; };
         tabs.appendChild(btn);
       }
       tabEl = btn;

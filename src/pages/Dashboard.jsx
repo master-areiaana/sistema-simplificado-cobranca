@@ -19,14 +19,13 @@ class ErrorBoundary extends Component {
 import * as XLSX from "xlsx";
 import { base44 } from "@/api/base44Client";
 import {
-  hoje, hojeISO, fmtM, fmtD, normText, cliKey, buildItem, buildId, dbToItem,
-  detectSrc, parseRows1253, parseRows7007, calcFin, dateISO, num, pick,
-  dlCsv, openPrint, prioLabel, prioCor, sugestaoEncaminhamento, diffDias,
-  getTituloKey, dedupeTitulos, isValidClientName } from
+  hojeISO, fmtM, fmtD, normText, dbToItem,
+  detectSrc, parseRows1253, parseRows7007, dateISO, num, pick,
+  dlCsv, sugestaoEncaminhamento,
+  getTituloKey, isValidClientName } from
 "@/lib/cobranca";
 import { DARK, LIGHT, loadL, saveL } from "@/lib/theme";
-import { KPI, TabBtn, Badge, PrioBadge, PromBadge, ObsCell, Btn, SugestaoEncBadge } from "@/components/cobranca/UI";
-import ColHeader from "@/components/cobranca/ColHeader";
+import { KPI, TabBtn, Badge, Btn } from "@/components/cobranca/UI";
 import TabelaCarteira from "@/components/cobranca/TabelaCarteira";
 import ModalCobranca from "@/components/cobranca/ModalCobranca";
 import ModalResposta from "@/components/cobranca/ModalResposta";
@@ -36,8 +35,6 @@ import MonitorPromessas from "@/components/cobranca/MonitorPromessas";
 import exportarPDFExecutivo from "@/components/cobranca/ExportPDF";
 import PainelProdutividade from "@/components/cobranca/PainelProdutividade";
 import ModalNegociacao from "@/components/cobranca/ModalNegociacao";
-import PainelNotificacoes from "@/components/cobranca/PainelNotificacoes";
-import PrevisaoFluxo from "@/components/cobranca/PrevisaoFluxo";
 import AnalyticsDashboard from "@/components/cobranca/AnalyticsDashboard";
 import PainelMetas from "@/components/cobranca/PainelMetas";
 import ModalEnviarPDF from "@/components/cobranca/ModalEnviarPDF";
@@ -45,6 +42,7 @@ import TabelaCobrados from "@/components/cobranca/TabelaCobrados";
 import TabelaVerificacao from "@/components/cobranca/TabelaVerificacao";
 import TabelaProtesto from "@/components/cobranca/TabelaProtesto";
 import ImpactoCaixaTab from "@/components/cobranca/ImpactoCaixaTab";
+import ImportPreviewPanel from "@/components/importacao/ImportPreviewPanel";
 
 const LOCAL_THEME = "sc_theme";
 const LOCAL_TAB = "sc_tab";
@@ -1058,6 +1056,7 @@ export default function Dashboard() {
         {importStatus && <div style={{ background: importStatus.ok ? isDark ? "#052e16" : "#f0fdf4" : isDark ? "#2d0a0a" : "#fef2f2", border: `1px solid ${importStatus.ok ? "#16a34a" : "#dc2626"}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: importStatus.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{importStatus.msg}</span><button onClick={() => setImportStatus(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
         {cleanupMsg && <div style={{ background: isDark ? "#0c1a2e" : "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#3b82f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{cleanupMsg}</span><button onClick={() => setCleanupMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
         <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{loading && !isImporting ? "⏳ Carregando..." : syncMsg}</div>
+        <ImportPreviewPanel totalAtivosAnteriores={records.length} t={t} />
         <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto", paddingBottom: 8, paddingTop: 8, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "stretch", justifyContent: "flex-start", borderBottom: `1px solid ${t.bor}` }} className="bg-transparent">
           <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")} badge={dash.devolvidos} badgeColor="#10b981">📋 Carteira Geral</TabBtn>
           <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico / Promessas</TabBtn>

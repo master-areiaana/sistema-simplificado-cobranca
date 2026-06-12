@@ -172,6 +172,20 @@ test("vencimento diferente não une títulos e gera DUE_DATE_MISMATCH", () => {
   assert.ok(result.consolidados.every((record) => record._meta.needs_review));
 });
 
+test("títulos com correspondências exatas não geram DUE_DATE_MISMATCH entre parcelas", () => {
+  const juneTitle = title({ "Data Vencimento": "2026-06-30" });
+  const julyTitle = title({ "Data Vencimento": "2026-07-31" });
+  const result = consolidarFontesImportacao({
+    rptItems: [juneTitle, julyTitle],
+    finrItems: [juneTitle, julyTitle],
+  });
+
+  assert.equal(result.consolidados.length, 2);
+  assert.equal(result.resumo.emAmbas, 2);
+  assert.ok(!diagnosticCodes(result).includes("DUE_DATE_MISMATCH"));
+  assert.ok(result.consolidados.every((record) => !record._meta.needs_review));
+});
+
 test("duplicidade na RPT gera DUPLICATE_KEY_IN_RPT sem perder linhas originais", () => {
   const rptOne = title({ Vendedor: "Maria" });
   const rptTwo = title({ Vendedor: "Carlos" });

@@ -330,6 +330,8 @@ function appendDueDateMismatchDiagnostics({
   const finrByIdentity = new Map();
 
   for (const [titleKey, items] of finrGroups) {
+    if (rptGroups.has(titleKey)) continue;
+
     const identity = buildKeyWithoutDueDate(sourceRepresentative(items));
     const groups = finrByIdentity.get(identity) || [];
     groups.push({ titleKey, items });
@@ -337,12 +339,12 @@ function appendDueDateMismatchDiagnostics({
   }
 
   for (const [rptTitleKey, rptItems] of rptGroups) {
+    if (finrGroups.has(rptTitleKey)) continue;
+
     const rptItem = sourceRepresentative(rptItems);
     const identity = buildKeyWithoutDueDate(rptItem);
 
     for (const finrGroup of finrByIdentity.get(identity) || []) {
-      if (rptTitleKey === finrGroup.titleKey) continue;
-
       const finrItem = sourceRepresentative(finrGroup.items);
       const diagnostic = buildDiagnostic("DUE_DATE_MISMATCH", rptTitleKey, {
         rpt_title_key: rptTitleKey,

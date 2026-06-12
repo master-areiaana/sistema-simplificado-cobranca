@@ -18,6 +18,14 @@ const SUMMARY_FIELDS = [
   ["totalNeedsReview", "Para revisão"],
 ];
 
+const PLAN_FIELDS = [
+  ["totalCreate", "Criar"],
+  ["totalUpdate", "Atualizar"],
+  ["totalUnchanged", "Sem alteração"],
+  ["totalAbsence", "Baixar por ausência"],
+  ["totalAbsenceBlocked", "Baixas bloqueadas"],
+];
+
 const TABLE_COLUMNS = [
   "Código Cliente",
   "Nome Cliente",
@@ -137,7 +145,12 @@ function diagnosticDetails(diagnostic) {
   return Object.keys(details).length > 0 ? JSON.stringify(details) : "—";
 }
 
-export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
+export default function ImportPreviewPanel({
+  totalAtivosAnteriores = 0,
+  onPreparePlan,
+  onApplyPlan,
+  t,
+}) {
   const [files, setFiles] = useState({
     rpt: { name: "", rows: [] },
     finr: { name: "", rows: [] },
@@ -146,6 +159,19 @@ export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
   const [preview, setPreview] = useState(null);
   const [busySource, setBusySource] = useState("");
   const [error, setError] = useState("");
+  const [plan, setPlan] = useState(null);
+  const [planBusy, setPlanBusy] = useState(false);
+  const [applyBusy, setApplyBusy] = useState(false);
+  const [authorizationChecked, setAuthorizationChecked] = useState(false);
+  const [confirmationText, setConfirmationText] = useState("");
+  const [applyResult, setApplyResult] = useState(null);
+
+  const resetApplication = () => {
+    setPlan(null);
+    setAuthorizationChecked(false);
+    setConfirmationText("");
+    setApplyResult(null);
+  };
 
   const handleFile = async (source, event) => {
     const file = event.target.files?.[0];
@@ -161,6 +187,7 @@ export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
         [source]: { name: file.name, rows },
       }));
       setPreview(null);
+      resetApplication();
     } catch (readError) {
       setError(`Não foi possível ler "${file.name}": ${readError.message}`);
     } finally {
@@ -170,6 +197,7 @@ export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
 
   const buildPreview = () => {
     setError("");
+    resetApplication();
     try {
       setPreview(buildImportPreview({
         rptRows: files.rpt.rows,
@@ -192,26 +220,71 @@ export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
     });
     setPreview(null);
     setError("");
+    resetApplication();
+  };
+
+  const changePercentual = (field, value) => {
+    setPercentuais((current) => ({ ...current, [field]: value }));
+    setPreview(null);
+    resetApplication();
+  };
+
+  const preparePlan = async () => {
+    if (!preview || !onPreparePlan) return;
+    setPlanBusy(true);
+    setError("");
+    resetApplication();
+    try {
+      const importFile = [files.rpt.name, files.finr.name].filter(Boolean).join(" + ");
+      setPlan(await onPreparePlan(preview, importFile));
+    } catch (planError) {
+      setError(`Não foi possível preparar o plano de aplicação: ${planError.message}`);
+    } finally {
+      setPlanBusy(false);
+    }
+  };
+
+  const applyPlan = async () => {
+    if (!plan || !onApplyPlan || confirmationText.trim().toUpperCase() !== "CONFIRMAR" || !authorizationChecked) return;
+    setApplyBusy(true);
+    setError("");
+    try {
+      const result = await onApplyPlan(plan);
+      setApplyResult(result);
+      setPlan(null);
+      setAuthorizationChecked(false);
+      setConfirmationText("");
+    } catch (applyError) {
+      setError(`Não foi possível aplicar a importação: ${applyError.message}`);
+    } finally {
+      setApplyBusy(false);
+    }
   };
 
   const hasRows = files.rpt.rows.length > 0 || files.finr.rows.length > 0;
   const previewRows = preview?.consolidados.slice(0, 200) || [];
+  const canConfirmApply = Boolean(
+    plan?.canApply &&
+    authorizationChecked &&
+    confirmationText.trim().toUpperCase() === "CONFIRMAR" &&
+    !applyBusy,
+  );
 
   return (
     <details style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, boxShadow: t.shad, marginBottom: 14 }}>
       <summary style={{ cursor: "pointer", listStyle: "none", padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
         <div>
-          <div style={{ color: t.txt, fontSize: 12, fontWeight: 900 }}>Prévia experimental de importação</div>
-          <div style={{ color: t.muted, fontSize: 10, marginTop: 3 }}>Área separada do fluxo atual. Nenhuma informação será gravada.</div>
+          <div style={{ color: t.txt, fontSize: 12, fontWeight: 900 }}>Nova importação operacional RPT_7007 + FINR1253</div>
+          <div style={{ color: t.muted, fontSize: 10, marginTop: 3 }}>Área separada do fluxo antigo, com prévia e confirmação obrigatórias.</div>
         </div>
         <span style={{ background: "#2563eb22", border: "1px solid #2563eb66", borderRadius: 20, color: "#3b82f6", fontSize: 9, fontWeight: 900, padding: "4px 9px", whiteSpace: "nowrap" }}>
-          Somente conferência
+          Aplicação controlada
         </span>
       </summary>
 
       <div style={{ borderTop: `1px solid ${t.bor}`, padding: 14 }}>
         <div style={{ background: "#2563eb18", border: "1px solid #2563eb66", borderRadius: 8, color: "#3b82f6", fontSize: 11, fontWeight: 800, marginBottom: 12, padding: "9px 11px" }}>
-          Prévia — nenhuma informação foi gravada
+          Prévia da importação — confira antes de aplicar no sistema.
         </div>
 
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
@@ -227,7 +300,7 @@ export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
                   min="0"
                   step="0.01"
                   value={percentuais.multa}
-                  onChange={(event) => setPercentuais((current) => ({ ...current, multa: event.target.value }))}
+                  onChange={(event) => changePercentual("multa", event.target.value)}
                   style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 5, color: t.txt, marginTop: 4, padding: "6px 7px", width: "100%", boxSizing: "border-box" }}
                 />
               </label>
@@ -238,7 +311,7 @@ export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
                   min="0"
                   step="0.01"
                   value={percentuais.juros}
-                  onChange={(event) => setPercentuais((current) => ({ ...current, juros: event.target.value }))}
+                  onChange={(event) => changePercentual("juros", event.target.value)}
                   style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 5, color: t.txt, marginTop: 4, padding: "6px 7px", width: "100%", boxSizing: "border-box" }}
                 />
               </label>
@@ -267,11 +340,11 @@ export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
           </button>
           <button
             type="button"
-            disabled
-            title="A gravação não faz parte desta fase."
-            style={{ background: t.surf2, border: `1px solid ${t.bor}`, borderRadius: 6, color: t.muted, cursor: "not-allowed", fontSize: 11, fontWeight: 800, padding: "7px 13px" }}
+            disabled={!preview || planBusy || !onPreparePlan}
+            onClick={preparePlan}
+            style={{ background: preview ? "#0f766e" : t.surf2, border: `1px solid ${preview ? "#0f766e" : t.bor}`, borderRadius: 6, color: preview ? "#fff" : t.muted, cursor: preview ? "pointer" : "not-allowed", fontSize: 11, fontWeight: 800, padding: "7px 13px" }}
           >
-            Gravar importação — indisponível nesta fase
+            {planBusy ? "Preparando plano..." : "Preparar plano de aplicação"}
           </button>
         </div>
 
@@ -288,6 +361,11 @@ export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
                 {alerta}
               </div>
             ))}
+            {preview.seguranca.importacaoParcial && (
+              <div style={{ background: "#dc262618", border: "1px solid #dc262666", borderRadius: 8, color: "#ef4444", fontSize: 11, fontWeight: 900, marginTop: 12, padding: "9px 11px" }}>
+                Planilha parcial detectada — baixa automática bloqueada.
+              </div>
+            )}
             {preview.resumo.totalNeedsReview > 0 && (
               <div style={{ background: "#dc262618", border: "1px solid #dc262666", borderRadius: 8, color: "#ef4444", fontSize: 11, fontWeight: 900, marginTop: 12, padding: "9px 11px" }}>
                 Existem {preview.resumo.totalNeedsReview} registro(s) que precisam de revisão antes de qualquer gravação futura.
@@ -301,6 +379,57 @@ export default function ImportPreviewPanel({ totalAtivosAnteriores = 0, t }) {
               <SummaryCard label="Importação parcial" value={preview.seguranca.importacaoParcial ? "Sim" : "Não"} t={t} color={preview.seguranca.importacaoParcial ? "#ef4444" : "#16a34a"} />
               <SummaryCard label="Pode aplicar baixa automática" value={preview.seguranca.podeAplicarBaixaAutomatica ? "Sim" : "Não"} t={t} color={preview.seguranca.podeAplicarBaixaAutomatica ? "#16a34a" : "#ef4444"} />
             </div>
+
+            {plan && (
+              <div style={{ background: t.surf2, border: `1px solid ${t.bor}`, borderRadius: 8, marginTop: 16, padding: 12 }}>
+                <div style={{ color: t.txt, fontSize: 12, fontWeight: 900 }}>Plano de aplicação</div>
+                <div style={{ color: t.muted, fontSize: 10, marginTop: 3 }}>
+                  O plano abaixo ainda não gravou dados. Nenhum título será deletado.
+                </div>
+                <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", marginTop: 10 }}>
+                  {PLAN_FIELDS.map(([field, label]) => (
+                    <SummaryCard key={field} label={label} value={plan.summary[field]} t={t} color={field === "totalAbsenceBlocked" && plan.summary[field] > 0 ? "#ef4444" : t.p} />
+                  ))}
+                </div>
+                {plan.safety.importacaoParcial && (
+                  <div style={{ color: "#ef4444", fontSize: 11, fontWeight: 900, marginTop: 10 }}>
+                    Planilha parcial detectada — baixa automática bloqueada.
+                  </div>
+                )}
+                <label style={{ alignItems: "flex-start", color: t.txt, display: "flex", fontSize: 11, fontWeight: 700, gap: 8, marginTop: 14 }}>
+                  <input
+                    type="checkbox"
+                    checked={authorizationChecked}
+                    onChange={(event) => setAuthorizationChecked(event.target.checked)}
+                    style={{ accentColor: t.p, marginTop: 2 }}
+                  />
+                  Confirmo que revisei a prévia e autorizo atualizar a carteira com esta importação.
+                </label>
+                <label style={{ color: t.muted, display: "block", fontSize: 10, fontWeight: 700, marginTop: 10 }}>
+                  Digite CONFIRMAR para liberar a aplicação
+                  <input
+                    value={confirmationText}
+                    onChange={(event) => setConfirmationText(event.target.value)}
+                    placeholder="CONFIRMAR"
+                    style={{ background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 5, color: t.txt, display: "block", marginTop: 4, maxWidth: 260, padding: "7px 8px", width: "100%" }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={!canConfirmApply}
+                  onClick={applyPlan}
+                  style={{ background: canConfirmApply ? "#b91c1c" : t.surf, border: `1px solid ${canConfirmApply ? "#b91c1c" : t.bor}`, borderRadius: 6, color: canConfirmApply ? "#fff" : t.muted, cursor: canConfirmApply ? "pointer" : "not-allowed", fontSize: 11, fontWeight: 900, marginTop: 12, padding: "8px 13px" }}
+                >
+                  {applyBusy ? "Aplicando importação..." : "Aplicar importação confirmada"}
+                </button>
+              </div>
+            )}
+
+            {applyResult && (
+              <div style={{ background: "#16a34a18", border: "1px solid #16a34a66", borderRadius: 8, color: "#16a34a", fontSize: 11, fontWeight: 900, marginTop: 12, padding: "9px 11px" }}>
+                Importação aplicada: {applyResult.created} criado(s), {applyResult.updated} atualizado(s) e {applyResult.lowered} baixado(s) por ausência.
+              </div>
+            )}
 
             <div style={{ marginTop: 16 }}>
               <div style={{ color: t.txt, fontSize: 12, fontWeight: 900, marginBottom: 8 }}>Diagnósticos</div>

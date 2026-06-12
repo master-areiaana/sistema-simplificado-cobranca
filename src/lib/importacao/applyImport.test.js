@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildImportApplicationPlan } from "./applyImport.js";
+import {
+  STALE_APPLICATION_PLAN_MESSAGE,
+  assertApplicationPlanStillCurrent,
+  buildImportApplicationPlan,
+  createImportApplicationAttemptGuard,
+} from "./applyImport.js";
 
 function canonical(overrides = {}) {
   return {
@@ -97,8 +102,13 @@ test("baixa por ausência apenas inativa e mantém o registro", () => {
     current_status: "Baixado",
     workflow_status: "baixado_importacao",
     current_motive: "Não consta na nova carteira importada",
-    updated_by: "Importação Consolidada",
   });
+  assert.deepEqual(Object.keys(plan.absences[0].payload).sort(), [
+    "active",
+    "current_motive",
+    "current_status",
+    "workflow_status",
+  ]);
   assert.equal(plan.summary.totalAbsence, 1);
 });
 
@@ -154,4 +164,39 @@ test("não altera os arrays recebidos", () => {
   });
 
   assert.equal(JSON.stringify({ sourcePreview, sourceExisting }), snapshot);
+});
+
+test("bloqueia aplicação quando a carteira muda desde o plano exibido", () => {
+  const displayed = buildImportApplicationPlan({
+    preview: preview([canonical()]),
+    existingTitles: [],
+  });
+  const revalidated = buildImportApplicationPlan({
+    preview: preview([canonical()]),
+    existingTitles: [existing()],
+  });
+
+  assert.throws(
+    () => assertApplicationPlanStillCurrent(displayed, revalidated),
+    { message: STALE_APPLICATION_PLAN_MESSAGE },
+  );
+});
+
+test("falha parcial consome o plano até gerar nova prévia ou plano", () => {
+  const guard = createImportApplicationAttemptGuard();
+
+  assert.equal(guard.begin(), true);
+  guard.finish();
+  assert.equal(guard.begin(), false);
+  guard.reset();
+  assert.equal(guard.begin(), true);
+});
+
+test("aplicação em andamento bloqueia clique duplo e reexecução", () => {
+  const guard = createImportApplicationAttemptGuard();
+
+  assert.equal(guard.begin(), true);
+  assert.equal(guard.begin(), false);
+  guard.finish();
+  assert.equal(guard.begin(), false);
 });

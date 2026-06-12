@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 
+import { createImportApplicationAttemptGuard } from "@/lib/importacao/applyImport";
 import { buildImportPreview } from "@/lib/importacao/preview";
 
 const ACCEPTED_FILES =
@@ -165,8 +166,10 @@ export default function ImportPreviewPanel({
   const [authorizationChecked, setAuthorizationChecked] = useState(false);
   const [confirmationText, setConfirmationText] = useState("");
   const [applyResult, setApplyResult] = useState(null);
+  const applicationGuardRef = useRef(createImportApplicationAttemptGuard());
 
   const resetApplication = () => {
+    applicationGuardRef.current.reset();
     setPlan(null);
     setAuthorizationChecked(false);
     setConfirmationText("");
@@ -246,17 +249,22 @@ export default function ImportPreviewPanel({
 
   const applyPlan = async () => {
     if (!plan || !onApplyPlan || confirmationText.trim().toUpperCase() !== "CONFIRMAR" || !authorizationChecked) return;
+    if (!applicationGuardRef.current.begin()) return;
+    const planToApply = plan;
+    const importFile = [files.rpt.name, files.finr.name].filter(Boolean).join(" + ");
     setApplyBusy(true);
     setError("");
+    setPlan(null);
+    setAuthorizationChecked(false);
+    setConfirmationText("");
     try {
-      const result = await onApplyPlan(plan);
+      const result = await onApplyPlan(planToApply, preview, importFile);
       setApplyResult(result);
-      setPlan(null);
-      setAuthorizationChecked(false);
-      setConfirmationText("");
     } catch (applyError) {
-      setError(`Não foi possível aplicar a importação: ${applyError.message}`);
+      setPreview(null);
+      setError(applyError.message || "Não foi possível aplicar a importação.");
     } finally {
+      applicationGuardRef.current.finish();
       setApplyBusy(false);
     }
   };
@@ -340,7 +348,7 @@ export default function ImportPreviewPanel({
           </button>
           <button
             type="button"
-            disabled={!preview || planBusy || !onPreparePlan}
+            disabled={!preview || planBusy || applyBusy || !onPreparePlan}
             onClick={preparePlan}
             style={{ background: preview ? "#0f766e" : t.surf2, border: `1px solid ${preview ? "#0f766e" : t.bor}`, borderRadius: 6, color: preview ? "#fff" : t.muted, cursor: preview ? "pointer" : "not-allowed", fontSize: 11, fontWeight: 800, padding: "7px 13px" }}
           >

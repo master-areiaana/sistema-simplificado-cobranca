@@ -11,6 +11,12 @@ const MANAGED_SOURCES = new Set([
   "RPT_E_FINR",
 ]);
 
+export const STALE_APPLICATION_PLAN_MESSAGE =
+  "A carteira mudou desde que o plano foi gerado. Gere uma nova prévia antes de aplicar.";
+
+export const PARTIAL_APPLICATION_FAILURE_MESSAGE =
+  "A aplicação falhou parcialmente. Gere uma nova prévia antes de tentar novamente.";
+
 const COMPARED_FIELDS = [
   "source",
   "client_code",
@@ -121,6 +127,46 @@ function isManagedActiveTitle(item) {
   return item?.active !== false && MANAGED_SOURCES.has(String(item?.source || ""));
 }
 
+export function getApplicationWriteTotals(plan = {}) {
+  return {
+    totalCreate: Number(plan?.summary?.totalCreate || 0),
+    totalUpdate: Number(plan?.summary?.totalUpdate || 0),
+    totalAbsence: Number(plan?.summary?.totalAbsence || 0),
+  };
+}
+
+export function assertApplicationPlanStillCurrent(planned, revalidated) {
+  const expected = getApplicationWriteTotals(planned);
+  const current = getApplicationWriteTotals(revalidated);
+
+  if (JSON.stringify(expected) !== JSON.stringify(current)) {
+    throw new Error(STALE_APPLICATION_PLAN_MESSAGE);
+  }
+
+  return revalidated;
+}
+
+export function createImportApplicationAttemptGuard() {
+  let applying = false;
+  let consumed = false;
+
+  return {
+    begin() {
+      if (applying || consumed) return false;
+      applying = true;
+      consumed = true;
+      return true;
+    },
+    finish() {
+      applying = false;
+    },
+    reset() {
+      applying = false;
+      consumed = false;
+    },
+  };
+}
+
 export function buildImportApplicationPlan({
   preview,
   existingTitles = [],
@@ -174,10 +220,7 @@ export function buildImportApplicationPlan({
         key: buildOfficialTitleKey(item),
         id: item.id,
         existing: item,
-        payload: {
-          ...getStatusBaixaPorAusencia(),
-          updated_by: "Importação Consolidada",
-        },
+        payload: getStatusBaixaPorAusencia(),
       }))
     : [];
 

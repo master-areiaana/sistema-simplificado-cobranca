@@ -43,7 +43,11 @@ import TabelaVerificacao from "@/components/cobranca/TabelaVerificacao";
 import TabelaProtesto from "@/components/cobranca/TabelaProtesto";
 import ImpactoCaixaTab from "@/components/cobranca/ImpactoCaixaTab";
 import ImportPreviewPanel from "@/components/importacao/ImportPreviewPanel";
-import { buildImportApplicationPlan } from "@/lib/importacao/applyImport";
+import {
+  PARTIAL_APPLICATION_FAILURE_MESSAGE,
+  assertApplicationPlanStillCurrent,
+  buildImportApplicationPlan,
+} from "@/lib/importacao/applyImport";
 
 const LOCAL_THEME = "sc_theme";
 const LOCAL_TAB = "sc_tab";
@@ -933,24 +937,32 @@ export default function Dashboard() {
     return buildImportApplicationPlan({ preview, existingTitles, importFile });
   }
 
-  async function aplicarNovaImportacao(plan) {
+  async function aplicarNovaImportacao(plan, preview, importFile) {
     if (!plan?.canApply) throw new Error("O plano de aplicação não possui registros consolidados.");
-    if (plan.safety?.importacaoParcial && plan.absences.length > 0) {
+    const currentTitles = await base44.entities.Titulo.list("-updated_date", 5000);
+    const revalidatedPlan = assertApplicationPlanStillCurrent(
+      plan,
+      buildImportApplicationPlan({ preview, existingTitles: currentTitles, importFile }),
+    );
+    if (revalidatedPlan.safety?.importacaoParcial && revalidatedPlan.absences.length > 0) {
       throw new Error("Plano parcial inválido: a baixa automática deve permanecer bloqueada.");
     }
 
     setIsImporting(true);
     importingRef.current = true;
+    let writeStarted = false;
     try {
       const CREATE_BATCH = 50;
-      for (let i = 0; i < plan.creates.length; i += CREATE_BATCH) {
-        await base44.entities.Titulo.bulkCreate(plan.creates.slice(i, i + CREATE_BATCH).map((item) => item.payload));
+      for (let i = 0; i < revalidatedPlan.creates.length; i += CREATE_BATCH) {
+        writeStarted = true;
+        await base44.entities.Titulo.bulkCreate(revalidatedPlan.creates.slice(i, i + CREATE_BATCH).map((item) => item.payload));
         await yieldUI();
       }
 
-      const updates = [...plan.updates, ...plan.absences];
+      const updates = [...revalidatedPlan.updates, ...revalidatedPlan.absences];
       const UPDATE_BATCH = 15;
       for (let i = 0; i < updates.length; i += UPDATE_BATCH) {
+        writeStarted = true;
         await Promise.all(updates.slice(i, i + UPDATE_BATCH).map((item) =>
           base44.entities.Titulo.update(item.id, item.payload),
         ));
@@ -958,9 +970,9 @@ export default function Dashboard() {
       }
 
       const result = {
-        created: plan.creates.length,
-        updated: plan.updates.length,
-        lowered: plan.absences.length,
+        created: revalidatedPlan.creates.length,
+        updated: revalidatedPlan.updates.length,
+        lowered: revalidatedPlan.absences.length,
       };
       setImportStatus({
         ok: true,
@@ -968,6 +980,9 @@ export default function Dashboard() {
       });
       await loadData();
       return result;
+    } catch (error) {
+      if (writeStarted) throw new Error(PARTIAL_APPLICATION_FAILURE_MESSAGE, { cause: error });
+      throw error;
     } finally {
       importingRef.current = false;
       setIsImporting(false);

@@ -201,13 +201,17 @@ export function cliKey(item) {
   return `${String(item.nrCli || "").trim()}||${normText(item.nomeCli || "")}`;
 }
 
+function origemExibicaoCarteira(source) {
+  return source === "RPT_E_FINR" ? "FINR1253" : source;
+}
+
 export function buildItem(o) {
   const valorOriginal = num(o.valorOriginal ?? o.original_value ?? 0);
   const valorRecebido = num(o.valorRecebido ?? o.received_value ?? 0);
   const saldoErp = num(o.saldoErp ?? o.erp_balance ?? 0);
   const valorEmAberto = num(o.valorEmAberto ?? o.open_value ?? (saldoErp > 0 ? saldoErp : valorOriginal));
   const totalInformado = o.valorTotalDebito !== undefined && o.valorTotalDebito !== null ? num(o.valorTotalDebito) : null;
-  const usaValorDoRelatorio = ["FINR1253", "RPT_7007_CONS_CAR_EB"].includes(String(o.origem || ""));
+  const usaValorDoRelatorio = ["FINR1253", "RPT_7007_CONS_CAR_EB", "RPT_E_FINR"].includes(String(o.origem || ""));
   const diasAtraso = diffDias(o.vencimento);
   const f = totalInformado !== null
     ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: totalInformado, diasAtraso }
@@ -244,7 +248,7 @@ export function buildItem(o) {
 
 export function dbToItem(r) {
   return buildItem({
-    _dbId: r.id, origem: r.source, nrCli: r.client_code, nomeCli: r.client_name,
+    _dbId: r.id, origem: origemExibicaoCarteira(r.source), nrCli: r.client_code, nomeCli: r.client_name,
     clientGroupKey: r.client_group_key || "", primaryClientCode: r.primary_client_code || r.client_code || "", erpClientCodes: r.erp_client_codes || (r.client_code ? [r.client_code] : []), recordOrigin: r.record_origin || "ERP",
     tp: r.doc_type, ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico, emissao: r.issue_date, vencimento: r.due_date,
     valorOriginal: r.open_value || r.original_value, valorRecebido: r.received_value, valorEmAberto: r.open_value || r.original_value, saldoErp: r.erp_balance, partialPaymentDetected: r.partial_payment_detected,
@@ -293,8 +297,6 @@ function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) {
   const portador = cellText(row, 14);
   if (!numero) return null;
 
-  // FINR1253: a Carteira Geral deve bater com a coluna RECEBER do relatório.
-  // "Título" é valor face/original; "Receb.Prc." é principal em aberto; "Calculada" é acréscimo calculado; "Receber" é total a cobrar.
   const valorACobrar = receber > 0 ? receber : (recebPrc > 0 ? recebPrc + calculada : valorFaceTit);
   if (valorACobrar <= 0) return null;
   const valorRecebidoParcial = Math.max(0, valorFaceTit - recebPrc);

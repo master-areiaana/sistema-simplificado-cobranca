@@ -32,6 +32,10 @@ Run the app: `npm run dev`
 
 Open [Base44.com](http://Base44.com) and click on Publish.
 
+**GitHub Pages**
+
+This repository uses the `Deploy to GitHub Pages` workflow to build the Vite app and publish the `dist` folder.
+
 **Docs & Support**
 
 Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)

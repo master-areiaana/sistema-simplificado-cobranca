@@ -87,6 +87,50 @@ function normalizeKeyPart(value) {
   return String(value ?? "").trim().toUpperCase().replace(/\s+/g, " ");
 }
 
+function normalizeDateKeyPart(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const text = String(value ?? "").trim();
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/);
+  const br = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const parts = iso
+    ? { year: iso[1], month: iso[2], day: iso[3] }
+    : br
+      ? { year: br[3], month: br[2], day: br[1] }
+      : null;
+
+  if (!parts) return normalizeKeyPart(value);
+
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const valid = date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day;
+
+  return valid
+    ? `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+    : normalizeKeyPart(value);
+}
+
+function readNormalizedTitleAndSequence(item) {
+  let title = normalizeKeyPart(readFirst(item, TITLE_KEY_FIELDS[2]));
+  let sequence = normalizeKeyPart(readFirst(item, TITLE_KEY_FIELDS[3]));
+
+  if (!sequence) {
+    const separator = title.lastIndexOf("/");
+    if (separator > 0 && separator < title.length - 1) {
+      sequence = normalizeKeyPart(title.slice(separator + 1));
+      title = normalizeKeyPart(title.slice(0, separator));
+    }
+  }
+
+  return { title, sequence };
+}
+
 function readFirst(item, fields) {
   for (const field of fields) {
     if (item?.[field] !== undefined && item?.[field] !== null) {
@@ -120,9 +164,15 @@ function readSaldoRestante(item) {
 }
 
 export function buildOfficialTitleKey(item = {}) {
-  return TITLE_KEY_FIELDS
-    .map((fields) => normalizeKeyPart(readFirst(item, fields)))
-    .join("|");
+  const { title, sequence } = readNormalizedTitleAndSequence(item);
+
+  return [
+    normalizeKeyPart(readFirst(item, TITLE_KEY_FIELDS[0])),
+    normalizeKeyPart(readFirst(item, TITLE_KEY_FIELDS[1])),
+    title,
+    sequence,
+    normalizeDateKeyPart(readFirst(item, TITLE_KEY_FIELDS[4])),
+  ].join("|");
 }
 
 export function calculateSaldoRestante({ valorTotal = 0, recebParcial = 0 } = {}) {

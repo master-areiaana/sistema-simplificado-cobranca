@@ -125,6 +125,43 @@ test("gera a chave oficial sem incluir a origem", () => {
   );
 });
 
+test("normaliza datas equivalentes na chave oficial", () => {
+  const base = {
+    "Código Cliente": "123",
+    "Tipo Documento": "NF",
+    "Número Documento": "456",
+    "Sequência": "1",
+  };
+
+  assert.equal(
+    buildOfficialTitleKey({ ...base, "Data Vencimento": "01/06/2026" }),
+    buildOfficialTitleKey({ ...base, "Data Vencimento": "1/6/2026" }),
+  );
+  assert.equal(
+    buildOfficialTitleKey({ ...base, "Data Vencimento": "1/6/2026" }),
+    buildOfficialTitleKey({ ...base, "Data Vencimento": "2026-06-01" }),
+  );
+});
+
+test("normaliza sequência embutida no número do título", () => {
+  assert.equal(
+    buildOfficialTitleKey({
+      client_code: "123",
+      doc_type: "NF",
+      title_number: "10457/1",
+      seq: "",
+      due_date: "01/06/2026",
+    }),
+    buildOfficialTitleKey({
+      "Código Cliente": "123",
+      "Tipo Documento": "NF",
+      "Número Documento": "10457",
+      "Sequência": "1",
+      "Data Vencimento": "2026-06-01",
+    }),
+  );
+});
+
 test("retorna os dados padrão para baixa por ausência", () => {
   assert.deepEqual(getStatusBaixaPorAusencia(), {
     active: false,

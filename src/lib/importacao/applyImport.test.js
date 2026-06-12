@@ -88,7 +88,53 @@ test("atualização preserva campos manuais ao omiti-los do payload", () => {
   assert.equal(plan.updates[0].payload.open_value, 650);
   assert.equal("last_note" in plan.updates[0].payload, false);
   assert.equal("promise_date" in plan.updates[0].payload, false);
+  assert.equal("contact_count" in plan.updates[0].payload, false);
+  assert.equal("last_contact_date" in plan.updates[0].payload, false);
   assert.equal("current_contact_type" in plan.updates[0].payload, false);
+  assert.equal("client_category" in plan.updates[0].payload, false);
+});
+
+test("data antiga equivalente encontra título existente e vira update", () => {
+  const plan = buildImportApplicationPlan({
+    preview: preview([canonical({ "Data Vencimento": "2026-06-01", "Saldo Restante (R$)": 650 })]),
+    existingTitles: [existing({ due_date: "01/06/2026" })],
+  });
+
+  assert.equal(plan.summary.totalCreate, 0);
+  assert.equal(plan.summary.totalUpdate, 1);
+  assert.equal(plan.updates[0].id, "titulo-1");
+});
+
+test("sequência embutida no título antigo encontra registro canônico", () => {
+  const plan = buildImportApplicationPlan({
+    preview: preview([canonical({
+      "Número Documento": "10457",
+      "Sequência": "1",
+      "Saldo Restante (R$)": 650,
+    })]),
+    existingTitles: [existing({
+      title_number: "10457/1",
+      seq: "",
+    })],
+  });
+
+  assert.equal(plan.summary.totalCreate, 0);
+  assert.equal(plan.summary.totalUpdate, 1);
+  assert.equal(plan.updates[0].id, "titulo-1");
+});
+
+test("pareamento alternativo único vira update e não entra em baixa", () => {
+  const plan = buildImportApplicationPlan({
+    preview: preview([canonical({
+      "Data Vencimento": "2026-06-15",
+      "Saldo Restante (R$)": 650,
+    })]),
+    existingTitles: [existing({ due_date: "2026-06-01" })],
+  });
+
+  assert.equal(plan.updates[0].matchType, "alternative");
+  assert.equal(plan.summary.totalCreate, 0);
+  assert.equal(plan.summary.totalAbsence, 0);
 });
 
 test("baixa por ausência apenas inativa e mantém o registro", () => {
@@ -121,6 +167,32 @@ test("importação parcial bloqueia todas as baixas por ausência", () => {
   assert.equal(plan.absences.length, 0);
   assert.equal(plan.summary.totalAbsenceBlocked, 1);
   assert.equal(plan.safety.podeAplicarBaixaAutomatica, false);
+});
+
+test("múltiplos candidatos equivalentes exigem revisão sem criar ou baixar", () => {
+  const plan = buildImportApplicationPlan({
+    preview: preview([canonical({ "Data Vencimento": "2026-06-20" })]),
+    existingTitles: [
+      existing({ id: "titulo-1", due_date: "2026-06-01" }),
+      existing({ id: "titulo-2", due_date: "2026-06-15" }),
+    ],
+  });
+
+  assert.equal(plan.summary.totalNeedsReview, 1);
+  assert.equal(plan.reviewRequired[0].code, "AMBIGUOUS_EXISTING_TITLE_MATCH");
+  assert.equal(plan.summary.totalCreate, 0);
+  assert.equal(plan.summary.totalAbsence, 0);
+  assert.equal(plan.canApply, false);
+});
+
+test("RPT_7007 é fonte gerenciada para baixa realmente ausente", () => {
+  const plan = buildImportApplicationPlan({
+    preview: preview([canonical({ "Número Documento": "999" })]),
+    existingTitles: [existing({ source: "RPT_7007" })],
+  });
+
+  assert.equal(plan.summary.totalAbsence, 1);
+  assert.equal(plan.absences[0].id, "titulo-1");
 });
 
 test("saldo zero e status pago não ficam ativos na Carteira Geral", () => {

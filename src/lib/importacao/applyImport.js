@@ -7,6 +7,7 @@ import {
 
 const MANAGED_SOURCES = new Set([
   "FINR1253",
+  "RPT_7007",
   "RPT_7007_CONS_CAR_EB",
   "RPT_E_FINR",
 ]);
@@ -127,6 +128,16 @@ function isManagedActiveTitle(item) {
   return item?.active !== false && MANAGED_SOURCES.has(String(item?.source || ""));
 }
 
+function buildAlternativeTitleKey(item) {
+  return buildOfficialTitleKey(item).split("|").slice(0, 4).join("|");
+}
+
+function addToIndex(index, key, item) {
+  const items = index.get(key) || [];
+  items.push(item);
+  index.set(key, items);
+}
+
 export function getApplicationWriteTotals(plan = {}) {
   return {
     totalCreate: Number(plan?.summary?.totalCreate || 0),
@@ -175,37 +186,73 @@ export function buildImportApplicationPlan({
   const consolidados = Array.isArray(preview?.consolidados) ? preview.consolidados : [];
   const existing = Array.isArray(existingTitles) ? existingTitles : [];
   const exactExistingByKey = new Map();
+  const alternativeExistingByKey = new Map();
 
   for (const item of existing) {
-    const key = buildOfficialTitleKey(item);
-    if (!exactExistingByKey.has(key)) exactExistingByKey.set(key, item);
+    addToIndex(exactExistingByKey, buildOfficialTitleKey(item), item);
+    addToIndex(alternativeExistingByKey, buildAlternativeTitleKey(item), item);
   }
 
   const creates = [];
   const updates = [];
   const unchanged = [];
-  const importedKeys = new Set();
+  const reviewRequired = [];
+  const matchedExistingIds = new Set();
+  const protectedExistingIds = new Set();
 
   for (const record of consolidados) {
     const key = buildOfficialTitleKey(record);
-    const current = exactExistingByKey.get(key);
-    importedKeys.add(key);
+    const alternativeKey = buildAlternativeTitleKey(record);
+    const exactCandidates = exactExistingByKey.get(key) || [];
+    const alternativeCandidates = alternativeExistingByKey.get(alternativeKey) || [];
+    const candidates = alternativeCandidates.length > 1
+      ? alternativeCandidates
+      : exactCandidates.length > 0
+        ? exactCandidates
+        : alternativeCandidates;
+    const current = candidates.length === 1 ? candidates[0] : null;
+
+    if (candidates.length > 1 || (current && matchedExistingIds.has(current.id))) {
+      candidates.forEach((candidate) => protectedExistingIds.add(candidate.id));
+      reviewRequired.push({
+        code: "AMBIGUOUS_EXISTING_TITLE_MATCH",
+        key,
+        alternativeKey,
+        candidateIds: candidates.map((candidate) => candidate.id),
+        record,
+      });
+      continue;
+    }
 
     if (!current) {
       creates.push({ key, payload: createPayload(record, importFile), record });
       continue;
     }
 
+    matchedExistingIds.add(current.id);
     const payload = updatePayload(record, current, importFile);
     if (hasMeaningfulChange(current, payload)) {
-      updates.push({ key, id: current.id, payload, record });
+      updates.push({
+        key,
+        id: current.id,
+        matchType: exactCandidates.length === 1 ? "exact" : "alternative",
+        payload,
+        record,
+      });
     } else {
-      unchanged.push({ key, id: current.id, record });
+      unchanged.push({
+        key,
+        id: current.id,
+        matchType: exactCandidates.length === 1 ? "exact" : "alternative",
+        record,
+      });
     }
   }
 
   const absenceCandidates = existing.filter((item) =>
-    isManagedActiveTitle(item) && !importedKeys.has(buildOfficialTitleKey(item)),
+    isManagedActiveTitle(item) &&
+    !matchedExistingIds.has(item.id) &&
+    !protectedExistingIds.has(item.id),
   );
   const managedActiveCount = existing.filter(isManagedActiveTitle).length;
   const importacaoParcial = preview?.seguranca?.importacaoParcial === true ||
@@ -228,12 +275,14 @@ export function buildImportApplicationPlan({
     creates,
     updates,
     unchanged,
+    reviewRequired,
     absences,
-    canApply: consolidados.length > 0,
+    canApply: consolidados.length > 0 && reviewRequired.length === 0,
     summary: {
       totalCreate: creates.length,
       totalUpdate: updates.length,
       totalUnchanged: unchanged.length,
+      totalNeedsReview: reviewRequired.length,
       totalAbsenceCandidates: absenceCandidates.length,
       totalAbsence: absences.length,
       totalAbsenceBlocked: canApplyAbsence ? 0 : absenceCandidates.length,

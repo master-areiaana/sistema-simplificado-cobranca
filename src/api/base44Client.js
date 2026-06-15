@@ -1,70 +1,52 @@
-import { createClient } from '@base44/sdk';
-import { appParams } from '@/lib/app-params';
+import { supabase } from './supabaseClient';
 
-const { appId, token, functionsVersion, appBaseUrl } = appParams;
+// Campos manuais que a importacao NUNCA pode sobrescrever:
+const CAMPOS_MANUAIS = [
+    'current_status','current_motive','current_contact_type','promise_date',
+    'last_contact_date','last_note','action_to_do','description','contact_count',
+    'protest_requested_by','workflow_status','updated_by',
+  ];
 
-const rawBase44 = createClient({
-  appId,
-  token,
-  functionsVersion,
-  serverUrl: appBaseUrl || '',
-  requiresAuth: false,
-  appBaseUrl
-});
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-let queue = Promise.resolve();
-
-function isRateLimitError(error) {
-  return String(error?.message || error || '').toLowerCase().includes('rate limit');
+function makeEntity(tabela) {
+    return {
+          async list(orderBy, limit = 1000) {
+                  const { data, error } = await supabase.from(tabela).select('*').limit(limit);
+                  if (error) throw error;
+                  return data;
+          },
+          async filter(criterios = {}, orderBy, limit = 1000) {
+                  let q = supabase.from(tabela).select('*').limit(limit);
+                  for (const [campo, valor] of Object.entries(criterios)) q = q.eq(campo, valor);
+                  const { data, error } = await q;
+                  if (error) throw error;
+                  return data;
+          },
+          async create(registro) {
+                  const { data, error } = await supabase.from(tabela).insert(registro).select();
+                  if (error) throw error;
+                  return data?.[0];
+          },
+          async update(id, campos) {
+                  const { data, error } = await supabase.from(tabela)
+                    .update({ ...campos, updated_at: new Date().toISOString() })
+                    .eq('id', id).select();
+                  if (error) throw error;
+                  return data?.[0];
+          },
+          subscribe(callback) {
+                  const canal = supabase.channel('rt-' + tabela)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: tabela }, callback)
+                    .subscribe();
+                  return () => supabase.removeChannel(canal);
+          },
+    };
 }
 
-async function runWithRateLimit(fn) {
-  const run = async () => {
-    let lastError = null;
+export const base44 = {
+    entities: {
+          Titulo: makeEntity('titles'),
+          ChargeEvent: makeEntity('charge_events'),
+    },
+};
 
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      try {
-        const result = await fn();
-        await sleep(350);
-        return result;
-      } catch (error) {
-        lastError = error;
-        if (!isRateLimitError(error)) throw error;
-        await sleep(1800 + attempt * 900);
-      }
-    }
-
-    throw lastError;
-  };
-
-  const task = queue.then(run, run);
-  queue = task.catch(() => undefined);
-  return task;
-}
-
-function proxify(value) {
-  if (!value || typeof value !== 'object') return value;
-
-  return new Proxy(value, {
-    get(target, prop, receiver) {
-      const current = Reflect.get(target, prop, receiver);
-
-      if (typeof current === 'function') {
-        if (prop === 'subscribe') {
-          return current.bind(target);
-        }
-
-        return (...args) => runWithRateLimit(() => current.apply(target, args));
-      }
-
-      if (current && typeof current === 'object') {
-        return proxify(current);
-      }
-
-      return current;
-    }
-  });
-}
-
-export const base44 = proxify(rawBase44);
+export { CAMPOS_MANUAIS };

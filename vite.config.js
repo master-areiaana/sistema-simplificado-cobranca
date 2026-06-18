@@ -2,6 +2,8 @@ import base44 from "@base44/vite-plugin"
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+const enableBase44BuilderTools = process.env.VITE_ENABLE_BASE44_BUILDER === 'true';
+
 // https://vite.dev/config/
 export default defineConfig({
   base: '/Sistema-Simplificado-Cobranca/',
@@ -11,10 +13,10 @@ export default defineConfig({
       // Support for legacy code that imports the base44 SDK with @/integrations, @/entities, etc.
       // can be removed if the code has been updated to use the new SDK imports from @base44/sdk
       legacySDKImports: process.env.BASE44_LEGACY_SDK_IMPORTS === 'true',
-      hmrNotifier: true,
-      navigationNotifier: true,
-      analyticsTracker: true,
-      visualEditAgent: true
+      hmrNotifier: enableBase44BuilderTools,
+      navigationNotifier: enableBase44BuilderTools,
+      analyticsTracker: enableBase44BuilderTools,
+      visualEditAgent: enableBase44BuilderTools
     }),
     react(),
   ]

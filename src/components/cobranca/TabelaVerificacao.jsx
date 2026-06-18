@@ -3,18 +3,25 @@ import ColHeader from "./ColHeader";
 import { Btn, ObsCell, Badge } from "./UI";
 import { fmtM, fmtD } from "@/lib/cobranca";
 
-const thPlain = (t) => ({ background: t.th, padding: "8px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .4, color: t.muted, position: "sticky", top: 0, zIndex: 10 });
 const tdS = (ex = {}) => ({ padding: "7px 10px", borderBottom: "1px solid #0002", fontSize: 11, ...ex });
+
+function getResposta(g) {
+  const lastResp = g.historicoCliente.find(h => h.subtype?.startsWith("RESP_VERIF"));
+  return lastResp?.motivo || "Aguardando";
+}
 
 function fieldVal(g, field) {
   switch (field) {
     case "nrCli": return g.nrCli || "(Vazio)";
     case "nomeCli": return g.nomeCli || "(Vazio)";
+    case "qtdTitulos": return String(g.qtdTitulos ?? 0);
     case "valorTotalDebito": return fmtM(g.valorTotalDebito);
     case "atrasoLabel": return g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—";
     case "statusConsolidado": return g.statusConsolidado || "(Vazio)";
     case "ultimoContato": return g.ultimoContato ? fmtD(g.ultimoContato) : "(Vazio)";
     case "obsConsolidada": return g.obsConsolidada || "(Sem observação)";
+    case "resposta": return getResposta(g);
+    case "acao": return "Responder";
     default: return "";
   }
 }
@@ -48,19 +55,19 @@ export default function TabelaVerificacao({ data, t, setRespModal, setRespForm }
         </span>
       </div>
       <div style={{ overflowX: "auto", borderRadius: 10, border: "2px solid #3b82f6", maxHeight: "65vh", overflowY: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "auto" }}>
           <thead>
             <tr>
-              <CH label="Nº"          field="nrCli"               data={colData("nrCli")}               filters={filters} setFilters={setFilters} />
-              <CH label="CLIENTE"     field="nomeCli"             data={colData("nomeCli")}             filters={filters} setFilters={setFilters} />
-              <th style={thPlain(t)}>QTD.</th>
-              <CH label="TOTAL"       field="valorTotalDebito"    data={colData("valorTotalDebito")}    filters={filters} setFilters={setFilters} />
-              <CH label="ATRASO"      field="atrasoLabel"         data={colData("atrasoLabel")}         filters={filters} setFilters={setFilters} />
-              <CH label="STATUS"      field="statusConsolidado"   data={colData("statusConsolidado")}   filters={filters} setFilters={setFilters} />
-              <CH label="CONTATO"     field="ultimoContato"       data={colData("ultimoContato")}       filters={filters} setFilters={setFilters} />
-              <CH label="OBSERVAÇÃO"  field="obsConsolidada"      data={colData("obsConsolidada")}      filters={filters} setFilters={setFilters} />
-              <th style={thPlain(t)}>RESPOSTA</th>
-              <th style={thPlain(t)}>AÇÃO</th>
+              <CH label="Nº"          field="nrCli"               data={colData("nrCli")}               filters={filters} setFilters={setFilters} width={80} />
+              <CH label="CLIENTE"     field="nomeCli"             data={colData("nomeCli")}             filters={filters} setFilters={setFilters} width={190} />
+              <CH label="QTD."        field="qtdTitulos"          data={colData("qtdTitulos")}          filters={filters} setFilters={setFilters} width={80} />
+              <CH label="TOTAL"       field="valorTotalDebito"    data={colData("valorTotalDebito")}    filters={filters} setFilters={setFilters} width={130} />
+              <CH label="ATRASO"      field="atrasoLabel"         data={colData("atrasoLabel")}         filters={filters} setFilters={setFilters} width={95} />
+              <CH label="STATUS"      field="statusConsolidado"   data={colData("statusConsolidado")}   filters={filters} setFilters={setFilters} width={130} />
+              <CH label="CONTATO"     field="ultimoContato"       data={colData("ultimoContato")}       filters={filters} setFilters={setFilters} width={110} />
+              <CH label="OBSERVAÇÃO"  field="obsConsolidada"      data={colData("obsConsolidada")}      filters={filters} setFilters={setFilters} width={190} />
+              <CH label="RESPOSTA"    field="resposta"            data={colData("resposta")}            filters={filters} setFilters={setFilters} width={160} />
+              <CH label="AÇÃO"        field="acao"                data={colData("acao")}                filters={filters} setFilters={setFilters} width={140} />
             </tr>
           </thead>
           <tbody>

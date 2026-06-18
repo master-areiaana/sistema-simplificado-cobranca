@@ -86,6 +86,16 @@
     @apply bg-background text-foreground;
   }
 
+  /* Oculta filtros superiores redundantes. Os filtros oficiais ficam no cabeçalho das colunas. */
+  main > div:has(input[placeholder="Buscar por nome ou nº..."]),
+  main > div:has(input[placeholder="Buscar por nº ou nome..."]) {
+    display: none !important;
+  }
+
+  div:has(> input[placeholder="Buscar cliente/título"]) {
+    display: none !important;
+  }
+
   /* KPI Container Standardization */
   .kpi-container {
     width: 100%;

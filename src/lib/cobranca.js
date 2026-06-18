@@ -205,6 +205,10 @@ function origemExibicaoCarteira(source) {
   return source === "RPT_E_FINR" ? "FINR1253" : source;
 }
 
+function normalizeWorkflowStatusForCarteira(status) {
+  return String(status || "").trim() === "sem_carteira" ? "" : status;
+}
+
 export function buildItem(o) {
   const valorOriginal = num(o.valorOriginal ?? o.original_value ?? 0);
   const valorRecebido = num(o.valorRecebido ?? o.received_value ?? 0);
@@ -218,6 +222,8 @@ export function buildItem(o) {
     : usaValorDoRelatorio
       ? { valorMulta: num(o.valorMulta), valorJuros: num(o.valorJuros), valorTotalDebito: valorEmAberto || valorOriginal, diasAtraso }
       : calcFin(valorEmAberto || valorOriginal, o.vencimento);
+  const rawWorkflowStatus = o.workflow_status || o.encaminhar || "";
+  const workflowStatus = normalizeWorkflowStatusForCarteira(rawWorkflowStatus);
 
   return {
     ...o,
@@ -237,7 +243,8 @@ export function buildItem(o) {
     recordOrigin: o.recordOrigin || o.record_origin || "ERP",
     status: o.status || "Não Contatado",
     encaminhar: o.encaminhar || "",
-    workflow_status: o.workflow_status || o.encaminhar || "",
+    workflow_status: workflowStatus,
+    workflow_status_diagnostico: rawWorkflowStatus === "sem_carteira" ? "sem_carteira" : (o.workflow_status_diagnostico || ""),
     dataContato: o.dataContato || "",
     dataPromessa: o.dataPromessa || "",
     obs: o.obs || "",
@@ -252,7 +259,7 @@ export function dbToItem(r) {
     clientGroupKey: r.client_group_key || "", primaryClientCode: r.primary_client_code || r.client_code || "", erpClientCodes: r.erp_client_codes || (r.client_code ? [r.client_code] : []), recordOrigin: r.record_origin || "ERP",
     tp: r.doc_type, ser: r.serie, titulo: r.title_number, seq: r.seq, nfServico: r.nf_servico, emissao: r.issue_date, vencimento: r.due_date,
     valorOriginal: r.open_value || r.original_value, valorRecebido: r.received_value, valorEmAberto: r.open_value || r.original_value, saldoErp: r.erp_balance, partialPaymentDetected: r.partial_payment_detected,
-    portador: r.portador, status: r.current_status || "Não Contatado", encaminhar: r.workflow_status || "", workflow_status: r.workflow_status || "", tipoContato: r.current_contact_type || "", dataContato: r.last_contact_date || "", dataPromessa: r.promise_date || "", obs: r.last_note || "", qtd: r.contact_count || 0, solicitanteProtesto: r.protest_requested_by || "", clientCategory: r.client_category || ""
+    portador: r.portador, status: r.current_status || "Não Contatado", encaminhar: normalizeWorkflowStatusForCarteira(r.workflow_status || ""), workflow_status: normalizeWorkflowStatusForCarteira(r.workflow_status || ""), workflow_status_diagnostico: r.workflow_status === "sem_carteira" ? "sem_carteira" : "", tipoContato: r.current_contact_type || "", dataContato: r.last_contact_date || "", dataPromessa: r.promise_date || "", obs: r.last_note || "", qtd: r.contact_count || 0, solicitanteProtesto: r.protest_requested_by || "", clientCategory: r.client_category || ""
   });
 }
 

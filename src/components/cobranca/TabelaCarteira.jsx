@@ -11,9 +11,9 @@ const COLS_DEF = [
   { key: "venc", label: "VENCIMENTO", width: 90 },
   { key: "atraso", label: "ATRASO", width: 64 },
   { key: "vOrig", label: "VAL. ORIG", width: 92 },
-  { key: "multa", label: "MULTA", width: 76 },
-  { key: "juros", label: "JUROS", width: 76 },
-  { key: "total", label: "TOTAL A COBRAR", width: 112 },
+  { key: "multa", label: "MULTA", width: 88 },
+  { key: "juros", label: "JUROS", width: 88 },
+  { key: "total", label: "TOTAL A COBRAR", width: 122 },
   { key: "status", label: "STATUS", width: 120 },
   { key: "enc", label: "ENCAMINHAR", width: 96 },
   { key: "origem", label: "RELATÓRIO", width: 78 },
@@ -23,6 +23,8 @@ const COLS_DEF = [
   { key: "obs", label: "OBSERVAÇÃO", width: "18%", minWidth: 120 },
   { key: "acoes", label: "AÇÕES", width: 96, fixed: true },
 ];
+
+const PERCENT_PRESETS = [0, 5, 10, 15, 20, 30];
 
 const thS = (t) => ({ background: t.th, padding: "7px 8px", textAlign: "left", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .3, color: t.muted, position: "sticky", top: 0, zIndex: 10 });
 const tdS = (ex = {}) => ({ padding: "6px 8px", borderBottom: "1px solid #0002", fontSize: 11, ...ex });
@@ -34,11 +36,11 @@ const toNumber = (v) => {
   const n = Number(String(v ?? "").trim().replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
 };
+const clampPercent = (v) => Math.max(0, Math.min(999, toNumber(v)));
 
 function isStatusForaCarteira(...values) {
   const s = values.map(norm).filter(Boolean).join(" ");
   if (!s) return false;
-
   return [
     "BAIX", "PAGO", "PAGAMENTO", "RECEB", "LIQUID", "QUIT", "ENCERR",
     "CANCEL", "PERDA", "INCOBRAVEL", "DUPLIC", "CONFIRMADO", "ACORDOQUITADO"
@@ -46,19 +48,10 @@ function isStatusForaCarteira(...values) {
 }
 
 function valorAbertoReal(item) {
-  const camposAbertos = [
-    item?.valorEmAberto,
-    item?.open_value,
-    item?.saldoErp,
-    item?.erp_balance,
-    item?.valorReceber,
-    item?.valorTotalDebito,
-  ];
-
+  const camposAbertos = [item?.valorEmAberto, item?.open_value, item?.saldoErp, item?.erp_balance, item?.valorReceber, item?.valorTotalDebito];
   for (const campo of camposAbertos) {
     if (campo !== undefined && campo !== null && campo !== "") return toNumber(campo);
   }
-
   return toNumber(item?.valorOriginal ?? item?.original_value ?? 0);
 }
 
@@ -66,52 +59,27 @@ function isTituloCarteiraGeral(item) {
   if (!item) return false;
   if (item.active === false) return false;
   if (item.lossStatus || item.loss_status) return false;
-
-  if (isStatusForaCarteira(
-    item.status,
-    item.current_status,
-    item.current_motive,
-    item.encaminhar,
-    item.workflow_status,
-    item.obs,
-    item.last_note
-  )) return false;
+  if (isStatusForaCarteira(item.status, item.current_status, item.current_motive, item.encaminhar, item.workflow_status, item.obs, item.last_note)) return false;
 
   const valorOriginal = toNumber(item.valorOriginal ?? item.original_value ?? 0);
   const valorRecebido = toNumber(item.valorRecebido ?? item.received_value ?? 0);
   const valorAberto = valorAbertoReal(item);
-
   if (valorAberto <= 0) return false;
   if (valorOriginal > 0 && valorRecebido >= valorOriginal - 0.01) return false;
-
   return true;
 }
 
 function dedupeTitulosCarteira(titulos) {
   const map = new Map();
-
   for (const item of titulos || []) {
     const keySistema = getTituloKey({ origem: item.origem, titulo: item.titulo, seq: item.seq, vencimento: item.vencimento });
     const keySemOrigem = keySistema.replace(/^(FINR1253|EB)\|/, "");
     const key = `${norm(item.nomeCli)}|${keySemOrigem}`;
     const prev = map.get(key);
-
-    if (!prev) {
-      map.set(key, item);
-      continue;
-    }
-
-    const score = (x) =>
-      (x.origem === "FINR1253" ? 3 : 0) +
-      (x.dataContato ? 2 : 0) +
-      (x.obs ? 2 : 0) +
-      (x.dataPromessa ? 1 : 0) +
-      (x.encaminhar ? 1 : 0) +
-      (toNumber(x.valorEmAberto ?? x.valorTotalDebito) > 0 ? 1 : 0);
-
+    if (!prev) { map.set(key, item); continue; }
+    const score = (x) => (x.origem === "FINR1253" ? 3 : 0) + (x.dataContato ? 2 : 0) + (x.obs ? 2 : 0) + (x.dataPromessa ? 1 : 0) + (x.encaminhar ? 1 : 0) + (toNumber(x.valorEmAberto ?? x.valorTotalDebito) > 0 ? 1 : 0);
     if (score(item) > score(prev)) map.set(key, item);
   }
-
   return Array.from(map.values());
 }
 
@@ -211,8 +179,19 @@ function matchesSearch(g, busca = "") {
   return norm(texto).includes(b);
 }
 
+function calculateChargeValues(baseValue, rates = {}) {
+  const base = toNumber(baseValue);
+  const multaPercent = clampPercent(rates.multa);
+  const jurosPercent = clampPercent(rates.juros);
+  const multa = base * (multaPercent / 100);
+  const juros = base * (jurosPercent / 100);
+  return { base, multa, juros, total: base + multa + juros, multaPercent, jurosPercent };
+}
+
 export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem }) {
   const [buscaLocal, setBuscaLocal] = useState("");
+  const [defaultRates, setDefaultRates] = useState({ multa: 0, juros: 0 });
+  const [customRatesByClient, setCustomRatesByClient] = useState({});
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
   const colCount = visibleCols.length;
 
@@ -236,18 +215,92 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     setFCart && setFCart({});
   }
 
+  function ratesForGroup(g) {
+    return customRatesByClient[g.clientKey] || defaultRates;
+  }
+
+  function setRateForSelectedOrDefault(field, value) {
+    const percent = clampPercent(value);
+    if (selected?.size > 0) {
+      setCustomRatesByClient((current) => {
+        const next = { ...current };
+        for (const clientKey of selected) {
+          next[clientKey] = { ...(next[clientKey] || defaultRates), [field]: percent };
+        }
+        return next;
+      });
+      return;
+    }
+    setDefaultRates((current) => ({ ...current, [field]: percent }));
+  }
+
+  function editRate(g, field) {
+    const atual = ratesForGroup(g)?.[field] || 0;
+    const label = field === "multa" ? "multa" : "juros";
+    const raw = window.prompt(`Digite o percentual de ${label} para este cliente/título:`, String(atual).replace(".", ","));
+    if (raw === null) return;
+    const percent = clampPercent(raw);
+    setCustomRatesByClient((current) => ({
+      ...current,
+      [g.clientKey]: { ...(current[g.clientKey] || defaultRates), [field]: percent },
+    }));
+  }
+
+  function renderRateButtons(field, label, color) {
+    const current = selected?.size > 0 ? null : defaultRates[field];
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, color: t.muted, fontWeight: 800 }}>{label}</span>
+        {PERCENT_PRESETS.map((pct) => (
+          <button
+            key={`${field}-${pct}`}
+            type="button"
+            onClick={() => setRateForSelectedOrDefault(field, pct)}
+            style={{
+              background: current === pct ? color : t.surf,
+              border: `1px solid ${current === pct ? color : t.bor}`,
+              borderRadius: 5,
+              color: current === pct ? "#fff" : t.txt,
+              cursor: "pointer",
+              fontSize: 10,
+              fontWeight: 800,
+              padding: "4px 7px",
+            }}
+          >
+            {pct}%
+          </button>
+        ))}
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="digitar %"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              setRateForSelectedOrDefault(field, event.currentTarget.value);
+              event.currentTarget.value = "";
+            }
+          }}
+          style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 5, padding: "4px 7px", width: 76, fontSize: 10 }}
+        />
+      </div>
+    );
+  }
+
   function renderCell(key, g) {
     const cliente = getDisplayClient(g);
+    const rates = ratesForGroup(g);
+    const calc = calculateChargeValues(g.valorOriginal, rates);
     switch (key) {
       case "nrCli": return <td style={{ ...tdS(), color: t.muted }}>{cliente.nrCli || g.nrCli}</td>;
       case "nomeCli": return <td style={tdS()} title={cliente.nomeCli}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(cliente.nomeCli)}>{cliente.nomeCli}</b></td>;
       case "qtd": return <td style={{ ...tdS(), textAlign: "center" }}>{g.qtdTitulos}</td>;
       case "venc": return <td style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(g.primeiroVencimento)}</td>;
       case "atraso": return <td style={{ ...tdS(), color: g.maiorAtraso > 0 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>;
-      case "vOrig": return <td style={{ ...tdS(), fontWeight: 700 }}>{fmtM(g.valorOriginal)}</td>;
-      case "multa": return <td style={{ ...tdS(), color: "#f97316" }}>{fmtM(g.valorMulta)}</td>;
-      case "juros": return <td style={{ ...tdS(), color: "#eab308" }}>{fmtM(g.valorJuros)}</td>;
-      case "total": return <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(g.valorTotalDebito)}</td>;
+      case "vOrig": return <td style={{ ...tdS(), fontWeight: 700 }}>{fmtM(calc.base)}</td>;
+      case "multa": return <td onClick={() => editRate(g, "multa")} title="Clique para digitar a % de multa" style={{ ...tdS(), color: "#f97316", cursor: "pointer", background: rates.multa > 0 ? "#f9731618" : undefined }}>{fmtM(calc.multa)} <span style={{ fontSize: 9 }}>({calc.multaPercent}%)</span></td>;
+      case "juros": return <td onClick={() => editRate(g, "juros")} title="Clique para digitar a % de juros" style={{ ...tdS(), color: "#eab308", cursor: "pointer", background: rates.juros > 0 ? "#eab30818" : undefined }}>{fmtM(calc.juros)} <span style={{ fontSize: 9 }}>({calc.jurosPercent}%)</span></td>;
+      case "total": return <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(calc.total)}</td>;
       case "status": return <td style={{ ...tdS(), fontSize: 10 }}>{g.statusConsolidado}</td>;
       case "enc": return <td style={tdS()}>{encBadge(g.encaminharConsolidado)}</td>;
       case "origem": return <td style={tdS()}>{[...new Set(g.titulos.map(x => x.origem))].map(o => <span key={o} style={{ display: "inline-block", fontSize: 8, background: o === "FINR1253" ? "#7c3aed22" : "#0369a122", color: o === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(o)}</span>)}</td>;
@@ -261,10 +314,26 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Baixados, pagos, liquidados, cancelados, duplicados e saldo zerado ficam fora desta aba.</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Multa e juros podem ser simulados por % manual.</span>
         <input value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)} placeholder="Buscar cliente/título" style={{ marginLeft: "auto", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 8px", fontSize: 11 }} />
         {(buscaLocal || Object.keys(fCart || {}).length > 0) && <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "4px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Limpar</button>}
+      </div>
+
+      <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: 8, marginBottom: 8, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, color: t.muted, fontWeight: 800 }}>
+          {selected?.size > 0 ? `Aplicar em ${selected.size} selecionado(s):` : "Aplicar padrão da tela:"}
+        </span>
+        {renderRateButtons("multa", "Multa", "#f97316")}
+        {renderRateButtons("juros", "Juros", "#eab308")}
+        <button
+          type="button"
+          onClick={() => { setDefaultRates({ multa: 0, juros: 0 }); setCustomRatesByClient({}); }}
+          style={{ background: "transparent", border: `1px solid ${t.bor}`, borderRadius: 5, color: t.txt, cursor: "pointer", fontSize: 10, fontWeight: 800, padding: "4px 8px" }}
+        >
+          Zerar simulação
+        </button>
+        <span style={{ fontSize: 10, color: t.muted }}>Ou clique direto numa célula de Multa/Juros para digitar % só daquela linha.</span>
       </div>
 
       <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "auto", width: "100%" }}>
@@ -278,6 +347,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
               const isSel = selected.has(g.clientKey);
               const rowBg = isSel ? (isDark ? "rgba(232,119,34,.15)" : "rgba(232,119,34,.07)") : (i % 2 === 0 ? t.surf : t.alt);
               const leftClr = g.encaminharConsolidado === "verificacao" ? "#3b82f6" : g.encaminharConsolidado === "protesto" ? "#ef4444" : prioCor(g.prioridadeCliente);
+              const rates = ratesForGroup(g);
               return (
                 <React.Fragment key={g.clientKey}>
                   <tr style={{ background: rowBg, borderLeft: `4px solid ${leftClr}` }}>
@@ -288,31 +358,34 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                       return React.cloneElement(renderCell(c.key, g), { key: c.key });
                     })}
                   </tr>
-                  {open && g.titulos.map(item => (
-                    <tr key={item.id} style={{ background: t.surf2 }}>
-                      {visibleCols.map(c => {
-                        if (["check", "expand"].includes(c.key)) return <td key={c.key} style={tdS()} />;
-                        if (c.key === "nrCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{renderTituloDetalhe(item)}</td>;
-                        if (c.key === "nomeCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{getDisplayClient(g).nomeCli}</td>;
-                        if (c.key === "qtd") return <td key={c.key} style={{ ...tdS(), textAlign: "center" }}>1</td>;
-                        if (c.key === "venc") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
-                        if (c.key === "atraso") return <td key={c.key} style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;
-                        if (c.key === "vOrig") return <td key={c.key} style={tdS()}>{fmtM(item.valorOriginal)}</td>;
-                        if (c.key === "multa") return <td key={c.key} style={{ ...tdS(), color: "#f97316" }}>{fmtM(item.valorMulta)}</td>;
-                        if (c.key === "juros") return <td key={c.key} style={{ ...tdS(), color: "#eab308" }}>{fmtM(item.valorJuros)}</td>;
-                        if (c.key === "total") return <td key={c.key} style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(valorAbertoReal(item))}</td>;
-                        if (c.key === "status") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
-                        if (c.key === "enc") return <td key={c.key} style={tdS()}>{encBadge(item.encaminhar)}</td>;
-                        if (c.key === "origem") return <td key={c.key} style={tdS()}><span style={{ display: "inline-block", fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;
-                        if (c.key === "cat") return <td key={c.key} style={tdS()}>{item.clientCategory ? categoriaBadge(item.clientCategory) : "—"}</td>;
-                        if (c.key === "contato") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.dataContato)}</td>;
-                        if (c.key === "prom") return <td key={c.key} style={tdS()}><PromBadge date={item.dataPromessa} t={t} /></td>;
-                        if (c.key === "obs") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.obs || item.portador || "—"}</td>;
-                        if (c.key === "acoes") return <td key={c.key} style={tdS()} />;
-                        return <td key={c.key} style={tdS()} />;
-                      })}
-                    </tr>
-                  ))}
+                  {open && g.titulos.map(item => {
+                    const itemCalc = calculateChargeValues(item.valorOriginal, rates);
+                    return (
+                      <tr key={item.id} style={{ background: t.surf2 }}>
+                        {visibleCols.map(c => {
+                          if (["check", "expand"].includes(c.key)) return <td key={c.key} style={tdS()} />;
+                          if (c.key === "nrCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{renderTituloDetalhe(item)}</td>;
+                          if (c.key === "nomeCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{getDisplayClient(g).nomeCli}</td>;
+                          if (c.key === "qtd") return <td key={c.key} style={{ ...tdS(), textAlign: "center" }}>1</td>;
+                          if (c.key === "venc") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
+                          if (c.key === "atraso") return <td key={c.key} style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;
+                          if (c.key === "vOrig") return <td key={c.key} style={tdS()}>{fmtM(itemCalc.base)}</td>;
+                          if (c.key === "multa") return <td key={c.key} style={{ ...tdS(), color: "#f97316" }}>{fmtM(itemCalc.multa)}</td>;
+                          if (c.key === "juros") return <td key={c.key} style={{ ...tdS(), color: "#eab308" }}>{fmtM(itemCalc.juros)}</td>;
+                          if (c.key === "total") return <td key={c.key} style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(itemCalc.total)}</td>;
+                          if (c.key === "status") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
+                          if (c.key === "enc") return <td key={c.key} style={tdS()}>{encBadge(item.encaminhar)}</td>;
+                          if (c.key === "origem") return <td key={c.key} style={tdS()}><span style={{ display: "inline-block", fontSize: 8, background: item.origem === "FINR1253" ? "#7c3aed22" : "#0369a122", color: item.origem === "FINR1253" ? "#7c3aed" : "#0369a1", padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{getOrigemLabel(item.origem)}</span></td>;
+                          if (c.key === "cat") return <td key={c.key} style={tdS()}>{item.clientCategory ? categoriaBadge(item.clientCategory) : "—"}</td>;
+                          if (c.key === "contato") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.dataContato)}</td>;
+                          if (c.key === "prom") return <td key={c.key} style={tdS()}><PromBadge date={item.dataPromessa} t={t} /></td>;
+                          if (c.key === "obs") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.obs || item.portador || "—"}</td>;
+                          if (c.key === "acoes") return <td key={c.key} style={tdS()} />;
+                          return <td key={c.key} style={tdS()} />;
+                        })}
+                      </tr>
+                    );
+                  })}
                 </React.Fragment>
               );
             })}

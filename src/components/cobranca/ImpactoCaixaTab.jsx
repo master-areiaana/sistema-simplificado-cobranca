@@ -60,7 +60,7 @@ export default function ImpactoCaixaTab({ grouped, baixadosImportacao = [], even
 
   const semCarteiraArr = useMemo(() => grouped.filter((g) => {
     if (pagosArr.some((p) => p.clientKey === g.clientKey)) return false;
-    return g.titulos.some((ti) => ti.workflow_status === "sem_carteira");
+    return g.titulos.some((ti) => ti.workflow_status_diagnostico === "sem_carteira" || ti.workflow_status === "sem_carteira");
   }), [grouped, pagosArr]);
 
   const totalPagosVal = pagosArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0);
@@ -91,14 +91,14 @@ export default function ImpactoCaixaTab({ grouped, baixadosImportacao = [], even
       {/* ── Seção 1: Sem Carteira (cruzamento EB x TOPCON) ── */}
       <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderLeft: "4px solid #f59e0b", borderRadius: 10, padding: "14px 16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: t.txt }}>⚠️ Sem Carteira — Clientes não distribuídos (EB ↔ TOPCON)</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: t.txt }}>⚠️ Sem Carteira — Diagnóstico de cruzamento (EB ↔ TOPCON)</div>
           <div style={{ display: "flex", gap: 16, fontSize: 11, color: t.muted }}>
             <span><b style={{ color: "#f59e0b" }}>{semCarteiraArr.length}</b> clientes</span>
             <span>Total: <b style={{ color: "#f59e0b" }}>{fmtM(totalSCVal)}</b></span>
           </div>
         </div>
         <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>
-          Clientes presentes em apenas uma carteira (EB ou TOPCON) — ausentes na outra. Cruzamento automático por código e nome normalizado. Estes clientes precisam ser distribuídos manualmente.
+          Clientes presentes em apenas uma carteira ou com divergência de cruzamento. Eles permanecem visíveis na Carteira Geral quando possuem saldo em aberto.
         </div>
         {semCarteiraArr.length === 0
           ? <div style={{ padding: 16, textAlign: "center", color: t.muted, fontSize: 12 }}>Nenhum cliente sem carteira correspondente. ✅</div>

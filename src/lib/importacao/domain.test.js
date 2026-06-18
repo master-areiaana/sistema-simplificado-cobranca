@@ -97,6 +97,17 @@ test("título baixado não entra na Carteira Geral", () => {
   );
 });
 
+test("sem_carteira não bloqueia título com saldo em aberto", () => {
+  assert.equal(
+    isTituloElegivelCarteira({
+      active: true,
+      saldoRestante: 700,
+      workflow_status: "sem_carteira",
+    }),
+    true,
+  );
+});
+
 test("considera importação de 60 títulos sobre 500 anteriores como parcial", () => {
   assert.equal(
     isImportacaoParcial({ totalAtivosAnteriores: 500, totalNovaImportacao: 60 }),

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import ColHeader from "./ColHeader";
 import { Btn, PromBadge, ObsCell, Badge } from "./UI";
 import { fmtM, fmtD, prioCor, getTituloKey } from "@/lib/cobranca";
 
@@ -24,8 +25,7 @@ const COLS_DEF = [
   { key: "acoes", label: "AÇÕES", width: 100, fixed: true },
 ];
 
-const thS = (t) => ({ background: t.th, padding: "7px 8px", textAlign: "left", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .3, color: t.muted, position: "sticky", top: 0, zIndex: 10 });
-const filterThS = (t) => ({ ...thS(t), top: 29, padding: "4px 5px", zIndex: 9 });
+const thS = (t) => ({ background: t.th, padding: "8px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .4, color: t.muted, position: "sticky", top: 0, zIndex: 10 });
 const tdS = (ex = {}) => ({ padding: "6px 8px", borderBottom: "1px solid #0002", fontSize: 11, ...ex });
 const cleanText = (v) => String(v ?? "").trim();
 const norm = (v) => cleanText(v).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
@@ -151,9 +151,6 @@ function sanitizeGroup(g, origemFiltro) {
     ...g,
     titulos,
     valorOriginal: titulos.reduce((s, x) => s + toNumber(x.valorOriginal), 0),
-    valorMulta: titulos.reduce((s, x) => s + toNumber(x.valorMulta), 0),
-    valorJuros: titulos.reduce((s, x) => s + toNumber(x.valorJuros), 0),
-    valorTotalDebito: titulos.reduce((s, x) => s + valorAbertoReal(x), 0),
     maiorAtraso: titulos.reduce((m, x) => Math.max(m, Number(x.diasAtraso || 0)), 0),
     qtdTitulos: titulos.length,
     qtdTotal: titulos.reduce((s, x) => s + Number(x.qtd || 0), 0),
@@ -201,15 +198,10 @@ function sumGroupCharges(g, ratesByTitle = {}) {
   }, { base: 0, multa: 0, juros: 0, total: 0 });
 }
 
-function initialWidths() {
-  return Object.fromEntries(COLS_DEF.map((col) => [col.key, Number(col.width) || col.minWidth || 120]));
-}
-
-export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem }) {
+export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem }) {
   const [buscaLocal, setBuscaLocal] = useState("");
   const [ratesByTitle, setRatesByTitle] = useState({});
-  const [columnFilters, setColumnFilters] = useState({});
-  const [colWidths, setColWidths] = useState(initialWidths);
+  const [filters, setFilters] = useState({});
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
   const colCount = visibleCols.length;
 
@@ -227,42 +219,48 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     const origem = [...new Set(g.titulos.map(x => getOrigemLabel(x.origem)))].join(" ");
     const cat = [...new Set(g.titulos.map(x => x.clientCategory).filter(Boolean))].join(" ");
     const values = {
-      nrCli: cliente.nrCli || g.nrCli,
-      nomeCli: cliente.nomeCli,
-      qtd: g.qtdTitulos,
-      venc: fmtD(g.primeiroVencimento),
-      atraso: g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "",
+      nrCli: cliente.nrCli || g.nrCli || "(Vazio)",
+      nomeCli: cliente.nomeCli || "(Vazio)",
+      qtd: String(g.qtdTitulos || 0),
+      venc: fmtD(g.primeiroVencimento) || "(Vazio)",
+      atraso: g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—",
       vOrig: fmtM(calc.base),
       multa: fmtM(calc.multa),
       juros: fmtM(calc.juros),
       total: fmtM(calc.total),
-      status: g.statusConsolidado,
-      enc: g.encaminharConsolidado,
-      origem,
-      cat,
-      contato: fmtD(g.ultimoContato),
-      prom: fmtD(g.dataPromessa),
-      obs: g.obsConsolidada,
+      status: g.statusConsolidado || "(Vazio)",
+      enc: g.encaminharConsolidado || "—",
+      origem: origem || "(Vazio)",
+      cat: cat || "(Vazio)",
+      contato: fmtD(g.ultimoContato) || "(Vazio)",
+      prom: fmtD(g.dataPromessa) || "(Vazio)",
+      obs: g.obsConsolidada || "(Sem observação)",
     };
     return String(values[key] ?? "");
   }
 
-  function matchesColumnFilters(g) {
-    return Object.entries(columnFilters).every(([key, value]) => {
-      const filter = norm(value);
-      if (!filter) return true;
-      return norm(columnText(g, key)).includes(filter);
-    });
-  }
-
-  const carteiraGeral = useMemo(() => {
+  const carteiraBase = useMemo(() => {
     return (sortedCart || [])
       .map((g) => sanitizeGroup(g, filtroOrigem))
       .filter(Boolean)
       .filter(hasValidDisplayClient)
-      .filter((g) => matchesSearch(g, buscaLocal))
-      .filter(matchesColumnFilters);
-  }, [sortedCart, filtroOrigem, buscaLocal, columnFilters, ratesByTitle]);
+      .filter((g) => matchesSearch(g, buscaLocal));
+  }, [sortedCart, filtroOrigem, buscaLocal]);
+
+  function colData(field) {
+    return carteiraBase.map((g) => ({ [field]: columnText(g, field) }));
+  }
+
+  function applySelectionFilters(g) {
+    for (const [field, vals] of Object.entries(filters)) {
+      if (!vals) continue;
+      if (vals.length === 0) return false;
+      if (!vals.includes(columnText(g, field))) return false;
+    }
+    return true;
+  }
+
+  const carteiraGeral = useMemo(() => carteiraBase.filter(applySelectionFilters), [carteiraBase, filters, ratesByTitle]);
 
   const baseValida = useMemo(() => {
     return (baseCart || [])
@@ -273,17 +271,14 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
 
   function clearAllFilters() {
     setBuscaLocal("");
-    setColumnFilters({});
+    setFilters({});
     setFCart && setFCart({});
   }
 
   function setRateForItem(item, field, value) {
     const percent = clampPercent(value);
     const key = tituloCalcKey(item);
-    setRatesByTitle((current) => ({
-      ...current,
-      [key]: { ...(current[key] || { multa: 0, juros: 0 }), [field]: percent },
-    }));
+    setRatesByTitle((current) => ({ ...current, [key]: { ...(current[key] || { multa: 0, juros: 0 }), [field]: percent } }));
   }
 
   function editRateForItem(item, field) {
@@ -309,52 +304,11 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     });
   }
 
-  function startResize(event, key) {
-    event.preventDefault();
-    event.stopPropagation();
-    const startX = event.clientX;
-    const startWidth = colWidths[key] || 90;
-    const onMove = (moveEvent) => {
-      const width = Math.max(42, startWidth + moveEvent.clientX - startX);
-      setColWidths((current) => ({ ...current, [key]: width }));
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
-  function renderHeaderCell(c) {
+  function headerCell(c) {
     if (c.key === "check") return <th key={c.key} style={thS(t)}><input type="checkbox" checked={selected.size === carteiraGeral.length && carteiraGeral.length > 0} onChange={toggleAll} /></th>;
     if (c.key === "expand") return <th key={c.key} style={thS(t)} />;
-    return (
-      <th key={c.key} style={{ ...thS(t), position: "sticky" }}>
-        <span>{c.label}</span>
-        {!c.fixed && (
-          <span
-            onMouseDown={(event) => startResize(event, c.key)}
-            title="Arraste para ajustar a largura"
-            style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 7, cursor: "col-resize", borderRight: `2px solid transparent` }}
-          />
-        )}
-      </th>
-    );
-  }
-
-  function renderFilterCell(c) {
-    if (["check", "expand", "acoes"].includes(c.key)) return <th key={c.key} style={filterThS(t)} />;
-    return (
-      <th key={c.key} style={filterThS(t)}>
-        <input
-          value={columnFilters[c.key] || ""}
-          onChange={(event) => setColumnFilters((current) => ({ ...current, [c.key]: event.target.value }))}
-          placeholder="Filtrar..."
-          style={{ width: "100%", boxSizing: "border-box", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 4, padding: "3px 4px", fontSize: 9 }}
-        />
-      </th>
-    );
+    if (c.key === "acoes") return <th key={c.key} style={thS(t)}>AÇÕES</th>;
+    return <ColHeader key={c.key} label={c.label} field={c.key} data={colData(c.key)} filters={filters} setFilters={setFilters} t={t} width={c.width} />;
   }
 
   function renderCell(key, g) {
@@ -384,19 +338,15 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Abra no + e clique em Multa/Juros de cada título para digitar a %. A linha do cliente soma os títulos.</span>
+        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Use o filtro no título da coluna. Abra no + e clique em Multa/Juros de cada título para digitar a %.</span>
         <input value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)} placeholder="Buscar cliente/título" style={{ marginLeft: "auto", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 8px", fontSize: 11 }} />
-        {(buscaLocal || Object.values(columnFilters).some(Boolean) || Object.keys(fCart || {}).length > 0) && <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "4px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Limpar filtros</button>}
+        {(buscaLocal || Object.values(filters).some(Boolean) || Object.keys(fCart || {}).length > 0) && <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "4px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Limpar filtros</button>}
         {Object.keys(ratesByTitle).length > 0 && <button onClick={() => setRatesByTitle({})} style={{ background: "transparent", border: `1px solid ${t.bor}`, borderRadius: 4, padding: "4px 8px", color: t.txt, cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Zerar multa/juros</button>}
       </div>
 
       <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "auto", width: "100%" }}>
-        <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-          <colgroup>{visibleCols.map(c => <col key={c.key} style={{ width: colWidths[c.key] || c.width || 90 }} />)}</colgroup>
-          <thead>
-            <tr>{visibleCols.map(renderHeaderCell)}</tr>
-            <tr>{visibleCols.map(renderFilterCell)}</tr>
-          </thead>
+        <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", tableLayout: "auto" }}>
+          <thead><tr>{visibleCols.map(headerCell)}</tr></thead>
           <tbody>
             {carteiraGeral.length === 0 && <tr><td colSpan={colCount} style={{ textAlign: "center", padding: 44, color: t.muted, background: t.surf }}>Nenhum título em aberto para cobrar nesta carteira.</td></tr>}
             {carteiraGeral.map((g, i) => {

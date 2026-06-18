@@ -4,7 +4,6 @@ import { Btn, PromBadge, ObsCell, Badge } from "./UI";
 import { fmtM, fmtD, prioCor } from "@/lib/cobranca";
 import { rankingConfiancaCliente } from "@/lib/rankingConfianca";
 
-const thPlain = (t) => ({ background: t.th, padding: "8px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .4, color: t.muted, position: "sticky", top: 0, zIndex: 10 });
 const tdS = (ex = {}) => ({ padding: "7px 10px", borderBottom: "1px solid #0002", fontSize: 11, ...ex });
 
 function encBadge(enc, t) {
@@ -18,6 +17,7 @@ function fieldVal(g, field, fmtD, fmtM) {
   switch (field) {
     case "nrCli": return g.nrCli || "(Vazio)";
     case "nomeCli": return g.nomeCli || "(Vazio)";
+    case "qtdTitulos": return String(g.qtdTitulos ?? 0);
     case "rankingConfianca": return g.rankingConfianca?.label || "Sem ranking";
     case "statusConsolidado": return g.statusConsolidado || "(Vazio)";
     case "encaminharConsolidado": return g.encaminharConsolidado || "Sem encaminhamento";
@@ -25,6 +25,7 @@ function fieldVal(g, field, fmtD, fmtM) {
     case "dataPromessa": return g.dataPromessa ? fmtD(g.dataPromessa) : "(Vazio)";
     case "valorTotalDebito": return fmtM(g.valorTotalDebito);
     case "obsConsolidada": return g.obsConsolidada || "(Sem observação)";
+    case "hist": return "Histórico";
     default: return "";
   }
 }
@@ -57,20 +58,20 @@ export default function TabelaCobrados({ data, events = [], t, setHistModal, dlC
         </div>
       </div>
       <div style={{ overflowX: "auto", borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "auto" }}>
           <thead>
             <tr>
-              <CH label="Nº" field="nrCli" data={colData("nrCli")} filters={filters} setFilters={setFilters} />
-              <CH label="CLIENTE" field="nomeCli" data={colData("nomeCli")} filters={filters} setFilters={setFilters} />
-              <th style={thPlain(t)}>QTD.</th>
-              <CH label="TOTAL" field="valorTotalDebito" data={colData("valorTotalDebito")} filters={filters} setFilters={setFilters} />
-              <CH label="STATUS" field="statusConsolidado" data={colData("statusConsolidado")} filters={filters} setFilters={setFilters} />
-              <CH label="RANKING DE CONFIABILIDADE" field="rankingConfianca" data={colData("rankingConfianca")} filters={filters} setFilters={setFilters} />
-              <CH label="ENCAMINHAR" field="encaminharConsolidado" data={colData("encaminharConsolidado")} filters={filters} setFilters={setFilters} />
-              <CH label="CONTATO" field="ultimoContato" data={colData("ultimoContato")} filters={filters} setFilters={setFilters} />
-              <CH label="PROMESSA" field="dataPromessa" data={colData("dataPromessa")} filters={filters} setFilters={setFilters} />
-              <CH label="OBSERVAÇÃO" field="obsConsolidada" data={colData("obsConsolidada")} filters={filters} setFilters={setFilters} />
-              <th style={thPlain(t)}>HIST.</th>
+              <CH label="Nº" field="nrCli" data={colData("nrCli")} filters={filters} setFilters={setFilters} width={80} />
+              <CH label="CLIENTE" field="nomeCli" data={colData("nomeCli")} filters={filters} setFilters={setFilters} width={190} />
+              <CH label="QTD." field="qtdTitulos" data={colData("qtdTitulos")} filters={filters} setFilters={setFilters} width={80} />
+              <CH label="TOTAL" field="valorTotalDebito" data={colData("valorTotalDebito")} filters={filters} setFilters={setFilters} width={130} />
+              <CH label="STATUS" field="statusConsolidado" data={colData("statusConsolidado")} filters={filters} setFilters={setFilters} width={130} />
+              <CH label="RANKING DE CONFIABILIDADE" field="rankingConfianca" data={colData("rankingConfianca")} filters={filters} setFilters={setFilters} width={230} />
+              <CH label="ENCAMINHAR" field="encaminharConsolidado" data={colData("encaminharConsolidado")} filters={filters} setFilters={setFilters} width={130} />
+              <CH label="CONTATO" field="ultimoContato" data={colData("ultimoContato")} filters={filters} setFilters={setFilters} width={110} />
+              <CH label="PROMESSA" field="dataPromessa" data={colData("dataPromessa")} filters={filters} setFilters={setFilters} width={110} />
+              <CH label="OBSERVAÇÃO" field="obsConsolidada" data={colData("obsConsolidada")} filters={filters} setFilters={setFilters} width={190} />
+              <CH label="HIST." field="hist" data={colData("hist")} filters={filters} setFilters={setFilters} width={90} />
             </tr>
           </thead>
           <tbody>

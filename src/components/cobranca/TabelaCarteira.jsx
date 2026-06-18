@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ColHeader from "./ColHeader";
 import { Btn, PromBadge, ObsCell, Badge } from "./UI";
 import { fmtM, fmtD, prioCor, getTituloKey } from "@/lib/cobranca";
+
+const RATES_STORAGE_KEY = "sc_carteira_multa_juros_por_titulo";
 
 const COLS_DEF = [
   { key: "check", label: "", width: 32, fixed: true },
@@ -36,6 +38,26 @@ const toNumber = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 const clampPercent = (v) => Math.max(0, Math.min(999, toNumber(v)));
+
+function loadStoredRates() {
+  try {
+    const raw = localStorage.getItem(RATES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredRates(rates) {
+  try {
+    localStorage.setItem(RATES_STORAGE_KEY, JSON.stringify(rates || {}));
+    window.dispatchEvent(new CustomEvent("sc:charge-rates-updated", { detail: rates || {} }));
+  } catch {
+    // ignora indisponibilidade de storage
+  }
+}
 
 function isStatusForaCarteira(...values) {
   const s = values.map(norm).filter(Boolean).join(" ");
@@ -198,12 +220,29 @@ function sumGroupCharges(g, ratesByTitle = {}) {
   }, { base: 0, multa: 0, juros: 0, total: 0 });
 }
 
+function updateKpiCardsFromCarteira(totals) {
+  const labels = { "A COBRAR": fmtM(totals.base), "TOTAL EM ABERTO": fmtM(totals.total) };
+  setTimeout(() => {
+    const nodes = Array.from(document.querySelectorAll("div"));
+    for (const [label, value] of Object.entries(labels)) {
+      const labelNode = nodes.find((node) => node.childElementCount === 0 && node.textContent.trim().toUpperCase() === label);
+      const card = labelNode?.parentElement;
+      const valueNode = card ? Array.from(card.children).find((child) => child !== labelNode && child.textContent.includes("R$")) : null;
+      if (valueNode) valueNode.textContent = value;
+    }
+  }, 0);
+}
+
 export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem }) {
   const [buscaLocal, setBuscaLocal] = useState("");
-  const [ratesByTitle, setRatesByTitle] = useState({});
+  const [ratesByTitle, setRatesByTitle] = useState(() => loadStoredRates());
   const [filters, setFilters] = useState({});
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
   const colCount = visibleCols.length;
+
+  useEffect(() => {
+    saveStoredRates(ratesByTitle);
+  }, [ratesByTitle]);
 
   function ratesForItem(item) {
     return ratesByTitle[tituloCalcKey(item)] || { multa: 0, juros: 0 };
@@ -261,6 +300,16 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   }
 
   const carteiraGeral = useMemo(() => carteiraBase.filter(applySelectionFilters), [carteiraBase, filters, ratesByTitle]);
+  const carteiraTotals = useMemo(() => carteiraGeral.reduce((acc, g) => {
+    const calc = groupCalc(g);
+    acc.base += calc.base;
+    acc.total += calc.total;
+    return acc;
+  }, { base: 0, total: 0 }), [carteiraGeral, ratesByTitle]);
+
+  useEffect(() => {
+    updateKpiCardsFromCarteira(carteiraTotals);
+  }, [carteiraTotals]);
 
   const baseValida = useMemo(() => {
     return (baseCart || [])
@@ -304,6 +353,11 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     });
   }
 
+  function clearRates() {
+    setRatesByTitle({});
+    try { localStorage.removeItem(RATES_STORAGE_KEY); } catch {}
+  }
+
   function headerCell(c) {
     if (c.key === "check") return <th key={c.key} style={thS(t)}><input type="checkbox" checked={selected.size === carteiraGeral.length && carteiraGeral.length > 0} onChange={toggleAll} /></th>;
     if (c.key === "expand") return <th key={c.key} style={thS(t)} />;
@@ -341,7 +395,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
         <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Use o filtro no título da coluna. Abra no + e clique em Multa/Juros de cada título para digitar a %.</span>
         <input value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)} placeholder="Buscar cliente/título" style={{ marginLeft: "auto", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 8px", fontSize: 11 }} />
         {(buscaLocal || Object.values(filters).some(Boolean) || Object.keys(fCart || {}).length > 0) && <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "4px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Limpar filtros</button>}
-        {Object.keys(ratesByTitle).length > 0 && <button onClick={() => setRatesByTitle({})} style={{ background: "transparent", border: `1px solid ${t.bor}`, borderRadius: 4, padding: "4px 8px", color: t.txt, cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Zerar multa/juros</button>}
+        {Object.keys(ratesByTitle).length > 0 && <button onClick={clearRates} style={{ background: "transparent", border: `1px solid ${t.bor}`, borderRadius: 4, padding: "4px 8px", color: t.txt, cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Zerar multa/juros</button>}
       </div>
 
       <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "auto", width: "100%" }}>

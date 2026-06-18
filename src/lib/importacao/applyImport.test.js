@@ -254,6 +254,24 @@ test("bloqueia aplicação quando a carteira muda desde o plano exibido", () => 
   );
 });
 
+test("bloqueia plano com mesma quantidade de gravações mas alvo diferente", () => {
+  const displayed = buildImportApplicationPlan({
+    preview: preview([canonical({ "Saldo Restante (R$)": 650 })]),
+    existingTitles: [existing({ id: "titulo-1" })],
+  });
+  const revalidated = buildImportApplicationPlan({
+    preview: preview([canonical({ "Saldo Restante (R$)": 650 })]),
+    existingTitles: [existing({ id: "titulo-2" })],
+  });
+
+  assert.equal(displayed.summary.totalUpdate, 1);
+  assert.equal(revalidated.summary.totalUpdate, 1);
+  assert.throws(
+    () => assertApplicationPlanStillCurrent(displayed, revalidated),
+    { message: STALE_APPLICATION_PLAN_MESSAGE },
+  );
+});
+
 test("falha parcial consome o plano até gerar nova prévia ou plano", () => {
   const guard = createImportApplicationAttemptGuard();
 

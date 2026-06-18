@@ -1,49 +1,43 @@
 import { createClient } from '@base44/sdk';
 import { appParams } from '@/lib/app-params';
 
-// Campos manuais que a importação NUNCA pode sobrescrever.
 export const CAMPOS_MANUAIS = [
-  'current_status',
-  'current_motive',
-  'current_contact_type',
-  'promise_date',
-  'last_contact_date',
-  'last_note',
-  'action_to_do',
-  'description',
-  'contact_count',
-  'protest_requested_by',
-  'workflow_status',
-  'updated_by',
-  'client_category',
+  'current_status', 'current_motive', 'current_contact_type', 'promise_date',
+  'last_contact_date', 'last_note', 'action_to_do', 'description', 'contact_count',
+  'protest_requested_by', 'workflow_status', 'updated_by', 'client_category',
 ];
-
-const { appId, token, functionsVersion, appBaseUrl } = appParams;
-
-const rawBase44 = createClient({
-  appId,
-  token,
-  functionsVersion,
-  serverUrl: appBaseUrl || '',
-  requiresAuth: false,
-  appBaseUrl,
-});
 
 const LOCAL_PREFIX = 'sc_local_entity_';
 const isBrowser = typeof window !== 'undefined' && Boolean(window.localStorage);
 const subscribers = new Map();
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let queue = Promise.resolve();
 
-function isRateLimitError(error) {
-  return String(error?.message || error || '').toLowerCase().includes('rate limit');
+function startRemoteClient() {
+  try {
+    const { appId, token, functionsVersion, appBaseUrl } = appParams;
+    if (!appId && !appBaseUrl) return { entities: {} };
+    return createClient({
+      appId,
+      token,
+      functionsVersion,
+      serverUrl: appBaseUrl || '',
+      requiresAuth: false,
+      appBaseUrl,
+    });
+  } catch (error) {
+    console.warn('[local-first] Base44 não iniciou. Usando dados locais.', error);
+    return { entities: {} };
+  }
 }
 
-async function runWithRateLimit(fn) {
+const rawBase44 = startRemoteClient();
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const isRateLimitError = (error) => String(error?.message || error || '').toLowerCase().includes('rate limit');
+
+async function runRemote(fn) {
   const run = async () => {
     let lastError = null;
-
     for (let attempt = 0; attempt < 6; attempt += 1) {
       try {
         const result = await fn();
@@ -55,10 +49,8 @@ async function runWithRateLimit(fn) {
         await sleep(1800 + attempt * 900);
       }
     }
-
     throw lastError;
   };
-
   const task = queue.then(run, run);
   queue = task.catch(() => undefined);
   return task;
@@ -68,17 +60,19 @@ function localKey(entityName) {
   return `${LOCAL_PREFIX}${entityName}`;
 }
 
-function safeParse(value, fallback) {
+function readLocal(entityName) {
+  if (!isBrowser) return [];
   try {
-    return JSON.parse(value);
+    return JSON.parse(window.localStorage.getItem(localKey(entityName)) || '[]');
   } catch {
-    return fallback;
+    return [];
   }
 }
 
-function readLocal(entityName) {
-  if (!isBrowser) return [];
-  return safeParse(window.localStorage.getItem(localKey(entityName)), []);
+function notify(entityName) {
+  for (const callback of subscribers.get(entityName) || []) {
+    try { callback(); } catch { /* noop */ }
+  }
 }
 
 function writeLocal(entityName, rows) {
@@ -87,29 +81,20 @@ function writeLocal(entityName, rows) {
   notify(entityName);
 }
 
-function notify(entityName) {
-  for (const callback of subscribers.get(entityName) || []) {
-    try { callback(); } catch { /* mantém os demais listeners vivos */ }
-  }
+function nowISO() {
+  return new Date().toISOString();
 }
 
 function ensureId(record = {}) {
   return record.id || `local_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function nowISO() {
-  return new Date().toISOString();
+function sameValue(left, right) {
+  return String(left ?? '').trim() === String(right ?? '').trim();
 }
 
-function normalizeComparable(value) {
-  return String(value ?? '').trim();
-}
-
-function matchesCriteria(row, criteria = {}) {
-  return Object.entries(criteria || {}).every(([field, expected]) => {
-    if (expected === undefined) return true;
-    return normalizeComparable(row?.[field]) === normalizeComparable(expected);
-  });
+function matches(row, criteria = {}) {
+  return Object.entries(criteria || {}).every(([field, expected]) => expected === undefined || sameValue(row?.[field], expected));
 }
 
 function sortRows(rows, orderBy = '') {
@@ -117,38 +102,35 @@ function sortRows(rows, orderBy = '') {
   const desc = String(orderBy).startsWith('-');
   const field = desc ? String(orderBy).slice(1) : String(orderBy);
   return [...rows].sort((a, b) => {
-    const left = a?.[field] ?? '';
-    const right = b?.[field] ?? '';
-    const result = String(left).localeCompare(String(right), 'pt-BR', { numeric: true });
+    const result = String(a?.[field] ?? '').localeCompare(String(b?.[field] ?? ''), 'pt-BR', { numeric: true });
     return desc ? -result : result;
   });
 }
 
-function mergeLocal(entityName, remoteRows = []) {
-  if (!Array.isArray(remoteRows) || remoteRows.length === 0) return;
-  const localRows = readLocal(entityName);
-  const byId = new Map(localRows.map((row) => [row.id, row]));
-  for (const row of remoteRows) {
-    if (row?.id) byId.set(row.id, { ...byId.get(row.id), ...row });
+function mergeLocal(entityName, rows = []) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const current = readLocal(entityName);
+  const byId = new Map(current.map((row) => [row.id, row]));
+  for (const row of rows) {
+    if (row?.id) byId.set(row.id, { ...(byId.get(row.id) || {}), ...row });
   }
   writeLocal(entityName, Array.from(byId.values()));
 }
 
-function upsertLocal(entityName, record = {}) {
+function saveLocal(entityName, record = {}) {
   const rows = readLocal(entityName);
   const id = ensureId(record);
   const index = rows.findIndex((row) => row.id === id);
+  const previous = index >= 0 ? rows[index] : {};
   const saved = {
-    ...(index >= 0 ? rows[index] : {}),
+    ...previous,
     ...record,
     id,
-    created_date: record.created_date || rows[index]?.created_date || nowISO(),
+    created_date: previous.created_date || record.created_date || nowISO(),
     updated_date: nowISO(),
   };
-
   if (index >= 0) rows[index] = saved;
   else rows.unshift(saved);
-
   writeLocal(entityName, rows);
   return saved;
 }
@@ -158,27 +140,24 @@ function makeLocalEntity(entityName) {
     async list(orderBy, limit = 1000) {
       return sortRows(readLocal(entityName), orderBy).slice(0, limit);
     },
-
     async filter(criteria = {}, orderBy, limit = 1000) {
-      return sortRows(readLocal(entityName).filter((row) => matchesCriteria(row, criteria)), orderBy).slice(0, limit);
+      return sortRows(readLocal(entityName).filter((row) => matches(row, criteria)), orderBy).slice(0, limit);
     },
-
     async create(record) {
-      return upsertLocal(entityName, record);
+      return saveLocal(entityName, record);
     },
-
     async update(id, fields) {
-      return upsertLocal(entityName, { ...(fields || {}), id });
+      return saveLocal(entityName, { ...(fields || {}), id });
     },
-
     async bulkCreate(records = []) {
-      return Promise.all((records || []).map((record) => this.create(record)));
+      const result = [];
+      for (const record of records || []) result.push(await this.create(record));
+      return result;
     },
-
     subscribe(callback) {
-      const current = subscribers.get(entityName) || new Set();
-      current.add(callback);
-      subscribers.set(entityName, current);
+      const set = subscribers.get(entityName) || new Set();
+      set.add(callback);
+      subscribers.set(entityName, set);
       return () => {
         const next = subscribers.get(entityName) || new Set();
         next.delete(callback);
@@ -194,96 +173,78 @@ function remoteEntity(entityName) {
 
 function makeHybridEntity(entityName) {
   const local = makeLocalEntity(entityName);
-
   return {
     async list(orderBy, limit = 1000) {
-      const localRows = await local.list(orderBy, limit);
+      const fallback = await local.list(orderBy, limit);
       const remote = remoteEntity(entityName);
-      if (!remote?.list) return localRows;
-
+      if (!remote?.list) return fallback;
       try {
-        const remoteRows = await runWithRateLimit(() => remote.list(orderBy, limit));
-        if (Array.isArray(remoteRows) && remoteRows.length > 0) {
-          mergeLocal(entityName, remoteRows);
-          return remoteRows;
+        const rows = await runRemote(() => remote.list(orderBy, limit));
+        if (Array.isArray(rows) && rows.length > 0) {
+          mergeLocal(entityName, rows);
+          return rows;
         }
       } catch (error) {
-        console.warn(`[local-first] Falha ao listar ${entityName} na Base44. Usando base local.`, error);
+        console.warn(`[local-first] list ${entityName} local`, error);
       }
-
-      return localRows;
+      return fallback;
     },
-
     async filter(criteria = {}, orderBy, limit = 1000) {
-      const localRows = await local.filter(criteria, orderBy, limit);
+      const fallback = await local.filter(criteria, orderBy, limit);
       const remote = remoteEntity(entityName);
-      if (!remote?.filter) return localRows;
-
+      if (!remote?.filter) return fallback;
       try {
-        const remoteRows = await runWithRateLimit(() => remote.filter(criteria, orderBy, limit));
-        if (Array.isArray(remoteRows) && remoteRows.length > 0) {
-          mergeLocal(entityName, remoteRows);
-          return remoteRows;
+        const rows = await runRemote(() => remote.filter(criteria, orderBy, limit));
+        if (Array.isArray(rows) && rows.length > 0) {
+          mergeLocal(entityName, rows);
+          return rows;
         }
       } catch (error) {
-        console.warn(`[local-first] Falha ao filtrar ${entityName} na Base44. Usando base local.`, error);
+        console.warn(`[local-first] filter ${entityName} local`, error);
       }
-
-      return localRows;
+      return fallback;
     },
-
     async create(record) {
       const localSaved = await local.create(record);
       const remote = remoteEntity(entityName);
       if (!remote?.create) return localSaved;
-
       try {
-        const remoteSaved = await runWithRateLimit(() => remote.create(record));
-        if (remoteSaved?.id) return upsertLocal(entityName, remoteSaved);
+        const saved = await runRemote(() => remote.create(record));
+        return saved?.id ? saveLocal(entityName, saved) : localSaved;
       } catch (error) {
-        console.warn(`[local-first] Falha ao criar ${entityName} na Base44. Registro salvo localmente.`, error);
+        console.warn(`[local-first] create ${entityName} local`, error);
+        return localSaved;
       }
-
-      return localSaved;
     },
-
     async update(id, fields) {
       const localSaved = await local.update(id, fields);
       const remote = remoteEntity(entityName);
       if (!remote?.update) return localSaved;
-
       try {
-        const remoteSaved = await runWithRateLimit(() => remote.update(id, fields));
-        if (remoteSaved?.id) return upsertLocal(entityName, remoteSaved);
+        const saved = await runRemote(() => remote.update(id, fields));
+        return saved?.id ? saveLocal(entityName, saved) : localSaved;
       } catch (error) {
-        console.warn(`[local-first] Falha ao atualizar ${entityName} na Base44. Alteração salva localmente.`, error);
+        console.warn(`[local-first] update ${entityName} local`, error);
+        return localSaved;
       }
-
-      return localSaved;
     },
-
     async bulkCreate(records = []) {
-      const saved = [];
-      for (const record of records || []) {
-        saved.push(await this.create(record));
-      }
-      return saved;
+      const result = [];
+      for (const record of records || []) result.push(await this.create(record));
+      return result;
     },
-
     subscribe(callback) {
-      const unsubLocal = local.subscribe(callback);
-      const remote = remoteEntity(entityName);
-      let unsubRemote = null;
-
+      const stopLocal = local.subscribe(callback);
+      let stopRemote = null;
       try {
-        if (remote?.subscribe) unsubRemote = remote.subscribe(callback);
+        const remote = remoteEntity(entityName);
+        if (remote?.subscribe) stopRemote = remote.subscribe(callback);
       } catch (error) {
-        console.warn(`[local-first] Assinatura Base44 indisponível para ${entityName}.`, error);
+        console.warn(`[local-first] subscribe ${entityName} local`, error);
       }
-
       return () => {
-        unsubLocal?.();
-        if (typeof unsubRemote === 'function') unsubRemote();
+        stopLocal?.();
+        if (typeof stopRemote === 'function') stopRemote();
       };
     },
   };

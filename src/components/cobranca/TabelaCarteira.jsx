@@ -135,6 +135,10 @@ function renderTituloDetalhe(item) {
   return titulo || "—";
 }
 
+function tituloCalcKey(item) {
+  return item.id || getTituloKey({ origem: item.origem, titulo: item.titulo, seq: item.seq, vencimento: item.vencimento });
+}
+
 function sanitizeGroup(g, origemFiltro) {
   let titulos = (g.titulos || []).filter(isTituloCarteiraGeral);
   if (origemFiltro) titulos = titulos.filter((item) => item.origem === origemFiltro);
@@ -175,13 +179,26 @@ function matchesSearch(g, busca = "") {
   return norm(texto).includes(b);
 }
 
-function calculateChargeValues(baseValue, rates = {}) {
-  const base = toNumber(baseValue);
+function calculateChargeValues(item, rates = {}) {
+  const base = toNumber(item?.valorOriginal ?? item?.original_value ?? 0);
+  const diasAtraso = Math.max(0, toNumber(item?.diasAtraso ?? item?.dias_atraso ?? 0));
   const multaPercent = clampPercent(rates.multa);
-  const jurosPercent = clampPercent(rates.juros);
-  const multa = base * (multaPercent / 100);
-  const juros = base * (jurosPercent / 100);
-  return { base, multa, juros, total: base + multa + juros, multaPercent, jurosPercent };
+  const jurosPercentDia = clampPercent(rates.juros);
+  const vencido = diasAtraso > 0;
+  const multa = vencido ? base * (multaPercent / 100) : 0;
+  const juros = vencido ? base * (jurosPercentDia / 100) * diasAtraso : 0;
+  return { base, multa, juros, total: base + multa + juros, multaPercent, jurosPercentDia, diasAtraso };
+}
+
+function sumGroupCharges(g, ratesByTitle = {}) {
+  return (g.titulos || []).reduce((acc, item) => {
+    const calc = calculateChargeValues(item, ratesByTitle[tituloCalcKey(item)] || { multa: 0, juros: 0 });
+    acc.base += calc.base;
+    acc.multa += calc.multa;
+    acc.juros += calc.juros;
+    acc.total += calc.total;
+    return acc;
+  }, { base: 0, multa: 0, juros: 0, total: 0 });
 }
 
 function initialWidths() {
@@ -190,19 +207,23 @@ function initialWidths() {
 
 export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem }) {
   const [buscaLocal, setBuscaLocal] = useState("");
-  const [ratesByClient, setRatesByClient] = useState({});
+  const [ratesByTitle, setRatesByTitle] = useState({});
   const [columnFilters, setColumnFilters] = useState({});
   const [colWidths, setColWidths] = useState(initialWidths);
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
   const colCount = visibleCols.length;
 
-  function ratesForGroup(g) {
-    return ratesByClient[g.clientKey] || { multa: 0, juros: 0 };
+  function ratesForItem(item) {
+    return ratesByTitle[tituloCalcKey(item)] || { multa: 0, juros: 0 };
+  }
+
+  function groupCalc(g) {
+    return sumGroupCharges(g, ratesByTitle);
   }
 
   function columnText(g, key) {
     const cliente = getDisplayClient(g);
-    const calc = calculateChargeValues(g.valorOriginal, ratesForGroup(g));
+    const calc = groupCalc(g);
     const origem = [...new Set(g.titulos.map(x => getOrigemLabel(x.origem)))].join(" ");
     const cat = [...new Set(g.titulos.map(x => x.clientCategory).filter(Boolean))].join(" ");
     const values = {
@@ -212,8 +233,8 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       venc: fmtD(g.primeiroVencimento),
       atraso: g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "",
       vOrig: fmtM(calc.base),
-      multa: `${fmtM(calc.multa)} ${calc.multaPercent}%`,
-      juros: `${fmtM(calc.juros)} ${calc.jurosPercent}%`,
+      multa: fmtM(calc.multa),
+      juros: fmtM(calc.juros),
       total: fmtM(calc.total),
       status: g.statusConsolidado,
       enc: g.encaminharConsolidado,
@@ -241,7 +262,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       .filter(hasValidDisplayClient)
       .filter((g) => matchesSearch(g, buscaLocal))
       .filter(matchesColumnFilters);
-  }, [sortedCart, filtroOrigem, buscaLocal, columnFilters, ratesByClient]);
+  }, [sortedCart, filtroOrigem, buscaLocal, columnFilters, ratesByTitle]);
 
   const baseValida = useMemo(() => {
     return (baseCart || [])
@@ -256,13 +277,36 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     setFCart && setFCart({});
   }
 
-  function editRate(g, field) {
-    const atual = ratesForGroup(g)?.[field] || 0;
-    const label = field === "multa" ? "multa" : "juros";
-    const raw = window.prompt(`Digite o percentual de ${label}. Exemplos: 0, 5, 10, 15, 20, 30 ou outro valor.`, String(atual).replace(".", ","));
+  function setRateForItem(item, field, value) {
+    const percent = clampPercent(value);
+    const key = tituloCalcKey(item);
+    setRatesByTitle((current) => ({
+      ...current,
+      [key]: { ...(current[key] || { multa: 0, juros: 0 }), [field]: percent },
+    }));
+  }
+
+  function editRateForItem(item, field) {
+    const atual = ratesForItem(item)?.[field] || 0;
+    const label = field === "multa" ? "multa única (%)" : "juros diário (%)";
+    const raw = window.prompt(`Digite o percentual de ${label} para o título ${renderTituloDetalhe(item)}. A cobrança só aplica se estiver vencido.`, String(atual).replace(".", ","));
+    if (raw === null) return;
+    setRateForItem(item, field, raw);
+  }
+
+  function editRateForGroup(g, field) {
+    const label = field === "multa" ? "multa única (%)" : "juros diário (%)";
+    const raw = window.prompt(`Digite o percentual de ${label} para TODOS os títulos abertos deste cliente. A cobrança só aplica em títulos vencidos.`, "0");
     if (raw === null) return;
     const percent = clampPercent(raw);
-    setRatesByClient((current) => ({ ...current, [g.clientKey]: { ...(current[g.clientKey] || { multa: 0, juros: 0 }), [field]: percent } }));
+    setRatesByTitle((current) => {
+      const next = { ...current };
+      for (const item of g.titulos || []) {
+        const key = tituloCalcKey(item);
+        next[key] = { ...(next[key] || { multa: 0, juros: 0 }), [field]: percent };
+      }
+      return next;
+    });
   }
 
   function startResize(event, key) {
@@ -315,8 +359,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
 
   function renderCell(key, g) {
     const cliente = getDisplayClient(g);
-    const rates = ratesForGroup(g);
-    const calc = calculateChargeValues(g.valorOriginal, rates);
+    const calc = groupCalc(g);
     switch (key) {
       case "nrCli": return <td style={{ ...tdS(), color: t.muted }}>{cliente.nrCli || g.nrCli}</td>;
       case "nomeCli": return <td style={tdS()} title={cliente.nomeCli}><b style={{ cursor: "pointer" }} onClick={() => onClickFilter && onClickFilter(cliente.nomeCli)}>{cliente.nomeCli}</b></td>;
@@ -324,8 +367,8 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
       case "venc": return <td style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(g.primeiroVencimento)}</td>;
       case "atraso": return <td style={{ ...tdS(), color: g.maiorAtraso > 0 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "—"}</td>;
       case "vOrig": return <td style={{ ...tdS(), fontWeight: 700 }}>{fmtM(calc.base)}</td>;
-      case "multa": return <td onClick={() => editRate(g, "multa")} title="Clique para digitar a % de multa" style={{ ...tdS(), color: "#f97316", cursor: "pointer", background: rates.multa > 0 ? "#f9731618" : undefined }}>{fmtM(calc.multa)} <span style={{ fontSize: 9 }}>({calc.multaPercent}%)</span></td>;
-      case "juros": return <td onClick={() => editRate(g, "juros")} title="Clique para digitar a % de juros" style={{ ...tdS(), color: "#eab308", cursor: "pointer", background: rates.juros > 0 ? "#eab30818" : undefined }}>{fmtM(calc.juros)} <span style={{ fontSize: 9 }}>({calc.jurosPercent}%)</span></td>;
+      case "multa": return <td onClick={() => editRateForGroup(g, "multa")} title="Clique para aplicar a % de multa única nos títulos deste cliente" style={{ ...tdS(), color: "#f97316", cursor: "pointer" }}>{fmtM(calc.multa)}</td>;
+      case "juros": return <td onClick={() => editRateForGroup(g, "juros")} title="Clique para aplicar a % de juros diário nos títulos deste cliente" style={{ ...tdS(), color: "#eab308", cursor: "pointer" }}>{fmtM(calc.juros)}</td>;
       case "total": return <td style={{ ...tdS(), fontWeight: 800, color: t.p }}>{fmtM(calc.total)}</td>;
       case "status": return <td style={{ ...tdS(), fontSize: 10 }}>{g.statusConsolidado}</td>;
       case "enc": return <td style={tdS()}>{encBadge(g.encaminharConsolidado)}</td>;
@@ -341,10 +384,10 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Clique em Multa/Juros para digitar a % manual. Arraste a borda dos cabeçalhos para ajustar a largura.</span>
+        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Abra no + e clique em Multa/Juros de cada título para digitar a %. A linha do cliente soma os títulos.</span>
         <input value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)} placeholder="Buscar cliente/título" style={{ marginLeft: "auto", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 8px", fontSize: 11 }} />
         {(buscaLocal || Object.values(columnFilters).some(Boolean) || Object.keys(fCart || {}).length > 0) && <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "4px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Limpar filtros</button>}
-        {Object.keys(ratesByClient).length > 0 && <button onClick={() => setRatesByClient({})} style={{ background: "transparent", border: `1px solid ${t.bor}`, borderRadius: 4, padding: "4px 8px", color: t.txt, cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Zerar multa/juros</button>}
+        {Object.keys(ratesByTitle).length > 0 && <button onClick={() => setRatesByTitle({})} style={{ background: "transparent", border: `1px solid ${t.bor}`, borderRadius: 4, padding: "4px 8px", color: t.txt, cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Zerar multa/juros</button>}
       </div>
 
       <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "auto", width: "100%" }}>
@@ -361,7 +404,6 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
               const isSel = selected.has(g.clientKey);
               const rowBg = isSel ? (isDark ? "rgba(232,119,34,.15)" : "rgba(232,119,34,.07)") : (i % 2 === 0 ? t.surf : t.alt);
               const leftClr = g.encaminharConsolidado === "verificacao" ? "#3b82f6" : g.encaminharConsolidado === "protesto" ? "#ef4444" : prioCor(g.prioridadeCliente);
-              const rates = ratesForGroup(g);
               return (
                 <React.Fragment key={g.clientKey}>
                   <tr style={{ background: rowBg, borderLeft: `4px solid ${leftClr}` }}>
@@ -373,19 +415,19 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                     })}
                   </tr>
                   {open && g.titulos.map(item => {
-                    const itemCalc = calculateChargeValues(item.valorOriginal, rates);
+                    const itemCalc = calculateChargeValues(item, ratesForItem(item));
                     return (
-                      <tr key={item.id} style={{ background: t.surf2 }}>
+                      <tr key={item.id || tituloCalcKey(item)} style={{ background: t.surf2 }}>
                         {visibleCols.map(c => {
                           if (["check", "expand"].includes(c.key)) return <td key={c.key} style={tdS()} />;
                           if (c.key === "nrCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{renderTituloDetalhe(item)}</td>;
                           if (c.key === "nomeCli") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{getDisplayClient(g).nomeCli}</td>;
                           if (c.key === "qtd") return <td key={c.key} style={{ ...tdS(), textAlign: "center" }}>1</td>;
                           if (c.key === "venc") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.vencimento)}</td>;
-                          if (c.key === "atraso") return <td key={c.key} style={{ ...tdS(), color: item.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{item.diasAtraso > 0 ? `${item.diasAtraso}d` : "—"}</td>;
+                          if (c.key === "atraso") return <td key={c.key} style={{ ...tdS(), color: itemCalc.diasAtraso > 0 ? "#ef4444" : "#10b981" }}>{itemCalc.diasAtraso > 0 ? `${itemCalc.diasAtraso}d` : "—"}</td>;
                           if (c.key === "vOrig") return <td key={c.key} style={tdS()}>{fmtM(itemCalc.base)}</td>;
-                          if (c.key === "multa") return <td key={c.key} style={{ ...tdS(), color: "#f97316" }}>{fmtM(itemCalc.multa)}</td>;
-                          if (c.key === "juros") return <td key={c.key} style={{ ...tdS(), color: "#eab308" }}>{fmtM(itemCalc.juros)}</td>;
+                          if (c.key === "multa") return <td key={c.key} onClick={() => editRateForItem(item, "multa")} title="Clique para digitar a % de multa única deste título" style={{ ...tdS(), color: "#f97316", cursor: "pointer", background: itemCalc.multaPercent > 0 ? "#f9731618" : undefined }}>{fmtM(itemCalc.multa)} <span style={{ fontSize: 9 }}>({itemCalc.multaPercent}%)</span></td>;
+                          if (c.key === "juros") return <td key={c.key} onClick={() => editRateForItem(item, "juros")} title="Clique para digitar a % de juros diário deste título" style={{ ...tdS(), color: "#eab308", cursor: "pointer", background: itemCalc.jurosPercentDia > 0 ? "#eab30818" : undefined }}>{fmtM(itemCalc.juros)} <span style={{ fontSize: 9 }}>({itemCalc.jurosPercentDia}% dia)</span></td>;
                           if (c.key === "total") return <td key={c.key} style={{ ...tdS(), fontWeight: 700, color: t.p }}>{fmtM(itemCalc.total)}</td>;
                           if (c.key === "status") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.status}</td>;
                           if (c.key === "enc") return <td key={c.key} style={tdS()}>{encBadge(item.encaminhar)}</td>;

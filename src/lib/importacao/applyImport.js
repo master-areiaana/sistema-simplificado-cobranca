@@ -146,9 +146,21 @@ export function getApplicationWriteTotals(plan = {}) {
   };
 }
 
+export function getApplicationPlanSignature(plan = {}) {
+  const sorted = (items) => [...items].sort();
+
+  return {
+    totals: getApplicationWriteTotals(plan),
+    creates: sorted((plan?.creates || []).map((item) => item.key)),
+    updates: sorted((plan?.updates || []).map((item) => `${item.id}|${item.key}`)),
+    absences: sorted((plan?.absences || []).map((item) => `${item.id}|${item.key}`)),
+    reviews: sorted((plan?.reviewRequired || []).map((item) => `${item.code}|${item.key}|${item.alternativeKey}`)),
+  };
+}
+
 export function assertApplicationPlanStillCurrent(planned, revalidated) {
-  const expected = getApplicationWriteTotals(planned);
-  const current = getApplicationWriteTotals(revalidated);
+  const expected = getApplicationPlanSignature(planned);
+  const current = getApplicationPlanSignature(revalidated);
 
   if (JSON.stringify(expected) !== JSON.stringify(current)) {
     throw new Error(STALE_APPLICATION_PLAN_MESSAGE);

@@ -6,27 +6,26 @@ const COLS_DEF = [
   { key: "check", label: "", width: 32, fixed: true },
   { key: "expand", label: "", width: 28, fixed: true },
   { key: "nrCli", label: "Nº", width: 58 },
-  { key: "nomeCli", label: "CLIENTE", width: "18%", minWidth: 140 },
-  { key: "qtd", label: "QTD.", width: 48 },
-  { key: "venc", label: "VENCIMENTO", width: 90 },
-  { key: "atraso", label: "ATRASO", width: 64 },
-  { key: "vOrig", label: "VAL. ORIG", width: 92 },
-  { key: "multa", label: "MULTA", width: 88 },
-  { key: "juros", label: "JUROS", width: 88 },
-  { key: "total", label: "TOTAL A COBRAR", width: 122 },
-  { key: "status", label: "STATUS", width: 120 },
-  { key: "enc", label: "ENCAMINHAR", width: 96 },
-  { key: "origem", label: "RELATÓRIO", width: 78 },
-  { key: "cat", label: "CATEGORIA", width: 90 },
-  { key: "contato", label: "DT. CONTATO", width: 88 },
-  { key: "prom", label: "PROMESSA", width: 88 },
-  { key: "obs", label: "OBSERVAÇÃO", width: "18%", minWidth: 120 },
-  { key: "acoes", label: "AÇÕES", width: 96, fixed: true },
+  { key: "nomeCli", label: "CLIENTE", width: 170 },
+  { key: "qtd", label: "QTD.", width: 54 },
+  { key: "venc", label: "VENCIMENTO", width: 94 },
+  { key: "atraso", label: "ATRASO", width: 68 },
+  { key: "vOrig", label: "VAL. ORIG", width: 100 },
+  { key: "multa", label: "MULTA", width: 96 },
+  { key: "juros", label: "JUROS", width: 96 },
+  { key: "total", label: "TOTAL A COBRAR", width: 130 },
+  { key: "status", label: "STATUS", width: 125 },
+  { key: "enc", label: "ENCAMINHAR", width: 105 },
+  { key: "origem", label: "RELATÓRIO", width: 86 },
+  { key: "cat", label: "CATEGORIA", width: 98 },
+  { key: "contato", label: "DT. CONTATO", width: 96 },
+  { key: "prom", label: "PROMESSA", width: 96 },
+  { key: "obs", label: "OBSERVAÇÃO", width: 180 },
+  { key: "acoes", label: "AÇÕES", width: 100, fixed: true },
 ];
 
-const PERCENT_PRESETS = [0, 5, 10, 15, 20, 30];
-
 const thS = (t) => ({ background: t.th, padding: "7px 8px", textAlign: "left", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .3, color: t.muted, position: "sticky", top: 0, zIndex: 10 });
+const filterThS = (t) => ({ ...thS(t), top: 29, padding: "4px 5px", zIndex: 9 });
 const tdS = (ex = {}) => ({ padding: "6px 8px", borderBottom: "1px solid #0002", fontSize: 11, ...ex });
 const cleanText = (v) => String(v ?? "").trim();
 const norm = (v) => cleanText(v).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
@@ -60,7 +59,6 @@ function isTituloCarteiraGeral(item) {
   if (item.active === false) return false;
   if (item.lossStatus || item.loss_status) return false;
   if (isStatusForaCarteira(item.status, item.current_status, item.current_motive, item.encaminhar, item.workflow_status, item.obs, item.last_note)) return false;
-
   const valorOriginal = toNumber(item.valorOriginal ?? item.original_value ?? 0);
   const valorRecebido = toNumber(item.valorRecebido ?? item.received_value ?? 0);
   const valorAberto = valorAbertoReal(item);
@@ -142,11 +140,9 @@ function sanitizeGroup(g, origemFiltro) {
   if (origemFiltro) titulos = titulos.filter((item) => item.origem === origemFiltro);
   titulos = dedupeTitulosCarteira(titulos);
   if (!titulos.length) return null;
-
   const vencimentos = titulos.map((x) => x.vencimento).filter(Boolean).sort();
   const contatos = titulos.map((x) => x.dataContato || "").filter(Boolean).sort();
   const promessas = titulos.map((x) => x.dataPromessa || "").filter(Boolean).sort();
-
   return {
     ...g,
     titulos,
@@ -188,20 +184,64 @@ function calculateChargeValues(baseValue, rates = {}) {
   return { base, multa, juros, total: base + multa + juros, multaPercent, jurosPercent };
 }
 
+function initialWidths() {
+  return Object.fromEntries(COLS_DEF.map((col) => [col.key, Number(col.width) || col.minWidth || 120]));
+}
+
 export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, scCart, handleSort, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem }) {
   const [buscaLocal, setBuscaLocal] = useState("");
-  const [defaultRates, setDefaultRates] = useState({ multa: 0, juros: 0 });
-  const [customRatesByClient, setCustomRatesByClient] = useState({});
+  const [ratesByClient, setRatesByClient] = useState({});
+  const [columnFilters, setColumnFilters] = useState({});
+  const [colWidths, setColWidths] = useState(initialWidths);
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
   const colCount = visibleCols.length;
+
+  function ratesForGroup(g) {
+    return ratesByClient[g.clientKey] || { multa: 0, juros: 0 };
+  }
+
+  function columnText(g, key) {
+    const cliente = getDisplayClient(g);
+    const calc = calculateChargeValues(g.valorOriginal, ratesForGroup(g));
+    const origem = [...new Set(g.titulos.map(x => getOrigemLabel(x.origem)))].join(" ");
+    const cat = [...new Set(g.titulos.map(x => x.clientCategory).filter(Boolean))].join(" ");
+    const values = {
+      nrCli: cliente.nrCli || g.nrCli,
+      nomeCli: cliente.nomeCli,
+      qtd: g.qtdTitulos,
+      venc: fmtD(g.primeiroVencimento),
+      atraso: g.maiorAtraso > 0 ? `${g.maiorAtraso}d` : "",
+      vOrig: fmtM(calc.base),
+      multa: `${fmtM(calc.multa)} ${calc.multaPercent}%`,
+      juros: `${fmtM(calc.juros)} ${calc.jurosPercent}%`,
+      total: fmtM(calc.total),
+      status: g.statusConsolidado,
+      enc: g.encaminharConsolidado,
+      origem,
+      cat,
+      contato: fmtD(g.ultimoContato),
+      prom: fmtD(g.dataPromessa),
+      obs: g.obsConsolidada,
+    };
+    return String(values[key] ?? "");
+  }
+
+  function matchesColumnFilters(g) {
+    return Object.entries(columnFilters).every(([key, value]) => {
+      const filter = norm(value);
+      if (!filter) return true;
+      return norm(columnText(g, key)).includes(filter);
+    });
+  }
 
   const carteiraGeral = useMemo(() => {
     return (sortedCart || [])
       .map((g) => sanitizeGroup(g, filtroOrigem))
       .filter(Boolean)
       .filter(hasValidDisplayClient)
-      .filter((g) => matchesSearch(g, buscaLocal));
-  }, [sortedCart, filtroOrigem, buscaLocal]);
+      .filter((g) => matchesSearch(g, buscaLocal))
+      .filter(matchesColumnFilters);
+  }, [sortedCart, filtroOrigem, buscaLocal, columnFilters, ratesByClient]);
 
   const baseValida = useMemo(() => {
     return (baseCart || [])
@@ -212,78 +252,64 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
 
   function clearAllFilters() {
     setBuscaLocal("");
+    setColumnFilters({});
     setFCart && setFCart({});
-  }
-
-  function ratesForGroup(g) {
-    return customRatesByClient[g.clientKey] || defaultRates;
-  }
-
-  function setRateForSelectedOrDefault(field, value) {
-    const percent = clampPercent(value);
-    if (selected?.size > 0) {
-      setCustomRatesByClient((current) => {
-        const next = { ...current };
-        for (const clientKey of selected) {
-          next[clientKey] = { ...(next[clientKey] || defaultRates), [field]: percent };
-        }
-        return next;
-      });
-      return;
-    }
-    setDefaultRates((current) => ({ ...current, [field]: percent }));
   }
 
   function editRate(g, field) {
     const atual = ratesForGroup(g)?.[field] || 0;
     const label = field === "multa" ? "multa" : "juros";
-    const raw = window.prompt(`Digite o percentual de ${label} para este cliente/título:`, String(atual).replace(".", ","));
+    const raw = window.prompt(`Digite o percentual de ${label}. Exemplos: 0, 5, 10, 15, 20, 30 ou outro valor.`, String(atual).replace(".", ","));
     if (raw === null) return;
     const percent = clampPercent(raw);
-    setCustomRatesByClient((current) => ({
-      ...current,
-      [g.clientKey]: { ...(current[g.clientKey] || defaultRates), [field]: percent },
-    }));
+    setRatesByClient((current) => ({ ...current, [g.clientKey]: { ...(current[g.clientKey] || { multa: 0, juros: 0 }), [field]: percent } }));
   }
 
-  function renderRateButtons(field, label, color) {
-    const current = selected?.size > 0 ? null : defaultRates[field];
+  function startResize(event, key) {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = colWidths[key] || 90;
+    const onMove = (moveEvent) => {
+      const width = Math.max(42, startWidth + moveEvent.clientX - startX);
+      setColWidths((current) => ({ ...current, [key]: width }));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function renderHeaderCell(c) {
+    if (c.key === "check") return <th key={c.key} style={thS(t)}><input type="checkbox" checked={selected.size === carteiraGeral.length && carteiraGeral.length > 0} onChange={toggleAll} /></th>;
+    if (c.key === "expand") return <th key={c.key} style={thS(t)} />;
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 10, color: t.muted, fontWeight: 800 }}>{label}</span>
-        {PERCENT_PRESETS.map((pct) => (
-          <button
-            key={`${field}-${pct}`}
-            type="button"
-            onClick={() => setRateForSelectedOrDefault(field, pct)}
-            style={{
-              background: current === pct ? color : t.surf,
-              border: `1px solid ${current === pct ? color : t.bor}`,
-              borderRadius: 5,
-              color: current === pct ? "#fff" : t.txt,
-              cursor: "pointer",
-              fontSize: 10,
-              fontWeight: 800,
-              padding: "4px 7px",
-            }}
-          >
-            {pct}%
-          </button>
-        ))}
+      <th key={c.key} style={{ ...thS(t), position: "sticky" }}>
+        <span>{c.label}</span>
+        {!c.fixed && (
+          <span
+            onMouseDown={(event) => startResize(event, c.key)}
+            title="Arraste para ajustar a largura"
+            style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 7, cursor: "col-resize", borderRight: `2px solid transparent` }}
+          />
+        )}
+      </th>
+    );
+  }
+
+  function renderFilterCell(c) {
+    if (["check", "expand", "acoes"].includes(c.key)) return <th key={c.key} style={filterThS(t)} />;
+    return (
+      <th key={c.key} style={filterThS(t)}>
         <input
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="digitar %"
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              setRateForSelectedOrDefault(field, event.currentTarget.value);
-              event.currentTarget.value = "";
-            }
-          }}
-          style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 5, padding: "4px 7px", width: 76, fontSize: 10 }}
+          value={columnFilters[c.key] || ""}
+          onChange={(event) => setColumnFilters((current) => ({ ...current, [c.key]: event.target.value }))}
+          placeholder="Filtrar..."
+          style={{ width: "100%", boxSizing: "border-box", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 4, padding: "3px 4px", fontSize: 9 }}
         />
-      </div>
+      </th>
     );
   }
 
@@ -315,31 +341,19 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Multa e juros podem ser simulados por % manual.</span>
+        <span style={{ fontSize: 11, color: t.muted }}>Carteira Geral mostra somente títulos em aberto para cobrar. Clique em Multa/Juros para digitar a % manual. Arraste a borda dos cabeçalhos para ajustar a largura.</span>
         <input value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)} placeholder="Buscar cliente/título" style={{ marginLeft: "auto", background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "5px 8px", fontSize: 11 }} />
-        {(buscaLocal || Object.keys(fCart || {}).length > 0) && <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "4px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Limpar</button>}
-      </div>
-
-      <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 8, padding: 8, marginBottom: 8, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 10, color: t.muted, fontWeight: 800 }}>
-          {selected?.size > 0 ? `Aplicar em ${selected.size} selecionado(s):` : "Aplicar padrão da tela:"}
-        </span>
-        {renderRateButtons("multa", "Multa", "#f97316")}
-        {renderRateButtons("juros", "Juros", "#eab308")}
-        <button
-          type="button"
-          onClick={() => { setDefaultRates({ multa: 0, juros: 0 }); setCustomRatesByClient({}); }}
-          style={{ background: "transparent", border: `1px solid ${t.bor}`, borderRadius: 5, color: t.txt, cursor: "pointer", fontSize: 10, fontWeight: 800, padding: "4px 8px" }}
-        >
-          Zerar simulação
-        </button>
-        <span style={{ fontSize: 10, color: t.muted }}>Ou clique direto numa célula de Multa/Juros para digitar % só daquela linha.</span>
+        {(buscaLocal || Object.values(columnFilters).some(Boolean) || Object.keys(fCart || {}).length > 0) && <button onClick={clearAllFilters} style={{ background: t.p, border: "none", borderRadius: 4, padding: "4px 8px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Limpar filtros</button>}
+        {Object.keys(ratesByClient).length > 0 && <button onClick={() => setRatesByClient({})} style={{ background: "transparent", border: `1px solid ${t.bor}`, borderRadius: 4, padding: "4px 8px", color: t.txt, cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Zerar multa/juros</button>}
       </div>
 
       <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "auto", width: "100%" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-          <colgroup>{visibleCols.map(c => <col key={c.key} style={{ width: c.width, minWidth: c.minWidth || undefined }} />)}</colgroup>
-          <thead><tr>{visibleCols.map(c => c.key === "check" ? <th key={c.key} style={thS(t)}><input type="checkbox" checked={selected.size === carteiraGeral.length && carteiraGeral.length > 0} onChange={toggleAll} /></th> : c.key === "expand" ? <th key={c.key} style={thS(t)} /> : <th key={c.key} style={thS(t)}>{c.label}</th>)}</tr></thead>
+        <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+          <colgroup>{visibleCols.map(c => <col key={c.key} style={{ width: colWidths[c.key] || c.width || 90 }} />)}</colgroup>
+          <thead>
+            <tr>{visibleCols.map(renderHeaderCell)}</tr>
+            <tr>{visibleCols.map(renderFilterCell)}</tr>
+          </thead>
           <tbody>
             {carteiraGeral.length === 0 && <tr><td colSpan={colCount} style={{ textAlign: "center", padding: 44, color: t.muted, background: t.surf }}>Nenhum título em aberto para cobrar nesta carteira.</td></tr>}
             {carteiraGeral.map((g, i) => {

@@ -4,6 +4,7 @@ export default function ColHeader({ label, field, data, filters, setFilters, t, 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [draftSelected, setDraftSelected] = useState(null);
+  const [colWidth, setColWidth] = useState(width || 120);
   const ref = useRef(null);
 
   const allValues = useMemo(() => {
@@ -64,21 +65,51 @@ export default function ColHeader({ label, field, data, filters, setFilters, t, 
     setOpen(false);
   }
 
+  function startResize(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = colWidth || width || 120;
+    const onMove = (moveEvent) => {
+      setColWidth(Math.max(55, startWidth + moveEvent.clientX - startX));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   const act = sortCfg?.key === sortKey;
-  const thStyle = { background: t.th, padding: 0, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, position: "relative", minWidth: width || "auto", userSelect: "none" };
+  const thStyle = {
+    background: t.th,
+    padding: 0,
+    whiteSpace: "nowrap",
+    borderBottom: `1px solid ${t.bor}`,
+    position: "relative",
+    width: colWidth,
+    minWidth: colWidth,
+    userSelect: "none",
+  };
 
   return (
     <th ref={ref} style={thStyle}>
       <div style={{ display: "flex", alignItems: "stretch" }}>
         {sortKey
-          ? <button onClick={() => onSort && onSort(sortKey)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", padding: "9px 6px 9px 10px", textAlign: "left", fontSize: 11, fontWeight: 700, color: act ? t.p : t.muted, letterSpacing: .4, display: "flex", alignItems: "center", gap: 4 }}>
+          ? <button onClick={() => onSort && onSort(sortKey)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", padding: "9px 6px 9px 10px", textAlign: "left", fontSize: 11, fontWeight: 700, color: act ? t.p : t.muted, letterSpacing: .4, display: "flex", alignItems: "center", gap: 4, overflow: "hidden", textOverflow: "ellipsis" }}>
             {label}{act ? (sortCfg.dir === "asc" ? "  ▲" : "  ▼") : ""}
           </button>
-          : <div style={{ flex: 1, padding: "9px 6px 9px 10px", fontSize: 11, fontWeight: 700, color: t.muted, letterSpacing: .4 }}>{label}</div>
+          : <div style={{ flex: 1, padding: "9px 6px 9px 10px", fontSize: 11, fontWeight: 700, color: t.muted, letterSpacing: .4, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
         }
         <button onClick={(e) => { e.stopPropagation(); setOpen(x => !x); }} style={{ background: hasFilter ? t.p : "none", border: "none", cursor: "pointer", padding: "0 8px", fontSize: 11, color: hasFilter ? "#fff" : t.muted, borderLeft: `1px solid ${t.bor}33`, display: "flex", alignItems: "center" }} title="Filtrar">
           {hasFilter ? "▼" : "⌄"}
         </button>
+        <span
+          onMouseDown={startResize}
+          title="Arraste para ajustar a largura da coluna"
+          style={{ width: 7, cursor: "col-resize", alignSelf: "stretch", borderRight: `2px solid ${t.bor}`, opacity: 0.45 }}
+        />
       </div>
 
       {open && (

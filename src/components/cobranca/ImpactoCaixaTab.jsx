@@ -1,7 +1,5 @@
 import { useMemo } from "react";
 import { fmtM, fmtD } from "@/lib/cobranca";
-import PrevisaoFluxo from "@/components/cobranca/PrevisaoFluxo";
-import { KPI } from "@/components/cobranca/UI";
 
 const th = (t) => ({ padding: "8px 10px", textAlign: "left", borderBottom: `1px solid ${t.bor}` });
 const thR = (t) => ({ ...th(t), textAlign: "right" });
@@ -69,24 +67,6 @@ export default function ImpactoCaixaTab({ grouped, baixadosImportacao = [], even
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-      {/* KPIs */}
-      <div className="kpi-container kpi-container-4">
-        <KPI t={t} label="Previsão 30 Dias" color="#3B82F6"
-          value={fmtM(grouped.filter((g) => g.maiorAtraso <= 30).reduce((s, g) => s + g.valorTotalDebito, 0))}
-          sub="próximo mês" />
-        <KPI t={t} label="Previsão 60 Dias" color="#FBBF24"
-          value={fmtM(grouped.filter((g) => g.maiorAtraso > 30 && g.maiorAtraso <= 60).reduce((s, g) => s + g.valorTotalDebito, 0))}
-          sub="até 60 dias" />
-        <KPI t={t} label="Previsão 90 Dias" color="#A78BFA"
-          value={fmtM(grouped.filter((g) => g.maiorAtraso > 60 && g.maiorAtraso <= 90).reduce((s, g) => s + g.valorTotalDebito, 0))}
-          sub="até 90 dias" />
-        <KPI t={t} label="Débitos Críticos" color="#EF4444"
-          value={fmtM(grouped.filter((g) => g.maiorAtraso > 90).reduce((s, g) => s + g.valorTotalDebito, 0))}
-          sub="acima 90 dias" />
-      </div>
-
-      <PrevisaoFluxo grouped={grouped} events={events} t={t} />
 
       {/* ── Seção 1: Sem Carteira (cruzamento EB x TOPCON) ── */}
       <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderLeft: "4px solid #f59e0b", borderRadius: 10, padding: "14px 16px" }}>

@@ -16,12 +16,16 @@ function startRemoteClient() {
   try {
     const { appId, token, functionsVersion, appBaseUrl } = appParams;
     if (!appId && !appBaseUrl) return { entities: {} };
+    if (!token) {
+      console.info('[local-first] Base44 remoto sem token. Usando modo local no GitHub Pages.');
+      return { entities: {} };
+    }
     return createClient({
       appId,
       token,
       functionsVersion,
       serverUrl: appBaseUrl || '',
-      requiresAuth: false,
+      requiresAuth: true,
       appBaseUrl,
     });
   } catch (error) {

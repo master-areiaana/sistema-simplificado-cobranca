@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildItem, dbToItem } from "./cobranca.js";
+import { buildItem, dbToItem, getTituloKey } from "./cobranca.js";
 
 test("buildItem mantém sem_carteira como diagnóstico sem bloquear workflow da carteira", () => {
   const item = buildItem({
@@ -41,4 +41,38 @@ test("dbToItem converte RPT_E_FINR para origem FINR1253 visível no filtro Topco
 
   assert.equal(item.origem, "FINR1253");
   assert.equal(item.valorTotalDebito, 1000);
+});
+
+test("getTituloKey não junta parcelas diferentes do mesmo título", () => {
+  const parcela1 = getTituloKey({
+    origem: "FINR1253",
+    titulo: "10457",
+    seq: "1",
+    vencimento: "2026-06-01",
+  });
+  const parcela2 = getTituloKey({
+    origem: "FINR1253",
+    titulo: "10457",
+    seq: "2",
+    vencimento: "2026-06-15",
+  });
+
+  assert.notEqual(parcela1, parcela2);
+});
+
+test("getTituloKey trata título 10457/1 igual a título 10457 sequência 1", () => {
+  const comBarra = getTituloKey({
+    origem: "FINR1253",
+    titulo: "10457/1",
+    seq: "1",
+    vencimento: "2026-06-01",
+  });
+  const canonico = getTituloKey({
+    origem: "FINR1253",
+    titulo: "10457",
+    seq: "",
+    vencimento: "2026-06-01",
+  });
+
+  assert.equal(comBarra, canonico);
 });

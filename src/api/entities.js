@@ -1,11 +1,26 @@
-import { dataProvider } from './dataProvider';
+import { base44 } from './base44Client';
 
-// Camada unica que as telas usam. Hoje aponta para o Supabase.
-// Se um dia trocar o backend, so este arquivo muda - as telas nao.
 export const Titulos = {
-  list: (opts) => dataProvider.listarTitulos(opts),
-    salvarManual: (id, campos) => dataProvider.salvarEdicaoManual(id, campos),
-      importar: (registro) => dataProvider.importarTitulo(registro),
-        darBaixa: (id) => dataProvider.darBaixa(id),
-        };
-        
+  list: async ({ limite = 1000, orderBy = '-updated_date' } = {}) =>
+    base44.entities.Titulo.list(orderBy, limite),
+  filter: async (criterios = {}, orderBy = '-updated_date', limite = 1000) =>
+    base44.entities.Titulo.filter(criterios, orderBy, limite),
+  salvarManual: async (id, campos) =>
+    base44.entities.Titulo.update(id, campos),
+  importar: async (registro) =>
+    base44.entities.Titulo.create(registro),
+  darBaixa: async (id) =>
+    base44.entities.Titulo.update(id, {
+      active: false,
+      current_status: 'Baixado',
+      workflow_status: 'baixado_importacao',
+      current_motive: 'Baixa manual pelo sistema',
+    }),
+};
+
+export const ChargeEvents = {
+  list: async (orderBy = '-created_date', limite = 1000) =>
+    base44.entities.ChargeEvent.list(orderBy, limite),
+  create: async (registro) =>
+    base44.entities.ChargeEvent.create(registro),
+};

@@ -48,7 +48,6 @@ const PORTFOLIO_BLOCKING_STATUS = [
   ...CHARGE_BLOCKING_STATUS,
   "DUPLICADO",
   "DUPLICATA",
-  "SEM CARTEIRA",
 ];
 
 function toNumber(value) {

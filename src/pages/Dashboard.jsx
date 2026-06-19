@@ -251,12 +251,16 @@ export default function Dashboard() {
     }
 
     function getClienteKey(item) {
+      const chaveGrupo = String(item.clientGroupKey || item.client_group_key || "").trim();
+      if (/^(DOC|COD|NOME):/i.test(chaveGrupo)) return chaveGrupo;
       const doc = String(item.cpfCnpj || "").replace(/\D/g, "");
       if (doc.length >= 11) return `DOC:${doc}`;
       const nomeExtraido = extractNomeCli(item.nomeCli);
       const nomeNorm = normNomeKey(nomeExtraido);
       const cod = normCod(item.nrCli);
       const nomeValido = isValidClientName(nomeExtraido) && nomeNorm.replace(/\s/g, "").length >= 3 && /[A-Za-z]/.test(nomeNorm);
+      const origem = String(item.origem || item.source || "").toUpperCase().replace(/[\s\-_]/g, "");
+      if (nomeValido && (origem.includes("7007") || origem.includes("CONSCAREB"))) return `NOME:${nomeNorm}`;
       if (cod && nomeValido) return `COD:${cod}|NOME:${nomeNorm}`;
       if (cod) return `COD:${cod}`;
       if (nomeValido) return `NOME:${nomeNorm}`;
@@ -766,6 +770,10 @@ export default function Dashboard() {
         erp_balance: saldoErpImportado,
         partial_payment_detected: Boolean(item.partialPaymentDetected || valorRecebidoImportado > 0),
         portador: item.portador || null,
+        client_group_key: item.clientGroupKey || item.client_group_key || null,
+        primary_client_code: item.primaryClientCode || item.primary_client_code || item.nrCli || null,
+        erp_client_codes: item.erpClientCodes || item.erp_client_codes || (item.nrCli ? [String(item.nrCli)] : []),
+        record_origin: item.recordOrigin || item.record_origin || "ERP",
         active: true,
         import_file: fileName,
       };
@@ -798,6 +806,10 @@ export default function Dashboard() {
           String(old.portador || "") !== String(financeiro.portador || "") ||
           String(old.doc_type || "") !== String(financeiro.doc_type || "") ||
           String(old.serie || "") !== String(financeiro.serie || "") ||
+          String(old.client_group_key || "") !== String(financeiro.client_group_key || "") ||
+          String(old.primary_client_code || "") !== String(financeiro.primary_client_code || "") ||
+          JSON.stringify(old.erp_client_codes || []) !== JSON.stringify(financeiro.erp_client_codes || []) ||
+          String(old.record_origin || "") !== String(financeiro.record_origin || "") ||
           !old.active ||
           reabrirPagoImportacao
         );

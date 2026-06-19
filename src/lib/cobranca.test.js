@@ -232,3 +232,38 @@ test("parseRows7007 importa a primeira linha de dados da planilha EB", () => {
   assert.equal(item.valorEmAberto, 9813.01);
   assert.equal(item.origem, "RPT_7007_CONS_CAR_EB");
 });
+
+test("parseRows7007 agrupa cliente EB por razão social sem deduplicar códigos diferentes", () => {
+  const items = parseRows7007([
+    {
+      Empresa: 1,
+      "Tipo Documento": "NFe",
+      "Série": 1,
+      "Numero Documento": 6598,
+      "Sequência": 1,
+      "Código Cliente": 67,
+      "Razão Social": "PREMIX CONCRETO LTDA",
+      "Data Vencimento": "15/04/2026",
+      "Valor Total": "R$ 46853,53",
+      "Valor Recebido": 0,
+      Saldo: "R$ 46853,53",
+    },
+    {
+      Empresa: 1,
+      "Tipo Documento": "NFe",
+      "Série": 1,
+      "Numero Documento": 6693,
+      "Sequência": 1,
+      "Código Cliente": 70,
+      "Razão Social": "PREMIX CONCRETO LTDA.",
+      "Data Vencimento": "30/04/2026",
+      "Valor Total": "R$ 47528,83",
+      "Valor Recebido": 0,
+      Saldo: "R$ 47528,83",
+    },
+  ]);
+
+  assert.equal(items.length, 2);
+  assert.equal(items[0].clientGroupKey, items[1].clientGroupKey);
+  assert.notEqual(getTituloKey(items[0]), getTituloKey(items[1]));
+});

@@ -5,6 +5,33 @@ const th = (t) => ({ padding: "8px 10px", textAlign: "left", borderBottom: `1px 
 const thR = (t) => ({ ...th(t), textAlign: "right" });
 const thC = (t) => ({ ...th(t), textAlign: "center" });
 
+const hoje = new Date().toISOString().slice(0, 10);
+const mesAtual = hoje.slice(0, 7);
+
+function ResumoCard({ label, value, sub, color, t }) {
+  return (
+    <div style={{
+      background: t.card,
+      border: `1px solid ${t.bor}`,
+      borderLeft: `4px solid ${color}`,
+      borderRadius: 10,
+      padding: "12px 16px",
+      flex: "1 1 170px",
+      minWidth: 150,
+      maxWidth: 260,
+      boxShadow: t.shad,
+      boxSizing: "border-box",
+      display: "flex",
+      flexDirection: "column",
+      gap: 3,
+    }}>
+      <div style={{ fontSize: 9, color: t.muted, textTransform: "uppercase", letterSpacing: .7, fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 900, color, lineHeight: 1.2 }}>{value}</div>
+      <div style={{ fontSize: 9, color: t.muted }}>{sub}</div>
+    </div>
+  );
+}
+
 function TabelaImpacto({ rows, t, isDark, corValor, corBadgeBg, corBadgeTxt, renderTipo }) {
   return (
     <div style={{ overflowX: "auto" }}>
@@ -46,7 +73,7 @@ function TabelaImpacto({ rows, t, isDark, corValor, corBadgeBg, corBadgeTxt, ren
   );
 }
 
-export default function ImpactoCaixaTab({ grouped, baixadosImportacao = [], events, t, isDark }) {
+export default function ImpactoCaixaTab({ grouped, baixadosImportacao = [], events = [], t, isDark }) {
   const pagosArr = useMemo(() => grouped.filter((g) =>
     g.statusConsolidado === "Encerrado" ||
     g.statusConsolidado === "Baixado" ||
@@ -64,9 +91,24 @@ export default function ImpactoCaixaTab({ grouped, baixadosImportacao = [], even
   const totalPagosVal = pagosArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0);
   const totalSCVal = semCarteiraArr.reduce((s, g) => s + (g.valorTotalDebito || 0), 0);
   const totalBaixadosImportacao = baixadosImportacao.reduce((sum, item) => sum + Number(item.valorEmAberto || item.valorOriginal || 0), 0);
+  const totalCarteira = grouped.reduce((s, g) => s + Number(g.valorTotalDebito || 0), 0);
+  const promessasAtivas = grouped.filter((g) => g.dataPromessa && g.dataPromessa >= hoje && !pagosArr.some((p) => p.clientKey === g.clientKey));
+  const recuperadoMesEventos = events
+    .filter((e) => e.event_date?.startsWith(mesAtual) && ["Pago Aguard. Baixa", "Encerrado", "Pagamento confirmado", "Baixado", "Confirmado"].includes(e.status))
+    .reduce((s, e) => s + Number(e.total_value || 0), 0);
+  const recuperadoMes = totalBaixadosImportacao || recuperadoMesEventos || totalPagosVal;
+  const valorRisco = grouped
+    .filter((g) => g.dataPromessa && g.dataPromessa < hoje && !pagosArr.some((p) => p.clientKey === g.clientKey))
+    .reduce((s, g) => s + Number(g.valorTotalDebito || 0), 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 2, flexWrap: "wrap", justifyContent: "center" }}>
+        <ResumoCard label="Carteira Total" value={fmtM(totalCarteira)} sub="com multa e juros" color="#ef4444" t={t} />
+        <ResumoCard label="Recuperado no Mês" value={fmtM(recuperadoMes)} sub="baixas via importação" color="#22c55e" t={t} />
+        <ResumoCard label="Promessas Ativas" value={promessasAtivas.length} sub="clientes com promessa" color="#f59e0b" t={t} />
+        <ResumoCard label="Valor em Risco" value={fmtM(valorRisco)} sub="clientes não confiáveis" color="#ef4444" t={t} />
+      </div>
 
       {/* ── Seção 1: Sem Carteira (cruzamento EB x TOPCON) ── */}
       <div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderLeft: "4px solid #f59e0b", borderRadius: 10, padding: "14px 16px" }}>

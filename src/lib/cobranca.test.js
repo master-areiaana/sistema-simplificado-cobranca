@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildItem, dbToItem, getTituloKey } from "./cobranca.js";
+import { buildItem, dateISO, dbToItem, getTituloKey } from "./cobranca.js";
 
 test("buildItem mantém sem_carteira como diagnóstico sem bloquear workflow da carteira", () => {
   const item = buildItem({
@@ -75,4 +75,73 @@ test("getTituloKey trata título 10457/1 igual a título 10457 sequência 1", ()
   });
 
   assert.equal(comBarra, canonico);
+});
+
+test("getTituloKey nao junta clientes diferentes com mesmo titulo", () => {
+  const clienteA = getTituloKey({
+    origem: "RPT_7007_CONS_CAR_EB",
+    nrCli: "100",
+    titulo: "10457",
+    seq: "1",
+    vencimento: "2026-06-01",
+  });
+  const clienteB = getTituloKey({
+    origem: "RPT_7007_CONS_CAR_EB",
+    nrCli: "200",
+    titulo: "10457",
+    seq: "1",
+    vencimento: "2026-06-01",
+  });
+
+  assert.notEqual(clienteA, clienteB);
+});
+
+test("getTituloKey nao junta EB e Topcon do mesmo cliente e titulo", () => {
+  const eb = getTituloKey({
+    origem: "RPT_7007_CONS_CAR_EB",
+    nrCli: "100",
+    titulo: "10457",
+    seq: "1",
+    vencimento: "2026-06-01",
+  });
+  const topcon = getTituloKey({
+    origem: "FINR1253",
+    nrCli: "100",
+    titulo: "10457",
+    seq: "1",
+    vencimento: "2026-06-01",
+  });
+
+  assert.notEqual(eb, topcon);
+});
+
+test("getTituloKey normaliza datas equivalentes", () => {
+  const iso = getTituloKey({
+    origem: "RPT_7007_CONS_CAR_EB",
+    nrCli: "100",
+    titulo: "10457",
+    seq: "1",
+    vencimento: "2026-06-01",
+  });
+  const semZero = getTituloKey({
+    origem: "RPT_7007_CONS_CAR_EB",
+    nrCli: "100",
+    titulo: "10457",
+    seq: "1",
+    vencimento: "1/6/2026",
+  });
+  const br = getTituloKey({
+    origem: "RPT_7007_CONS_CAR_EB",
+    nrCli: "100",
+    titulo: "10457",
+    seq: "1",
+    vencimento: "01/06/2026",
+  });
+
+  assert.equal(iso, semZero);
+  assert.equal(iso, br);
+});
+
+test("dateISO converte data serial do Excel", () => {
+  assert.equal(dateISO(46174), "2026-06-01");
 });

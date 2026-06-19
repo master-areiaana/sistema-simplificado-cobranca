@@ -92,9 +92,7 @@ function isTituloCarteiraGeral(item) {
 function dedupeTitulosCarteira(titulos) {
   const map = new Map();
   for (const item of titulos || []) {
-    const keySistema = getTituloKey({ origem: item.origem, titulo: item.titulo, seq: item.seq, vencimento: item.vencimento });
-    const keySemOrigem = keySistema.replace(/^(FINR1253|EB)\|/, "");
-    const key = `${norm(item.nomeCli)}|${keySemOrigem}`;
+    const key = getTituloKey({ origem: item.origem, nrCli: item.nrCli, nomeCli: item.nomeCli, titulo: item.titulo, seq: item.seq, vencimento: item.vencimento });
     const prev = map.get(key);
     if (!prev) { map.set(key, item); continue; }
     const score = (x) => (x.origem === "FINR1253" ? 3 : 0) + (x.dataContato ? 2 : 0) + (x.obs ? 2 : 0) + (x.dataPromessa ? 1 : 0) + (x.encaminhar ? 1 : 0) + (toNumber(x.valorEmAberto ?? x.valorTotalDebito) > 0 ? 1 : 0);
@@ -158,7 +156,7 @@ function renderTituloDetalhe(item) {
 }
 
 function tituloCalcKey(item) {
-  return item.id || getTituloKey({ origem: item.origem, titulo: item.titulo, seq: item.seq, vencimento: item.vencimento });
+  return item.id || getTituloKey({ origem: item.origem, nrCli: item.nrCli, nomeCli: item.nomeCli, titulo: item.titulo, seq: item.seq, vencimento: item.vencimento });
 }
 
 function sanitizeGroup(g, origemFiltro) {

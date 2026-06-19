@@ -136,7 +136,7 @@ export default function Dashboard() {
     try {
       const t1 = performance.now();
       const [titulos, evts, baixados] = await Promise.all([
-        base44.entities.Titulo.filter({ active: true }, "client_name", 3000),
+        base44.entities.Titulo.filter({ active: true }, "client_name", 10000),
         base44.entities.ChargeEvent.list("-created_date", 2000),
         base44.entities.Titulo.filter({ workflow_status: "baixado_importacao" }, "-updated_date", 1000)
       ]);
@@ -144,7 +144,7 @@ export default function Dashboard() {
 
       const tituloKeyMap = new Map();
       for (const r of titulos || []) {
-        const key = getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
+        const key = getTituloKey({ origem: r.source, nrCli: r.client_code, nomeCli: r.client_name, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
         const prev = tituloKeyMap.get(key);
         if (!prev) { tituloKeyMap.set(key, r); continue; }
         const sc = (rec) => (
@@ -535,7 +535,7 @@ export default function Dashboard() {
       await yieldUI();
 
       const t2 = performance.now();
-      const dupKey = (r) => getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
+      const dupKey = (r) => getTituloKey({ origem: r.source, nrCli: r.client_code, nomeCli: r.client_name, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
       const byKey = new Map();
       for (const r of allTitulos || []) {
         const key = dupKey(r);
@@ -690,7 +690,8 @@ export default function Dashboard() {
 
     onProgress(`📥 Consultando banco de dados (origem: ${source})...`);
     await yieldUI();
-    const existingAll = await base44.entities.Titulo.filter({ source }, "client_name", 5000);
+    const existingAllRaw = await base44.entities.Titulo.filter({ source }, "client_name", 10000);
+    const existingAll = (existingAllRaw || []).filter((r) => String(r.source || "") === source);
     lap("fetch");
 
     const manualScore = (r) => [
@@ -702,7 +703,7 @@ export default function Dashboard() {
 
     const existMap = new Map();
     for (const r of existingAll || []) {
-      const key = getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
+      const key = getTituloKey({ origem: r.source, nrCli: r.client_code, nomeCli: r.client_name, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
       const prev = existMap.get(key);
       if (!prev) { existMap.set(key, r); continue; }
       const sc = manualScore(r), sp = manualScore(prev);
@@ -818,12 +819,12 @@ export default function Dashboard() {
     // NÃO inativa (active continua true) — apenas muda status para "Pago Aguard. Baixa"
     // e workflow_status para "pago_importacao" para aparecer na aba Impacto no Caixa
     let deact = 0, baixados = 0, valorBaixado = 0;
-    const isCarteirCompleta = existMap.size === 0 || deduped.length >= existMap.size * 0.5;
+    const isCarteirCompleta = existMap.size === 0 || deduped.length >= existMap.size;
     if (isCarteirCompleta) {
       const toBaixa = (existingAll || []).filter((r) => {
-        const key = getTituloKey({ origem: r.source, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
+        const key = getTituloKey({ origem: r.source, nrCli: r.client_code, nomeCli: r.client_name, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
         // Só marca como pago se: sumiu do arquivo E não está já encerrado/baixado/pago
-        return !importKeys.has(key) && r.active &&
+        return String(r.source || "") === source && !importKeys.has(key) && r.active &&
           !["Baixado","Recebido","Pago","Encerrado","Pago Aguard. Baixa"].includes(r.current_status);
       });
       if (toBaixa.length > 0) {
@@ -1086,7 +1087,11 @@ export default function Dashboard() {
         const ignoradosMsg = r.skipped > 0 ? ` | ${r.skipped} ignorados (sem alteração)` : "";
         const dupArqMsg = r.dupArquivo > 0 ? ` | ${r.dupArquivo} dup. do arquivo ignoradas` : "";
         const parcialMsg = !r.isCarteirCompleta ? " ⚠️ Parcial: baixa automática desabilitada." : "";
-        setImportStatus({ ok: true, msg: `✅ "${file.name}" [${source === "FINR1253" ? "Topcon" : "EB"}] — ${rawRows.length} linhas | ${imported.length} válidos | ${r.ins} novos | ${r.upd} atualizados${ignoradosMsg}${dupArqMsg}${baixaMsg}${parcialMsg} — ⏱ ${elapsed}s` });
+        const sourceLabel = source === "FINR1253" ? "Topcon" : "EB";
+        const criadosMsg = r.ins > 0 ? ` | ${r.ins} ${sourceLabel} criados e disponíveis na Carteira Geral` : "";
+        setFiltroOrigem("");
+        setFCart((prev) => ({ ...(prev || {}), origem: null }));
+        setImportStatus({ ok: true, msg: `✅ "${file.name}" [${sourceLabel}] — ${rawRows.length} linhas | ${imported.length} válidos | ${r.ins} novos | ${r.upd} atualizados${criadosMsg}${ignoradosMsg}${dupArqMsg}${baixaMsg}${parcialMsg} — ⏱ ${elapsed}s` });
       }
       e.target.value = "";
       setSyncMsg("⏳ Importação concluída. Atualizando carteira...");

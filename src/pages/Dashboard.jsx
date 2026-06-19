@@ -742,6 +742,10 @@ export default function Dashboard() {
     for (const item of deduped) {
       const tKey = getTituloKey(item);
       const old = existMap.get(tKey);
+      const valorOriginalImportado = Number(item.valorOriginal || 0);
+      const valorRecebidoImportado = Number(item.valorRecebido || item.recebPrc || 0);
+      const valorAbertoImportado = Number(item.valorEmAberto ?? item.valorTotalDebito ?? Math.max(0, valorOriginalImportado - valorRecebidoImportado));
+      const saldoErpImportado = Number(item.saldoErp ?? valorAbertoImportado);
 
       const financeiro = {
         source: item.origem,
@@ -754,7 +758,11 @@ export default function Dashboard() {
         nf_servico: item.nfServico || null,
         issue_date: item.emissao || null,
         due_date: item.vencimento || null,
-        original_value: Number(item.valorOriginal || 0),
+        original_value: valorOriginalImportado,
+        received_value: valorRecebidoImportado,
+        open_value: valorAbertoImportado,
+        erp_balance: saldoErpImportado,
+        partial_payment_detected: Boolean(item.partialPaymentDetected || valorRecebidoImportado > 0),
         portador: item.portador || null,
         active: true,
         import_file: fileName,
@@ -782,6 +790,9 @@ export default function Dashboard() {
           String(old.client_name || "") !== String(financeiro.client_name || "") ||
           String(old.due_date || "") !== String(financeiro.due_date || "") ||
           Math.abs(Number(old.original_value || 0) - financeiro.original_value) > 0.01 ||
+          Math.abs(Number(old.received_value || 0) - financeiro.received_value) > 0.01 ||
+          Math.abs(Number(old.open_value ?? old.original_value ?? 0) - financeiro.open_value) > 0.01 ||
+          Math.abs(Number(old.erp_balance || 0) - financeiro.erp_balance) > 0.01 ||
           String(old.portador || "") !== String(financeiro.portador || "") ||
           String(old.doc_type || "") !== String(financeiro.doc_type || "") ||
           String(old.serie || "") !== String(financeiro.serie || "") ||

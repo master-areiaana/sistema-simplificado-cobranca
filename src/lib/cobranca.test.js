@@ -175,3 +175,28 @@ test("dedupeTitulos prefere título aberto a pago por importação", () => {
   assert.equal(mantido.workflow_status, "normal");
   assert.equal(mantido.status, "Não Contatado");
 });
+
+test("dbToItem preserva saldo em aberto importado do EB", () => {
+  const item = dbToItem({
+    id: "premix-6598",
+    source: "RPT_7007_CONS_CAR_EB",
+    client_code: "67",
+    client_name: "PREMIX CONCRETO LTDA",
+    doc_type: "EB",
+    title_number: "6598",
+    seq: "1",
+    due_date: "2026-04-15",
+    original_value: 46853.53,
+    received_value: 37694.46,
+    open_value: 9159.07,
+    erp_balance: 9159.07,
+    current_status: "Não Contatado",
+    workflow_status: "normal",
+    active: true,
+  });
+
+  assert.equal(item.valorOriginal, 46853.53);
+  assert.equal(item.valorRecebido, 37694.46);
+  assert.equal(item.valorEmAberto, 9159.07);
+  assert.equal(item.valorTotalDebito, 9159.07);
+});

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildItem, dateISO, dbToItem, dedupeTitulos, getTituloKey, parseRows7007 } from "./cobranca.js";
+import { buildItem, dateISO, dbToItem, dedupeTitulos, getClienteAgrupamentoKey, getTituloKey, parseRows7007 } from "./cobranca.js";
 
 test("buildItem mantém sem_carteira como diagnóstico sem bloquear workflow da carteira", () => {
   const item = buildItem({
@@ -266,4 +266,30 @@ test("parseRows7007 agrupa cliente EB por razão social sem deduplicar códigos 
   assert.equal(items.length, 2);
   assert.equal(items[0].clientGroupKey, items[1].clientGroupKey);
   assert.notEqual(getTituloKey(items[0]), getTituloKey(items[1]));
+});
+
+test("getClienteAgrupamentoKey une o mesmo cliente entre EB e Topcon", () => {
+  const eb = getClienteAgrupamentoKey({
+    origem: "RPT_7007_CONS_CAR_EB",
+    nrCli: "67",
+    nomeCli: "PREMIX CONCRETO LTDA",
+  });
+  const topcon = getClienteAgrupamentoKey({
+    origem: "FINR1253",
+    nrCli: "728",
+    nomeCli: "PREMIX CONCRETO LTDA.",
+  });
+
+  assert.equal(eb, "NOME:PREMIX CONCRETO");
+  assert.equal(eb, topcon);
+});
+
+test("getClienteAgrupamentoKey prioriza CPF/CNPJ quando existir", () => {
+  const porDoc = getClienteAgrupamentoKey({
+    nrCli: "67",
+    nomeCli: "Cliente Teste LTDA",
+    cpfCnpj: "12.345.678/0001-90",
+  });
+
+  assert.equal(porDoc, "DOC:12345678000190");
 });

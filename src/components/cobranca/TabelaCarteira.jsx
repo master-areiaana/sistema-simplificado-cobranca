@@ -171,6 +171,11 @@ function sanitizeGroup(g, origemFiltro) {
   const vencimentos = titulos.map((x) => x.vencimento).filter(Boolean).sort();
   const contatos = titulos.map((x) => x.dataContato || "").filter(Boolean).sort();
   const promessas = titulos.map((x) => x.dataPromessa || "").filter(Boolean).sort();
+  const historico = g.historicoCliente || [];
+  const obsTitulos = titulos.map((x) => x.obs).filter(Boolean).slice(-1)[0] || "";
+  const obsHistorico = historico.find((h) => h.obs)?.obs || "";
+  const promessaHistorico = historico.find((h) => h.dataPromessa)?.dataPromessa || "";
+  const contatoHistorico = historico.find((h) => h.data)?.data || "";
   return {
     ...g,
     titulos,
@@ -178,11 +183,11 @@ function sanitizeGroup(g, origemFiltro) {
     maiorAtraso: titulos.reduce((m, x) => Math.max(m, Number(x.diasAtraso || 0)), 0),
     qtdTitulos: titulos.length,
     qtdTotal: titulos.reduce((s, x) => s + Number(x.qtd || 0), 0),
-    ultimoContato: contatos.slice(-1)[0] || "",
-    dataPromessa: promessas.slice(-1)[0] || "",
+    ultimoContato: contatos.slice(-1)[0] || contatoHistorico || g.ultimoContato || "",
+    dataPromessa: promessas.slice(-1)[0] || promessaHistorico || g.dataPromessa || "",
     primeiroVencimento: vencimentos[0] || "",
     statusConsolidado: titulos.map((x) => x.status).filter(Boolean).sort().slice(-1)[0] || "Não Contatado",
-    obsConsolidada: titulos.map((x) => x.obs).filter(Boolean).slice(-1)[0] || "",
+    obsConsolidada: obsTitulos || obsHistorico || g.obsConsolidada || "",
     encaminharConsolidado: titulos.map((x) => x.encaminhar).filter(Boolean).slice(-1)[0] || "",
   };
 }

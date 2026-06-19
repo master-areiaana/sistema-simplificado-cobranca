@@ -22,7 +22,7 @@ import {
   hojeISO, fmtM, fmtD, normText, dbToItem,
   detectSrc, parseRows1253, parseRows7007, dateISO, num, pick,
   dlCsv, sugestaoEncaminhamento,
-  getTituloKey, isValidClientName } from
+  getTituloKey, isValidClientName, getClienteAgrupamentoKey } from
 "@/lib/cobranca";
 import { DARK, LIGHT, loadL, saveL } from "@/lib/theme";
 import { KPI, TabBtn, Badge, Btn } from "@/components/cobranca/UI";
@@ -137,7 +137,7 @@ export default function Dashboard() {
       const t1 = performance.now();
       const [titulos, evts, baixados] = await Promise.all([
         base44.entities.Titulo.filter({ active: true }, "client_name", 10000),
-        base44.entities.ChargeEvent.list("-created_date", 2000),
+        base44.entities.ChargeEvent.list("-created_date", 10000),
         base44.entities.Titulo.filter({ workflow_status: "baixado_importacao" }, "-updated_date", 1000)
       ]);
       const t2 = performance.now();
@@ -216,10 +216,11 @@ export default function Dashboard() {
       const evtData = { ...e, data: e.event_date || "", tipo: e.contact_type || "", status: e.status || "", motivo: e.motive || "", obs: e.note || "", usuario: e.event_user || "", dataPromessa: e.promise_date || "", subtype: e.event_subtype || "" };
       const keyFull = `${String(e.client_code || "").trim()}||${normText(e.client_name || "")}`;
       const keyNome = `NOME:${normText(e.client_name || "")}`;
-      if (!out[keyFull]) out[keyFull] = [];
-      out[keyFull].push(evtData);
-      if (!out[keyNome]) out[keyNome] = [];
-      out[keyNome].push(evtData);
+      const keyCliente = getClienteAgrupamentoKey({ nrCli: e.client_code, nomeCli: e.client_name });
+      for (const key of [keyFull, keyNome, keyCliente].filter(Boolean)) {
+        if (!out[key]) out[key] = [];
+        out[key].push(evtData);
+      }
     }
     Object.keys(out).forEach((k) => out[k].sort((a, b) => String(b.data).localeCompare(String(a.data))));
     return out;
@@ -228,16 +229,6 @@ export default function Dashboard() {
   const grouped = useMemo(() => {
     const tg0 = performance.now();
     const map = new Map();
-
-    function normNomeKey(v) {
-      return String(v || "")
-        .toUpperCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[.,\-/\\]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
 
     function extractNomeCli(v) {
       const raw = String(v || "").trim();
@@ -251,19 +242,10 @@ export default function Dashboard() {
     }
 
     function getClienteKey(item) {
-      const chaveGrupo = String(item.clientGroupKey || item.client_group_key || "").trim();
-      if (/^(DOC|COD|NOME):/i.test(chaveGrupo)) return chaveGrupo;
-      const doc = String(item.cpfCnpj || "").replace(/\D/g, "");
-      if (doc.length >= 11) return `DOC:${doc}`;
-      const nomeExtraido = extractNomeCli(item.nomeCli);
-      const nomeNorm = normNomeKey(nomeExtraido);
+      const chaveCliente = getClienteAgrupamentoKey(item);
+      if (chaveCliente) return chaveCliente;
       const cod = normCod(item.nrCli);
-      const nomeValido = isValidClientName(nomeExtraido) && nomeNorm.replace(/\s/g, "").length >= 3 && /[A-Za-z]/.test(nomeNorm);
-      const origem = String(item.origem || item.source || "").toUpperCase().replace(/[\s\-_]/g, "");
-      if (nomeValido && (origem.includes("7007") || origem.includes("CONSCAREB"))) return `NOME:${nomeNorm}`;
-      if (cod && nomeValido) return `COD:${cod}|NOME:${nomeNorm}`;
       if (cod) return `COD:${cod}`;
-      if (nomeValido) return `NOME:${nomeNorm}`;
       return `ID:${item.id || Math.random()}`;
     }
 
@@ -319,10 +301,19 @@ export default function Dashboard() {
       }
       if (!statusC) statusC = "Não Contatado";
       const prio = mAtr > 90 || qtdT >= 3 ? "CRÍTICO" : mAtr > 30 || qtdT >= 2 ? "ALTO" : mAtr > 0 || qtdT >= 1 ? "MÉDIO" : "BAIXO";
-      const histCliKey = histMap[g.clientKey];
-      const histNomeKey = g.clientKey.startsWith("NOME:") ? histCliKey : histMap[`NOME:${normText(g.nomeCli || "")}`];
+      const histKeys = new Set([
+        g.clientKey,
+        `${String(g.nrCli || "").trim()}||${normText(g.nomeCli || "")}`,
+        `NOME:${normText(g.nomeCli || "")}`,
+        getClienteAgrupamentoKey({ nrCli: g.nrCli, nomeCli: g.nomeCli })
+      ].filter(Boolean));
+      for (const ti of g.titulos || []) {
+        histKeys.add(getClienteAgrupamentoKey(ti));
+        histKeys.add(`${String(ti.nrCli || "").trim()}||${normText(ti.nomeCli || "")}`);
+        histKeys.add(`NOME:${normText(ti.nomeCli || "")}`);
+      }
       const historicoMerged = (() => {
-        const all = histCliKey === histNomeKey ? (histCliKey || []) : [...(histCliKey || []), ...(histNomeKey || [])];
+        const all = [...histKeys].flatMap((key) => histMap[key] || []);
         if (!all.length) return [];
         const seen = new Set();
         return all.filter((h) => {
@@ -332,7 +323,10 @@ export default function Dashboard() {
           return true;
         }).sort((a, b) => b.data > a.data ? -1 : 1);
       })();
-      return { ...g, valorOriginal: vOrig, valorMulta: vMult, valorJuros: vJuro, valorTotalDebito: vTot, maiorAtraso: mAtr, qtdTitulos: ts.length, qtdTotal: qtdT, ultimoContato: ultCont, dataPromessa: dataProm, statusConsolidado: statusC, obsConsolidada: obsC, encaminharConsolidado: encC, solicitanteProtestoConsolidado: solProt, prioridadeCliente: prio, foiCobrado, historicoCliente: historicoMerged, primeiroVencimento };
+      const ultimaObsHistorico = historicoMerged.find((h) => h.obs)?.obs || "";
+      const ultimaPromessaHistorico = historicoMerged.find((h) => h.dataPromessa)?.dataPromessa || "";
+      const ultimoContatoHistorico = historicoMerged.find((h) => h.data)?.data || "";
+      return { ...g, valorOriginal: vOrig, valorMulta: vMult, valorJuros: vJuro, valorTotalDebito: vTot, maiorAtraso: mAtr, qtdTitulos: ts.length, qtdTotal: qtdT, ultimoContato: ultCont || ultimoContatoHistorico, dataPromessa: dataProm || ultimaPromessaHistorico, statusConsolidado: statusC, obsConsolidada: obsC || ultimaObsHistorico, encaminharConsolidado: encC, solicitanteProtestoConsolidado: solProt, prioridadeCliente: prio, foiCobrado: foiCobrado || historicoMerged.length > 0, historicoCliente: historicoMerged, primeiroVencimento };
     });
     console.info(`⚡ grouped: ${(performance.now() - tg0).toFixed(0)}ms | ${agrupados.length} grupos de ${records.length} títulos`);
     return agrupados;

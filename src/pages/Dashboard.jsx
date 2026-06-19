@@ -1091,7 +1091,12 @@ export default function Dashboard() {
         const sourceLabel = source === "FINR1253" ? "Topcon" : "EB";
         const criadosMsg = r.ins > 0 ? ` | ${r.ins} ${sourceLabel} criados e disponíveis na Carteira Geral` : "";
         setFiltroOrigem("");
-        setFCart((prev) => ({ ...(prev || {}), origem: null }));
+        setFCart({});
+        setBuscaCliente("");
+        setBuscaTitulo("");
+        setFiltroCategoria("");
+        setFaixaAtraso(0);
+        setKpiFilter(null);
         setImportStatus({ ok: true, msg: `✅ "${file.name}" [${sourceLabel}] — ${rawRows.length} linhas | ${imported.length} válidos | ${r.ins} novos | ${r.upd} atualizados${criadosMsg}${ignoradosMsg}${dupArqMsg}${baixaMsg}${parcialMsg}${baixaBloqueadaMsg} — ⏱ ${elapsed}s` });
       }
       e.target.value = "";

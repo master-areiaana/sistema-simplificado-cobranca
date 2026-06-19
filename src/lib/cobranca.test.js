@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildItem, dateISO, dbToItem, dedupeTitulos, getTituloKey } from "./cobranca.js";
+import { buildItem, dateISO, dbToItem, dedupeTitulos, getTituloKey, parseRows7007 } from "./cobranca.js";
 
 test("buildItem mantém sem_carteira como diagnóstico sem bloquear workflow da carteira", () => {
   const item = buildItem({
@@ -199,4 +199,36 @@ test("dbToItem preserva saldo em aberto importado do EB", () => {
   assert.equal(item.valorRecebido, 37694.46);
   assert.equal(item.valorEmAberto, 9159.07);
   assert.equal(item.valorTotalDebito, 9159.07);
+});
+
+test("parseRows7007 importa a primeira linha de dados da planilha EB", () => {
+  const [item] = parseRows7007([
+    {
+      Empresa: 1,
+      "Tipo Documento": "NFe",
+      "Série": 1,
+      "Numero Documento": 6954,
+      "Sequência": 1,
+      "Código Cliente": 15,
+      "Razão Social": "JOJU COM VAREJISTA DE MAT DE CONST LTDA",
+      Vendedor: 6,
+      "Data Emissão": "08/06/2026",
+      "Data Vencimento": "18/06/2026",
+      "Valor Total": "R$ 9813,01000",
+      Desconto: "R$ ,000",
+      Juros: "R$ ,000",
+      "Valor Recebido": 0,
+      Saldo: "R$ 9813,0100",
+    },
+  ]);
+
+  assert.ok(item);
+  assert.equal(item.nomeCli, "JOJU COM VAREJISTA DE MAT DE CONST LTDA");
+  assert.equal(item.nrCli, "15");
+  assert.equal(item.titulo, "6954");
+  assert.equal(item.seq, "1");
+  assert.equal(item.vencimento, "2026-06-18");
+  assert.equal(item.valorOriginal, 9813.01);
+  assert.equal(item.valorEmAberto, 9813.01);
+  assert.equal(item.origem, "RPT_7007_CONS_CAR_EB");
 });

@@ -255,9 +255,11 @@ export default function Dashboard() {
       if (doc.length >= 11) return `DOC:${doc}`;
       const nomeExtraido = extractNomeCli(item.nomeCli);
       const nomeNorm = normNomeKey(nomeExtraido);
-      if (isValidClientName(nomeExtraido) && nomeNorm.replace(/\s/g, "").length >= 3 && /[A-Za-z]/.test(nomeNorm)) return `NOME:${nomeNorm}`;
       const cod = normCod(item.nrCli);
+      const nomeValido = isValidClientName(nomeExtraido) && nomeNorm.replace(/\s/g, "").length >= 3 && /[A-Za-z]/.test(nomeNorm);
+      if (cod && nomeValido) return `COD:${cod}|NOME:${nomeNorm}`;
       if (cod) return `COD:${cod}`;
+      if (nomeValido) return `NOME:${nomeNorm}`;
       return `ID:${item.id || Math.random()}`;
     }
 

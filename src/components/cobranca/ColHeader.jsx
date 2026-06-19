@@ -87,6 +87,7 @@ export default function ColHeader({ label, field, data = [], filters = {}, setFi
     padding: 0,
     whiteSpace: "nowrap",
     borderBottom: `1px solid ${t.bor}`,
+    borderRight: `1px solid ${t.bor}`,
     position: "sticky",
     top: 0,
     zIndex: open ? 600 : 30,
@@ -98,22 +99,33 @@ export default function ColHeader({ label, field, data = [], filters = {}, setFi
 
   return (
     <th ref={ref} style={thStyle}>
-      <div style={{ display: "flex", alignItems: "stretch", width: "100%" }}>
+      <div style={{ display: "flex", alignItems: "stretch", width: "100%", paddingRight: 9, boxSizing: "border-box" }}>
         {sortKey
           ? <button onClick={() => onSort && onSort(sortKey)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", cursor: "pointer", padding: "9px 6px 9px 10px", textAlign: "left", fontSize: 11, fontWeight: 700, color: act ? t.p : t.muted, letterSpacing: .4, display: "flex", alignItems: "center", gap: 4, overflow: "hidden", textOverflow: "ellipsis" }}>
             {label}{act ? (sortCfg.dir === "asc" ? "  ▲" : "  ▼") : ""}
           </button>
           : <div style={{ flex: 1, minWidth: 0, padding: "9px 6px 9px 10px", fontSize: 11, fontWeight: 700, color: t.muted, letterSpacing: .4, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
         }
-        <button onClick={(e) => { e.stopPropagation(); setOpen(x => !x); }} style={{ background: hasFilter ? t.p : "none", border: "none", cursor: "pointer", padding: "0 8px", fontSize: 11, color: hasFilter ? "#fff" : t.muted, borderLeft: `1px solid ${t.bor}33`, display: "flex", alignItems: "center" }} title="Filtrar">
+        <button onClick={(e) => { e.stopPropagation(); setOpen(x => !x); }} style={{ background: hasFilter ? t.p : "none", border: "none", cursor: "pointer", padding: "0 8px", fontSize: 11, color: hasFilter ? "#fff" : t.muted, borderLeft: `1px solid ${t.bor}33`, display: "flex", alignItems: "center", flexShrink: 0 }} title="Filtrar">
           {hasFilter ? "▼" : "⌄"}
         </button>
-        <span
-          onMouseDown={startResize}
-          title="Arraste para ajustar a largura da coluna"
-          style={{ width: 8, cursor: "col-resize", alignSelf: "stretch", borderRight: `2px solid ${t.bor}`, opacity: 0.55, flexShrink: 0 }}
-        />
       </div>
+
+      <span
+        onMouseDown={startResize}
+        title="Arraste para ajustar a largura da coluna"
+        style={{
+          position: "absolute",
+          right: -2,
+          top: 0,
+          bottom: 0,
+          width: 12,
+          cursor: "col-resize",
+          zIndex: 750,
+          borderRight: `3px solid ${t.bor}`,
+          background: "rgba(148,163,184,0.08)",
+        }}
+      />
 
       {open && (
         <div onMouseDown={stop} onClick={stop} style={{ position: "absolute", top: "100%", left: 0, zIndex: 700, background: t.drop, border: `1px solid ${t.p}`, borderRadius: 6, boxShadow: "0 6px 24px rgba(0,0,0,.25)", minWidth: 240, maxWidth: 340 }}>

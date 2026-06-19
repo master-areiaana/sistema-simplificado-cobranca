@@ -137,6 +137,28 @@
     min-width: 70px !important;
   }
 
+  /* Alinhamento padrão das tabelas: texto no meio e centralizado. */
+  main table th,
+  main table td {
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+
+  main table th > div,
+  main table td > div {
+    justify-content: center !important;
+    align-items: center !important;
+  }
+
+  main table th button,
+  main table th > div > div,
+  main table td button,
+  main table td b,
+  main table td span {
+    text-align: center !important;
+    justify-content: center !important;
+  }
+
   /* KPI Container Standardization */
   .kpi-container {
     width: 100%;

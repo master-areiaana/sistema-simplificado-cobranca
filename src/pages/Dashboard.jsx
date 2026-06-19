@@ -22,7 +22,7 @@ import {
   hojeISO, fmtM, fmtD, normText, dbToItem,
   detectSrc, parseRows1253, parseRows7007, dateISO, num, pick,
   dlCsv, sugestaoEncaminhamento,
-  getTituloKey, isValidClientName, getClienteAgrupamentoKey } from
+  getTituloKey, isValidClientName, getClienteAgrupamentoKey, manualObservationText } from
 "@/lib/cobranca";
 import { DARK, LIGHT, loadL, saveL } from "@/lib/theme";
 import { KPI, TabBtn, Badge, Btn } from "@/components/cobranca/UI";
@@ -209,11 +209,12 @@ export default function Dashboard() {
   const histMap = useMemo(() => {
     const out = {}, seen = new Map();
     for (const e of events) {
-      const k = [e.client_code || "", normText(e.client_name || ""), e.event_date || "", e.status || "", e.motive || "", e.note || "", e.event_user || ""].join("|");
+      const manualObs = manualObservationText(e.note, e.event_user);
+      const k = [e.client_code || "", normText(e.client_name || ""), e.event_date || "", e.status || "", e.motive || "", manualObs, e.event_user || ""].join("|");
       if (!seen.has(k)) seen.set(k, e);
     }
     for (const e of seen.values()) {
-      const evtData = { ...e, data: e.event_date || "", tipo: e.contact_type || "", status: e.status || "", motivo: e.motive || "", obs: e.note || "", usuario: e.event_user || "", dataPromessa: e.promise_date || "", subtype: e.event_subtype || "" };
+      const evtData = { ...e, data: e.event_date || "", tipo: e.contact_type || "", status: e.status || "", motivo: e.motive || "", obs: manualObservationText(e.note, e.event_user), usuario: e.event_user || "", dataPromessa: e.promise_date || "", subtype: e.event_subtype || "" };
       const keyFull = `${String(e.client_code || "").trim()}||${normText(e.client_name || "")}`;
       const keyNome = `NOME:${normText(e.client_name || "")}`;
       const keyCliente = getClienteAgrupamentoKey({ nrCli: e.client_code, nomeCli: e.client_name });
@@ -293,7 +294,7 @@ export default function Dashboard() {
         if (x.dataContato && x.dataContato > ultCont) ultCont = x.dataContato;
         if (x.dataPromessa && x.dataPromessa > dataProm) dataProm = x.dataPromessa;
         if (x.status && x.status > statusC) statusC = x.status;
-        if (x.obs && !obsC) obsC = x.obs;
+        if (manualObservationText(x.obs, x.updated_by || x.usuario) && !obsC) obsC = manualObservationText(x.obs, x.updated_by || x.usuario);
         if (x.encaminhar && !encC) encC = x.encaminhar;
         if (x.solicitanteProtesto && !solProt) solProt = x.solicitanteProtesto;
         if (x.vencimento && (!primeiroVencimento || x.vencimento < primeiroVencimento)) primeiroVencimento = x.vencimento;

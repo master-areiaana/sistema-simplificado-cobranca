@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ColHeader from "./ColHeader";
 import { Btn, PromBadge, ObsCell, Badge } from "./UI";
-import { fmtM, fmtD, prioCor, getTituloKey } from "@/lib/cobranca";
+import { fmtM, fmtD, prioCor, getTituloKey, manualObservationText } from "@/lib/cobranca";
 
 const RATES_STORAGE_KEY = "sc_carteira_multa_juros_por_titulo";
 
@@ -172,8 +172,8 @@ function sanitizeGroup(g, origemFiltro) {
   const contatos = titulos.map((x) => x.dataContato || "").filter(Boolean).sort();
   const promessas = titulos.map((x) => x.dataPromessa || "").filter(Boolean).sort();
   const historico = g.historicoCliente || [];
-  const obsTitulos = titulos.map((x) => x.obs).filter(Boolean).slice(-1)[0] || "";
-  const obsHistorico = historico.find((h) => h.obs)?.obs || "";
+  const obsTitulos = titulos.map((x) => manualObservationText(x.obs, x.updated_by || x.usuario)).filter(Boolean).slice(-1)[0] || "";
+  const obsHistorico = historico.map((h) => manualObservationText(h.obs, h.usuario)).find(Boolean) || "";
   const promessaHistorico = historico.find((h) => h.dataPromessa)?.dataPromessa || "";
   const contatoHistorico = historico.find((h) => h.data)?.data || "";
   return {
@@ -488,7 +488,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
                           if (c.key === "cat") return <td key={c.key} style={tdS()}>{item.clientCategory ? categoriaBadge(item.clientCategory) : "—"}</td>;
                           if (c.key === "contato") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{fmtD(item.dataContato)}</td>;
                           if (c.key === "prom") return <td key={c.key} style={tdS()}><PromBadge date={item.dataPromessa} t={t} /></td>;
-                          if (c.key === "obs") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{item.obs || item.portador || "—"}</td>;
+                          if (c.key === "obs") return <td key={c.key} style={{ ...tdS(), color: t.muted, fontSize: 10 }}>{manualObservationText(item.obs, item.updated_by || item.usuario) || "—"}</td>;
                           if (c.key === "acoes") return <td key={c.key} style={tdS()} />;
                           return <td key={c.key} style={tdS()} />;
                         })}

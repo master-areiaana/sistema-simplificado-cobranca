@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fmtD, fmtM, hojeISO } from "@/lib/cobranca";
+import { fmtD, fmtM, hojeISO, manualObservationText } from "@/lib/cobranca";
 import { PromBadge } from "./UI";
 import { base44 } from "@/api/base44Client";
 
@@ -70,7 +70,7 @@ export default function ModalHistorico({ histModal, onClose, t }) {
                       </span>
                       <span style={{ fontSize: 11, color: t.muted }}>{fmtD(h.data)} · {h.tipo || (isMsg ? "Chat" : "—")} · {h.usuario || "—"}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: t.txt }}>{h.obs || "Sem observação"}</div>
+                    <div style={{ fontSize: 12, color: t.txt }}>{manualObservationText(h.obs, h.usuario) || "Sem observação manual"}</div>
                     {h.motivo && !isMsg && <div style={{ fontSize: 11, color: t.muted, marginTop: 4 }}>Encaminhamento: <b>{h.motivo}</b></div>}
                     {h.dataPromessa && <div style={{ fontSize: 11, marginTop: 4 }}><PromBadge date={h.dataPromessa} t={t} /></div>}
                   </div>

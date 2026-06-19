@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildItem, dateISO, dbToItem, dedupeTitulos, getClienteAgrupamentoKey, getTituloKey, parseRows7007 } from "./cobranca.js";
+import { buildItem, dateISO, dbToItem, dedupeTitulos, getClienteAgrupamentoKey, getTituloKey, manualObservationText, parseRows7007 } from "./cobranca.js";
 
 test("buildItem mantém sem_carteira como diagnóstico sem bloquear workflow da carteira", () => {
   const item = buildItem({
@@ -199,6 +199,48 @@ test("dbToItem preserva saldo em aberto importado do EB", () => {
   assert.equal(item.valorRecebido, 37694.46);
   assert.equal(item.valorEmAberto, 9159.07);
   assert.equal(item.valorTotalDebito, 9159.07);
+});
+
+test("dbToItem oculta observação gerada por sistema ou importação", () => {
+  const item = dbToItem({
+    id: "auto-note",
+    source: "RPT_7007_CONS_CAR_EB",
+    client_code: "67",
+    client_name: "PREMIX CONCRETO LTDA",
+    title_number: "6598",
+    due_date: "2026-04-15",
+    original_value: 100,
+    open_value: 100,
+    last_note: "movido automaticamente",
+    updated_by: "Importação",
+    active: true,
+  });
+
+  assert.equal(item.obs, "");
+});
+
+test("dbToItem preserva observação descrita manualmente", () => {
+  const item = dbToItem({
+    id: "manual-note",
+    source: "FINR1253",
+    client_code: "67",
+    client_name: "PREMIX CONCRETO LTDA",
+    title_number: "6598",
+    due_date: "2026-04-15",
+    original_value: 100,
+    open_value: 100,
+    last_note: "Cliente pediu retorno amanhã",
+    updated_by: "Mariana",
+    active: true,
+  });
+
+  assert.equal(item.obs, "Cliente pediu retorno amanhã");
+});
+
+test("manualObservationText retorna somente observação manual", () => {
+  assert.equal(manualObservationText("texto do sistema", "Sistema"), "");
+  assert.equal(manualObservationText("texto importado", "Importação CSV"), "");
+  assert.equal(manualObservationText("texto manual", "Mariana"), "texto manual");
 });
 
 test("parseRows7007 importa a primeira linha de dados da planilha EB", () => {

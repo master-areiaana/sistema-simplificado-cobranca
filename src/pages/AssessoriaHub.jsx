@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Assessoria from "./Assessoria";
 
 const PORTAL_CREDOR_URL = "https://portal-recuperacob.cobcloud.com.br/login";
@@ -10,8 +10,8 @@ function readThemeMode() {
 function getTheme(mode) {
   const isDark = mode === "dark";
   return isDark
-    ? { bg: "#050505", surf: "#111111", surf2: "#1f1f1f", bor: "#2f2f2f", txt: "#f3f4f6", muted: "#9ca3af", p: "#f97316" }
-    : { bg: "#f5f5f5", surf: "#ffffff", surf2: "#f3f4f6", bor: "#d1d5db", txt: "#111827", muted: "#6b7280", p: "#f97316" };
+    ? { bg: "#050505", surf: "#111111", surf2: "#1f1f1f", bor: "#2f2f2f", txt: "#f3f4f6", muted: "#9ca3af", p: "#f97316", inp: "#e8f0fe" }
+    : { bg: "#f5f5f5", surf: "#ffffff", surf2: "#f3f4f6", bor: "#d1d5db", txt: "#111827", muted: "#6b7280", p: "#f97316", inp: "#e8f0fe" };
 }
 
 function TabAssessoria({ active, children, onClick, t }) {
@@ -57,10 +57,54 @@ function PortalCredor({ t }) {
   );
 }
 
+function syncAssessoriaTheme(root, t) {
+  if (!root) return;
+  const isLight = t.bg === "#f5f5f5";
+  const nodes = Array.from(root.querySelectorAll("*"));
+
+  root.style.background = t.bg;
+  root.style.color = t.txt;
+
+  for (const el of nodes) {
+    const bg = String(el.style.background || el.style.backgroundColor || "").toLowerCase().replace(/\s/g, "");
+    const color = String(el.style.color || "").toLowerCase().replace(/\s/g, "");
+    const border = String(el.style.border || el.style.borderBottom || "").toLowerCase().replace(/\s/g, "");
+
+    if (bg === "#f5f5f5" || bg === "rgb(245,245,245)") {
+      el.style.background = t.bg;
+      el.style.color = t.txt;
+    }
+    if (bg === "#fff" || bg === "#ffffff" || bg === "rgb(255,255,255)") {
+      el.style.background = t.surf;
+      el.style.color = t.txt;
+    }
+    if (bg === "#f8fafc" || bg === "rgb(248,250,252)") {
+      el.style.background = t.surf2;
+      el.style.color = t.txt;
+    }
+    if (!isLight && (color === "#111" || color === "#111827" || color === "rgb(17,17,17)" || color === "rgb(17,24,39)")) {
+      el.style.color = t.txt;
+    }
+    if (!isLight && (color === "#666" || color === "#555" || color === "#777" || color === "rgb(102,102,102)" || color === "rgb(85,85,85)" || color === "rgb(119,119,119)")) {
+      el.style.color = t.muted;
+    }
+    if (border.includes("#ddd") || border.includes("#eee") || border.includes("rgb(221,221,221)") || border.includes("rgb(238,238,238)")) {
+      el.style.borderColor = t.bor;
+    }
+  }
+
+  const firstPanel = root.querySelector("div[style]");
+  if (firstPanel) {
+    firstPanel.style.background = t.bg;
+    firstPanel.style.color = t.txt;
+  }
+}
+
 export default function AssessoriaHub() {
   const [modo, setModo] = useState("transferencia");
   const [themeMode, setThemeMode] = useState(() => readThemeMode());
   const t = useMemo(() => getTheme(themeMode), [themeMode]);
+  const assessoriaRef = useRef(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -69,6 +113,13 @@ export default function AssessoriaHub() {
     }, 500);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (modo !== "transferencia") return;
+    syncAssessoriaTheme(assessoriaRef.current, t);
+    const timer = setInterval(() => syncAssessoriaTheme(assessoriaRef.current, t), 450);
+    return () => clearInterval(timer);
+  }, [modo, t]);
 
   return (
     <div
@@ -98,7 +149,7 @@ export default function AssessoriaHub() {
       </div>
 
       {modo === "transferencia" ? (
-        <div style={{ background: t.bg, borderRadius: 10, overflow: "hidden", minHeight: "72vh" }}>
+        <div ref={assessoriaRef} style={{ background: t.bg, color: t.txt, borderRadius: 10, overflow: "hidden", minHeight: "72vh" }}>
           <Assessoria />
         </div>
       ) : (

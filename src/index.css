@@ -75,8 +75,6 @@
   }
 }
 
-
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -169,25 +167,11 @@
     align-items: stretch;
   }
 
-  .kpi-container-8 {
-    grid-template-columns: repeat(8, 1fr);
-  }
-
-  .kpi-container-6 {
-    grid-template-columns: repeat(6, 1fr);
-  }
-
-  .kpi-container-5 {
-    grid-template-columns: repeat(5, 1fr);
-  }
-
-  .kpi-container-4 {
-    grid-template-columns: repeat(4, 1fr);
-  }
-
-  .kpi-container-2 {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .kpi-container-8 { grid-template-columns: repeat(8, 1fr); }
+  .kpi-container-6 { grid-template-columns: repeat(6, 1fr); }
+  .kpi-container-5 { grid-template-columns: repeat(5, 1fr); }
+  .kpi-container-4 { grid-template-columns: repeat(4, 1fr); }
+  .kpi-container-2 { grid-template-columns: repeat(2, 1fr); }
 
   .kpi-card {
     background: hsl(var(--card)) !important;
@@ -205,20 +189,167 @@
     transition: all 0.2s ease !important;
   }
 
-  .kpi-card:hover {
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
-  }
-
-  .kpi-card.cursor-pointer {
-    cursor: pointer !important;
-  }
-
-  .kpi-card.cursor-pointer:hover {
-    transform: translateY(-2px) !important;
-  }
-
+  .kpi-card:hover { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important; }
+  .kpi-card.cursor-pointer { cursor: pointer !important; }
+  .kpi-card.cursor-pointer:hover { transform: translateY(-2px) !important; }
   .kpi-card.active {
     transform: scale(1.02) !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  }
+}
+
+@layer components {
+  /* Polimento visual: mantém paleta, dados e funcionamento; altera apenas espaçamento, leitura e acabamento. */
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+
+  header {
+    backdrop-filter: saturate(160%) blur(6px);
+  }
+
+  main {
+    padding-top: clamp(10px, 1vw, 18px) !important;
+    padding-bottom: clamp(18px, 1.4vw, 28px) !important;
+  }
+
+  main > * {
+    scroll-margin-top: 72px;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button,
+  select,
+  input,
+  textarea {
+    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease, opacity .16s ease;
+  }
+
+  button:hover {
+    transform: translateY(-1px);
+  }
+
+  button:active {
+    transform: translateY(0);
+  }
+
+  input,
+  select,
+  textarea {
+    min-height: 34px;
+    border-radius: 8px !important;
+  }
+
+  main table {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    width: 100%;
+  }
+
+  main table thead th {
+    position: sticky !important;
+    top: 0;
+    z-index: 8;
+    white-space: nowrap;
+    letter-spacing: .035em;
+    line-height: 1.2;
+  }
+
+  main table th,
+  main table td {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+
+  main table td {
+    line-height: 1.35;
+  }
+
+  main table tbody tr {
+    transition: box-shadow .16s ease, transform .16s ease;
+  }
+
+  main table tbody tr:hover {
+    box-shadow: inset 3px 0 0 currentColor;
+  }
+
+  main table td b,
+  main table td strong {
+    letter-spacing: .01em;
+  }
+
+  main table input,
+  main table select {
+    min-height: 28px;
+    border-radius: 6px !important;
+  }
+
+  .kpi-container {
+    padding-inline: 4px;
+    row-gap: 14px;
+  }
+
+  .kpi-card {
+    border-radius: 12px !important;
+    padding: 16px 18px !important;
+    min-height: 94px !important;
+    max-height: none !important;
+  }
+
+  .kpi-card > * {
+    max-width: 100%;
+  }
+
+  .kpi-card strong,
+  .kpi-card b {
+    letter-spacing: .01em;
+  }
+
+  @media (max-width: 1200px) {
+    .kpi-container-8,
+    .kpi-container-6,
+    .kpi-container-5,
+    .kpi-container-4 {
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    }
+  }
+
+  @media (max-width: 900px) {
+    header {
+      height: auto !important;
+      min-height: 50px;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+    }
+
+    main {
+      padding-inline: 10px !important;
+    }
+
+    .kpi-container,
+    .kpi-container-8,
+    .kpi-container-6,
+    .kpi-container-5,
+    .kpi-container-4,
+    .kpi-container-2 {
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+    main table {
+      min-width: 980px;
+    }
   }
 }

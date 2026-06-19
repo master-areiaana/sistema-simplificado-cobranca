@@ -92,7 +92,8 @@
     display: none !important;
   }
 
-  div:has(> input[placeholder="Buscar cliente/título"]) {
+  /* Esconde só a busca extra da Carteira, mas mantém o botão Limpar filtros visível quando houver filtro ativo. */
+  input[placeholder="Buscar cliente/título"] {
     display: none !important;
   }
 

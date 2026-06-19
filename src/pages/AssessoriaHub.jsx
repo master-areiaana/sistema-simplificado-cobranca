@@ -115,11 +115,10 @@ export default function AssessoriaHub() {
   }, []);
 
   useEffect(() => {
-    if (modo !== "transferencia") return;
     syncAssessoriaTheme(assessoriaRef.current, t);
     const timer = setInterval(() => syncAssessoriaTheme(assessoriaRef.current, t), 450);
     return () => clearInterval(timer);
-  }, [modo, t]);
+  }, [t]);
 
   return (
     <div
@@ -148,13 +147,12 @@ export default function AssessoriaHub() {
         </TabAssessoria>
       </div>
 
-      {modo === "transferencia" ? (
-        <div ref={assessoriaRef} style={{ background: t.bg, color: t.txt, borderRadius: 10, overflow: "hidden", minHeight: "72vh" }}>
-          <Assessoria />
-        </div>
-      ) : (
+      <div ref={assessoriaRef} style={{ background: t.bg, color: t.txt, borderRadius: 10, overflow: "hidden", minHeight: "72vh", display: modo === "transferencia" ? "block" : "none" }}>
+        <Assessoria />
+      </div>
+      <div style={{ display: modo === "portal" ? "block" : "none" }}>
         <PortalCredor t={t} />
-      )}
+      </div>
     </div>
   );
 }

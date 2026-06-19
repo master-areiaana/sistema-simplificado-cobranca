@@ -109,6 +109,33 @@
     opacity: 1 !important;
   }
 
+  /* Carteira Geral: as duas primeiras colunas são apenas seleção e abrir/fechar. Não devem virar faixas largas. */
+  table:has(thead input[type="checkbox"]) th:first-child,
+  table:has(thead input[type="checkbox"]) td:first-child {
+    width: 28px !important;
+    min-width: 28px !important;
+    max-width: 28px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    text-align: center !important;
+  }
+
+  table:has(thead input[type="checkbox"]) th:nth-child(2),
+  table:has(thead input[type="checkbox"]) td:nth-child(2) {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    text-align: center !important;
+  }
+
+  table:has(thead input[type="checkbox"]) th:nth-child(3),
+  table:has(thead input[type="checkbox"]) td:nth-child(3) {
+    width: 70px !important;
+    min-width: 70px !important;
+  }
+
   /* KPI Container Standardization */
   .kpi-container {
     width: 100%;

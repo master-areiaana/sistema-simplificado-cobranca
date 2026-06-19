@@ -9,6 +9,7 @@ export const CAMPOS_MANUAIS = [
 ];
 
 const INVISIBLE_DEDUPE = /[\u200B\u200C\u200D\u2060\u2063]/g;
+const AUTO_IMPACT_STATUSES = new Set(['pago_importacao', 'sem_carteira']);
 const localStorageAdapter = createLocalEntityStorage();
 let queue = Promise.resolve();
 
@@ -68,6 +69,44 @@ function prepareTituloRows(entityName, rows) {
   });
 }
 
+function isFinancialImportUpdate(fields = {}) {
+  if (String(fields.updated_by || '') !== 'Importação') return false;
+  return fields.active === true || 'source' in fields || 'title_number' in fields || 'original_value' in fields || 'open_value' in fields || 'due_date' in fields;
+}
+
+function isAutomaticBaixaPayload(fields = {}) {
+  return String(fields.updated_by || '') === 'Importação Automática' && String(fields.workflow_status || '') === 'pago_importacao';
+}
+
+function isAutomaticCrossPayload(fields = {}) {
+  return String(fields.updated_by || '') === 'Cruzamento Automático' && String(fields.workflow_status || '') === 'sem_carteira';
+}
+
+function sanitizeTituloUpdate(fields = {}) {
+  const next = { ...(fields || {}) };
+  if (isAutomaticBaixaPayload(next) || isAutomaticCrossPayload(next)) {
+    return { blocked: true, fields: next };
+  }
+
+  if (isFinancialImportUpdate(next) && AUTO_IMPACT_STATUSES.has(String(next.workflow_status || ''))) {
+    next.workflow_status = 'normal';
+    if (String(next.current_status || '') === 'Pago Aguard. Baixa') next.current_status = 'Não Contatado';
+    const motivo = String(next.current_motive || '').toLowerCase();
+    if (motivo.includes('saiu da carteira') || motivo.includes('sem carteira correspondente')) next.current_motive = null;
+    next.updated_by = 'Importação';
+  }
+  return { blocked: false, fields: next };
+}
+
+async function resolveExisting(entityName, id) {
+  try {
+    const rows = await localStorageAdapter.read(entityName);
+    return rows.find((row) => row?.id === id) || { id };
+  } catch {
+    return { id };
+  }
+}
+
 function makeLocalEntity(entityName) {
   return {
     async list(orderBy, limit = 1000) {
@@ -79,7 +118,14 @@ function makeLocalEntity(entityName) {
       return prepareTituloRows(entityName, sortRows(rows.filter((row) => matches(row, criteria)), orderBy).slice(0, limit));
     },
     async create(record) { return localStorageAdapter.save(entityName, record); },
-    async update(id, fields) { return localStorageAdapter.save(entityName, { ...(fields || {}), id }); },
+    async update(id, fields) {
+      if (entityName === 'Titulo') {
+        const decision = sanitizeTituloUpdate(fields);
+        if (decision.blocked) return resolveExisting(entityName, id);
+        return localStorageAdapter.save(entityName, { ...(decision.fields || {}), id });
+      }
+      return localStorageAdapter.save(entityName, { ...(fields || {}), id });
+    },
     async bulkCreate(records = []) { return localStorageAdapter.saveMany(entityName, records); },
     subscribe(callback) { return localStorageAdapter.subscribe(entityName, callback); },
   };
@@ -118,8 +164,29 @@ function makeHybridEntity(entityName) {
       catch (error) { console.warn(`[local-first] filter ${entityName} local`, error); }
       return fallback;
     },
-    async create(record) { const localSaved = await local.create(record); const remote = remoteEntity(entityName); if (!remote?.create) return localSaved; try { const saved = await runRemote(() => remote.create(record)); return saved?.id ? localStorageAdapter.save(entityName, saved) : localSaved; } catch (error) { console.warn(`[local-first] create ${entityName} local`, error); return localSaved; } },
-    async update(id, fields) { const localSaved = await local.update(id, fields); const remote = remoteEntity(entityName); if (!remote?.update) return localSaved; try { const saved = await runRemote(() => remote.update(id, fields)); return saved?.id ? localStorageAdapter.save(entityName, saved) : localSaved; } catch (error) { console.warn(`[local-first] update ${entityName} local`, error); return localSaved; } },
+    async create(record) {
+      const localSaved = await local.create(record);
+      const remote = remoteEntity(entityName);
+      if (!remote?.create) return localSaved;
+      try { const saved = await runRemote(() => remote.create(record)); return saved?.id ? localStorageAdapter.save(entityName, saved) : localSaved; }
+      catch (error) { console.warn(`[local-first] create ${entityName} local`, error); return localSaved; }
+    },
+    async update(id, fields) {
+      let remoteFields = fields || {};
+      if (entityName === 'Titulo') {
+        const decision = sanitizeTituloUpdate(remoteFields);
+        if (decision.blocked) {
+          console.warn('[importação protegida] baixa/sem_carteira automática bloqueada para evitar esvaziar Carteira Geral', { id, fields: remoteFields });
+          return resolveExisting(entityName, id);
+        }
+        remoteFields = decision.fields;
+      }
+      const localSaved = await local.update(id, remoteFields);
+      const remote = remoteEntity(entityName);
+      if (!remote?.update) return localSaved;
+      try { const saved = await runRemote(() => remote.update(id, remoteFields)); return saved?.id ? localStorageAdapter.save(entityName, saved) : localSaved; }
+      catch (error) { console.warn(`[local-first] update ${entityName} local`, error); return localSaved; }
+    },
     async bulkCreate(records = []) { const remote = remoteEntity(entityName); if (!remote?.create) return local.bulkCreate(records); const result = []; for (const record of records || []) result.push(await this.create(record)); return result; },
     subscribe(callback) { const stopLocal = local.subscribe(callback); let stopRemote = null; try { const remote = remoteEntity(entityName); if (remote?.subscribe) stopRemote = remote.subscribe(callback); } catch (error) { console.warn(`[local-first] subscribe ${entityName} local`, error); } return () => { stopLocal?.(); if (typeof stopRemote === 'function') stopRemote(); }; },
   };

@@ -24,7 +24,7 @@ const COLS_DEF = [
   { key: "contato", label: "DT. CONTATO", width: 96 },
   { key: "prom", label: "PROMESSA", width: 96 },
   { key: "obs", label: "OBSERVAÇÃO", width: 180 },
-  { key: "acoes", label: "AÇÕES", width: 100, fixed: true },
+  { key: "acoes", label: "AÇÕES", width: 118, fixed: true },
 ];
 
 const thS = (t) => ({ background: t.th, padding: "8px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", borderBottom: `1px solid ${t.bor}`, letterSpacing: .4, color: t.muted, position: "sticky", top: 0, zIndex: 10 });
@@ -233,12 +233,14 @@ function updateKpiCardsFromCarteira(totals) {
   }, 0);
 }
 
-export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols, onClickFilter, filtroOrigem }) {
+export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, selected, toggleSel, toggleAll, setModal, setForm, setHistModal, openCli, setOpenCli, emptyForm, isDark, t, setNegModal, hiddenCols = new Set(), setHiddenCols, onClickFilter, filtroOrigem }) {
   const [buscaLocal, setBuscaLocal] = useState("");
   const [ratesByTitle, setRatesByTitle] = useState(() => loadStoredRates());
   const [filters, setFilters] = useState({});
+  const [showColumnMenu, setShowColumnMenu] = useState(false);
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
   const colCount = visibleCols.length;
+  const selectableCols = COLS_DEF.filter(c => !["check", "expand", "acoes"].includes(c.key));
 
   useEffect(() => {
     saveStoredRates(ratesByTitle);
@@ -358,10 +360,50 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     try { localStorage.removeItem(RATES_STORAGE_KEY); } catch {}
   }
 
+  function toggleColumn(key) {
+    if (!setHiddenCols) return;
+    setHiddenCols((prev) => {
+      const next = new Set(prev || []);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  function showAllColumns() {
+    if (!setHiddenCols) return;
+    setHiddenCols(new Set());
+    setShowColumnMenu(false);
+  }
+
+  function ColumnMenuButton() {
+    return (
+      <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+        <button
+          onClick={(event) => { event.stopPropagation(); setShowColumnMenu((x) => !x); }}
+          title="Selecionar colunas"
+          style={{ background: t.surf2, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 4, padding: "2px 6px", fontSize: 12, fontWeight: 900, lineHeight: 1, cursor: "pointer" }}
+        >☰</button>
+        {showColumnMenu && (
+          <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 900, background: isDark ? "#171717" : "#ffffff", border: `1px solid ${t.bor}`, borderRadius: 7, padding: 6, boxShadow: "0 10px 28px rgba(0,0,0,.35)", width: 190 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+              {selectableCols.map((c) => (
+                <label key={c.key} style={{ display: "flex", alignItems: "center", gap: 5, background: hiddenCols?.has?.(c.key) ? t.surf2 : t.th, borderRadius: 4, padding: "4px 5px", fontSize: 9, color: t.txt, fontWeight: 700, cursor: "pointer", textTransform: "uppercase" }}>
+                  <input type="checkbox" checked={!hiddenCols?.has?.(c.key)} onChange={() => toggleColumn(c.key)} style={{ accentColor: t.p, width: 12, height: 12 }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.key === "origem" ? "ORIG." : c.key === "total" ? "TOTAL" : c.label}</span>
+                </label>
+              ))}
+            </div>
+            <button onClick={showAllColumns} style={{ marginTop: 6, width: "100%", background: t.p, color: "#fff", border: "none", borderRadius: 4, padding: "5px 8px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Mostrar Todas</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function headerCell(c) {
     if (c.key === "check") return <th key={c.key} style={thS(t)}><input type="checkbox" checked={selected.size === carteiraGeral.length && carteiraGeral.length > 0} onChange={toggleAll} /></th>;
     if (c.key === "expand") return <th key={c.key} style={thS(t)} />;
-    if (c.key === "acoes") return <th key={c.key} style={thS(t)}>AÇÕES</th>;
+    if (c.key === "acoes") return <th key={c.key} style={{ ...thS(t), textAlign: "right", position: "sticky", top: 0, zIndex: 50 }}><div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}><span>AÇÕES</span><ColumnMenuButton /></div></th>;
     return <ColHeader key={c.key} label={c.label} field={c.key} data={colData(c.key)} filters={filters} setFilters={setFilters} t={t} width={c.width} />;
   }
 

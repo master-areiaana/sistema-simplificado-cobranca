@@ -99,7 +99,7 @@ export default function ColHeader({ label, field, data = [], filters = {}, setFi
 
   return (
     <th ref={ref} style={thStyle}>
-      <div style={{ display: "flex", alignItems: "stretch", width: "100%", paddingRight: 9, boxSizing: "border-box" }}>
+      <div style={{ display: "flex", alignItems: "stretch", width: "100%", boxSizing: "border-box" }}>
         {sortKey
           ? <button onClick={() => onSort && onSort(sortKey)} style={{ flex: 1, minWidth: 0, background: "none", border: "none", cursor: "pointer", padding: "9px 6px 9px 10px", textAlign: "left", fontSize: 11, fontWeight: 700, color: act ? t.p : t.muted, letterSpacing: .4, display: "flex", alignItems: "center", gap: 4, overflow: "hidden", textOverflow: "ellipsis" }}>
             {label}{act ? (sortCfg.dir === "asc" ? "  ▲" : "  ▼") : ""}
@@ -116,14 +116,26 @@ export default function ColHeader({ label, field, data = [], filters = {}, setFi
         title="Arraste para ajustar a largura da coluna"
         style={{
           position: "absolute",
-          right: -2,
+          right: -4,
           top: 0,
           bottom: 0,
-          width: 12,
+          width: 8,
           cursor: "col-resize",
           zIndex: 750,
-          borderRight: `3px solid ${t.bor}`,
-          background: "rgba(148,163,184,0.08)",
+          background: "transparent",
+        }}
+      />
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 1,
+          background: t.bor,
+          pointerEvents: "none",
+          opacity: 0.9,
         }}
       />
 

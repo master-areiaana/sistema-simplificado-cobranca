@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import PageNotFound from './lib/PageNotFound';
 // Add page imports here
 import Dashboard from './pages/Dashboard';
-import Assessoria from './pages/Assessoria';
+import AssessoriaHub from './pages/AssessoriaHub';
 import CorrecoesGlobais from './components/cobranca/CorrecoesGlobais';
 
 function AssessoriaTabInjector() {
@@ -105,7 +105,7 @@ function App() {
         <Routes>
           {/* Add your page Route elements here */}
           <Route path="/" element={<Dashboard />} />
-          <Route path="/assessoria" element={<Assessoria />} />
+          <Route path="/assessoria" element={<AssessoriaHub />} />
           <Route path="*" element={<PageNotFound />} />
         </Routes>
       </Router>

@@ -53,27 +53,30 @@ function AssessoriaTabInjector() {
 
     const styleTab = (el, count, active = false) => {
       const th = theme();
+      el.className = active ? "sc-assessoria-tab sc-assessoria-tab-active" : "sc-assessoria-tab";
+      el.dataset.active = active ? "true" : "false";
       el.innerHTML = `<span>⚖️ Assessoria</span>${count > 0 ? `<span style="background:#ef4444;color:#fff;border-radius:999px;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;padding:0 5px;margin-left:6px;">${count}</span>` : ""}`;
-      el.style.position = "relative";
-      el.style.border = "none";
-      el.style.borderBottom = "0";
-      el.style.borderRadius = "0";
-      el.style.padding = "10px 16px";
-      el.style.fontSize = "10.5px";
-      el.style.fontWeight = "700";
-      el.style.cursor = "pointer";
+      setImportant(el, "position", "relative");
+      setImportant(el, "border", "none");
+      setImportant(el, "border-bottom", `3px solid ${active ? th.p : "transparent"}`);
+      setImportant(el, "border-radius", "0");
+      setImportant(el, "padding", "10px 16px");
+      setImportant(el, "font-size", "10.5px");
+      setImportant(el, "font-weight", "700");
+      setImportant(el, "cursor", "pointer");
       setImportant(el, "background", active ? th.p : "transparent");
+      setImportant(el, "background-color", active ? th.p : "transparent");
       setImportant(el, "color", active ? "#fff" : th.txt);
-      el.style.minHeight = "40px";
-      el.style.display = "inline-flex";
-      el.style.alignItems = "center";
-      el.style.justifyContent = "center";
-      el.style.whiteSpace = "nowrap";
-      el.style.boxShadow = active ? "0 0 0 1px rgba(232,119,34,.25)" : "none";
-      el.style.flexShrink = "0";
-      el.style.lineHeight = "1.3";
-      el.style.transition = "all 0.2s ease";
-      el.style.outline = "none";
+      setImportant(el, "min-height", "40px");
+      setImportant(el, "display", "inline-flex");
+      setImportant(el, "align-items", "center");
+      setImportant(el, "justify-content", "center");
+      setImportant(el, "white-space", "nowrap");
+      setImportant(el, "box-shadow", active ? "0 0 0 1px rgba(232,119,34,.25)" : "none");
+      setImportant(el, "flex-shrink", "0");
+      setImportant(el, "line-height", "1.3");
+      setImportant(el, "transition", "all 0.2s ease");
+      setImportant(el, "outline", "none");
     };
 
     const backupAndDeactivateOtherTabs = () => {
@@ -83,9 +86,10 @@ function AssessoriaTabInjector() {
         if (btn.id === "tab-assessoria-interno") return;
         if (!tabStyleBackup.has(btn)) tabStyleBackup.set(btn, btn.getAttribute("style") || "");
         btn.style.setProperty("background", "transparent", "important");
+        btn.style.setProperty("background-color", "transparent", "important");
         btn.style.setProperty("color", th.txt, "important");
         btn.style.setProperty("box-shadow", "none", "important");
-        btn.style.setProperty("border-bottom", "0", "important");
+        btn.style.setProperty("border-bottom", "3px solid transparent", "important");
       });
     };
 

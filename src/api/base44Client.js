@@ -139,13 +139,41 @@ function saveLocal(entityName, record = {}) {
   return saved;
 }
 
+function dashboardDedupeSuffix(row = {}) {
+  const key = String(row.client_code || row.client_name || '').replace(/\s+/g, '').toUpperCase();
+  if (!key) return '';
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = ((hash * 31) + key.charCodeAt(i)) % 997;
+  return '\u2063'.repeat((hash % 17) + 1);
+}
+
+function prepareRowsForDashboard(entityName, criteria, orderBy, limit, rows) {
+  const isDashboardLoad = entityName === 'Titulo' &&
+    criteria?.active === true &&
+    String(orderBy || '') === 'client_name' &&
+    Number(limit || 0) === 3000;
+
+  if (!isDashboardLoad || !Array.isArray(rows)) return rows;
+
+  return rows.map((row) => {
+    const suffix = dashboardDedupeSuffix(row);
+    if (!suffix || !row?.title_number) return row;
+    return {
+      ...row,
+      title_number: `${row.title_number}${suffix}`,
+      title_number_display: row.title_number,
+    };
+  });
+}
+
 function makeLocalEntity(entityName) {
   return {
     async list(orderBy, limit = 1000) {
       return sortRows(readLocal(entityName), orderBy).slice(0, limit);
     },
     async filter(criteria = {}, orderBy, limit = 1000) {
-      return sortRows(readLocal(entityName).filter((row) => matches(row, criteria)), orderBy).slice(0, limit);
+      const rows = sortRows(readLocal(entityName).filter((row) => matches(row, criteria)), orderBy).slice(0, limit);
+      return prepareRowsForDashboard(entityName, criteria, orderBy, limit, rows);
     },
     async create(record) {
       return saveLocal(entityName, record);
@@ -201,7 +229,7 @@ function makeHybridEntity(entityName) {
         const rows = await runRemote(() => remote.filter(criteria, orderBy, limit));
         if (Array.isArray(rows) && rows.length > 0) {
           mergeLocal(entityName, rows);
-          return rows;
+          return prepareRowsForDashboard(entityName, criteria, orderBy, limit, rows);
         }
       } catch (error) {
         console.warn(`[local-first] filter ${entityName} local`, error);

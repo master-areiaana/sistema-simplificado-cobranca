@@ -20,6 +20,7 @@ function AssessoriaTabInjector() {
     let tabsEl = null;
     let mainEl = null;
     const hiddenNodes = new Map();
+    const tabStyleBackup = new Map();
 
     const readCount = () => {
       try {
@@ -46,6 +47,10 @@ function AssessoriaTabInjector() {
       };
     };
 
+    const setImportant = (el, prop, value) => {
+      el.style.setProperty(prop, value, "important");
+    };
+
     const styleTab = (el, count, active = false) => {
       const th = theme();
       el.innerHTML = `<span>⚖️ Assessoria</span>${count > 0 ? `<span style="background:#ef4444;color:#fff;border-radius:999px;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;padding:0 5px;margin-left:6px;">${count}</span>` : ""}`;
@@ -57,18 +62,39 @@ function AssessoriaTabInjector() {
       el.style.fontSize = "10.5px";
       el.style.fontWeight = "700";
       el.style.cursor = "pointer";
-      el.style.background = active ? th.p : "transparent";
-      el.style.color = active ? "#fff" : th.txt;
+      setImportant(el, "background", active ? th.p : "transparent");
+      setImportant(el, "color", active ? "#fff" : th.txt);
       el.style.minHeight = "40px";
       el.style.display = "inline-flex";
       el.style.alignItems = "center";
       el.style.justifyContent = "center";
       el.style.whiteSpace = "nowrap";
-      el.style.boxShadow = "none";
+      el.style.boxShadow = active ? "0 0 0 1px rgba(232,119,34,.25)" : "none";
       el.style.flexShrink = "0";
       el.style.lineHeight = "1.3";
       el.style.transition = "all 0.2s ease";
       el.style.outline = "none";
+    };
+
+    const backupAndDeactivateOtherTabs = () => {
+      if (!tabsEl) return;
+      const th = theme();
+      Array.from(tabsEl.querySelectorAll("button")).forEach((btn) => {
+        if (btn.id === "tab-assessoria-interno") return;
+        if (!tabStyleBackup.has(btn)) tabStyleBackup.set(btn, btn.getAttribute("style") || "");
+        btn.style.setProperty("background", "transparent", "important");
+        btn.style.setProperty("color", th.txt, "important");
+        btn.style.setProperty("box-shadow", "none", "important");
+        btn.style.setProperty("border-bottom", "0", "important");
+      });
+    };
+
+    const restoreOtherTabs = () => {
+      tabStyleBackup.forEach((style, btn) => {
+        if (style) btn.setAttribute("style", style);
+        else btn.removeAttribute("style");
+      });
+      tabStyleBackup.clear();
     };
 
     const restoreDashboard = () => {
@@ -76,6 +102,7 @@ function AssessoriaTabInjector() {
       if (panel) panel.remove();
       hiddenNodes.forEach((display, node) => { node.style.display = display; });
       hiddenNodes.clear();
+      restoreOtherTabs();
       if (tabEl) styleTab(tabEl, readCount(), false);
     };
 
@@ -95,6 +122,7 @@ function AssessoriaTabInjector() {
     const openAssessoriaInline = () => {
       if (!tabsEl || !mainEl) return;
       hideDashboardAfterTabs();
+      backupAndDeactivateOtherTabs();
       styleTab(tabEl, readCount(), true);
       let panel = document.getElementById("assessoria-inline-panel");
       if (!panel) {
@@ -135,7 +163,9 @@ function AssessoriaTabInjector() {
         tabs.appendChild(btn);
       }
       tabEl = btn;
-      styleTab(btn, readCount(), !!document.getElementById("assessoria-inline-panel"));
+      const active = !!document.getElementById("assessoria-inline-panel");
+      if (active) backupAndDeactivateOtherTabs();
+      styleTab(btn, readCount(), active);
     };
 
     const handleTabClick = (event) => {

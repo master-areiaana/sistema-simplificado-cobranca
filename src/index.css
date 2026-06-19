@@ -96,6 +96,19 @@
     display: none !important;
   }
 
+  /* Mantém o redimensionador das colunas como linha fina, sem faixa grossa sobre a tabela. */
+  th > span[title="Arraste para ajustar a largura da coluna"] {
+    background: transparent !important;
+    border-right: 0 !important;
+    width: 6px !important;
+    right: -3px !important;
+  }
+
+  th > span[title="Arraste para ajustar a largura da coluna"] + span[aria-hidden="true"] {
+    width: 1px !important;
+    opacity: 1 !important;
+  }
+
   /* KPI Container Standardization */
   .kpi-container {
     width: 100%;

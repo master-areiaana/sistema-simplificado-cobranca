@@ -95,7 +95,11 @@ function dedupeTitulosCarteira(titulos) {
     const key = getTituloKey({ origem: item.origem, nrCli: item.nrCli, nomeCli: item.nomeCli, titulo: item.titulo, seq: item.seq, vencimento: item.vencimento });
     const prev = map.get(key);
     if (!prev) { map.set(key, item); continue; }
-    const score = (x) => (x.origem === "FINR1253" ? 3 : 0) + (x.dataContato ? 2 : 0) + (x.obs ? 2 : 0) + (x.dataPromessa ? 1 : 0) + (x.encaminhar ? 1 : 0) + (toNumber(x.valorEmAberto ?? x.valorTotalDebito) > 0 ? 1 : 0);
+    const score = (x) => {
+      const pagoImportacao = x.workflow_status === "pago_importacao" || x.encaminhar === "pago_importacao" || x.status === "Pago Aguard. Baixa" || x.current_status === "Pago Aguard. Baixa";
+      const aberto = toNumber(x.valorEmAberto ?? x.valorTotalDebito) > 0;
+      return (aberto && !pagoImportacao ? 100 : 0) - (pagoImportacao ? 100 : 0) + (x.origem === "FINR1253" ? 3 : 0) + (x.dataContato ? 2 : 0) + (x.obs ? 2 : 0) + (x.dataPromessa ? 1 : 0) + (x.encaminhar ? 1 : 0);
+    };
     if (score(item) > score(prev)) map.set(key, item);
   }
   return Array.from(map.values());

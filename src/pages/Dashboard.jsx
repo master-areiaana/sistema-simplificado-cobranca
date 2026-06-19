@@ -147,14 +147,20 @@ export default function Dashboard() {
         const key = getTituloKey({ origem: r.source, nrCli: r.client_code, nomeCli: r.client_name, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
         const prev = tituloKeyMap.get(key);
         if (!prev) { tituloKeyMap.set(key, r); continue; }
-        const sc = (rec) => (
-          (rec.current_status && rec.current_status !== "Não Contatado" ? 1 : 0) +
-          (rec.last_note ? 1 : 0) + (rec.promise_date ? 1 : 0) +
-          (rec.last_contact_date ? 1 : 0) +
-          (rec.workflow_status && rec.workflow_status !== "normal" ? 1 : 0) +
-          (rec.client_category ? 1 : 0) +
-          (Number(rec.contact_count) > 0 ? 1 : 0)
-        );
+        const sc = (rec) => {
+          const pagoImportacao = rec.workflow_status === "pago_importacao" || rec.current_status === "Pago Aguard. Baixa";
+          const valorAberto = Number(rec.open_value ?? rec.original_value ?? 0);
+          return (
+            (!pagoImportacao && rec.active && valorAberto > 0 ? 100 : 0) -
+            (pagoImportacao ? 100 : 0) +
+            (rec.current_status && rec.current_status !== "Não Contatado" ? 1 : 0) +
+            (rec.last_note ? 1 : 0) + (rec.promise_date ? 1 : 0) +
+            (rec.last_contact_date ? 1 : 0) +
+            (rec.workflow_status && rec.workflow_status !== "normal" ? 1 : 0) +
+            (rec.client_category ? 1 : 0) +
+            (Number(rec.contact_count) > 0 ? 1 : 0)
+          );
+        };
         const sr = sc(r), sp = sc(prev);
         const dc = r.updated_date || r.created_date || "";
         const dp = prev.updated_date || prev.created_date || "";
@@ -377,15 +383,18 @@ export default function Dashboard() {
         if (filtroSentinela && g.maiorAtraso <= 90) return false;
         if (filtroCategoria && !g.titulos.some((ti) => ti.clientCategory === filtroCategoria)) return false;
         // "sem_carteira" e diagnostico de cruzamento e nao remove saldo valido da Carteira Geral.
-        // Clientes marcados como pagos pela importação SEMPRE saem da carteira geral
-        if (g.titulos.every((ti) => ti.workflow_status === "pago_importacao")) return false;
+        // Pagamento por importacao so remove o grupo quando todos os titulos do cliente estao pagos/baixados.
+        const tituloPagoOuBaixado = (ti) => (
+          ti.encaminhar === "pago_importacao" ||
+          ti.workflow_status === "pago_importacao" ||
+          ["Encerrado", "Baixado", "Pago", "Recebido", "Pago Aguard. Baixa"].includes(ti.status)
+        );
+        const todosPagosOuBaixados = (g.titulos || []).length > 0 && g.titulos.every(tituloPagoOuBaixado);
+        if (todosPagosOuBaixados) return false;
         if (!showPaid) {
           const temPagamento =
-            g.statusConsolidado === "Encerrado" ||
-            g.statusConsolidado === "Baixado" ||
-            g.statusConsolidado === "Pago Aguard. Baixa" ||
-            g.titulos.some((ti) => ti.encaminhar === "pago_importacao" || ti.workflow_status === "pago_importacao") ||
-            g.historicoCliente.some((h) => h.motivo === "Confirmado");
+            todosPagosOuBaixados ||
+            (g.historicoCliente.some((h) => h.motivo === "Confirmado") && todosPagosOuBaixados);
           if (temPagamento) return false;
         }
         return true;
@@ -694,12 +703,25 @@ export default function Dashboard() {
     const existingAll = (existingAllRaw || []).filter((r) => String(r.source || "") === source);
     lap("fetch");
 
-    const manualScore = (r) => [
-      r.current_status && r.current_status !== "Não Contatado",
-      r.last_note, r.promise_date, r.last_contact_date,
-      r.workflow_status && r.workflow_status !== "normal",
-      r.client_category, Number(r.contact_count) > 0
-    ].filter(Boolean).length;
+    const isPagoImportacaoDb = (r) => (
+      r.workflow_status === "pago_importacao" ||
+      (r.current_status === "Pago Aguard. Baixa" && String(r.updated_by || "").includes("Importa"))
+    );
+
+    const manualScore = (r) => {
+      const pagoImportacao = isPagoImportacaoDb(r);
+      const valorAberto = Number(r.open_value ?? r.original_value ?? 0);
+      return (
+        (!pagoImportacao && r.active && valorAberto > 0 ? 100 : 0) -
+        (pagoImportacao ? 100 : 0) +
+        [
+          r.current_status && r.current_status !== "Não Contatado",
+          r.last_note, r.promise_date, r.last_contact_date,
+          r.workflow_status && r.workflow_status !== "normal",
+          r.client_category, Number(r.contact_count) > 0
+        ].filter(Boolean).length
+      );
+    };
 
     const existMap = new Map();
     for (const r of existingAll || []) {
@@ -716,7 +738,6 @@ export default function Dashboard() {
     await yieldUI();
 
     const toCreate = [], toUpdate = [], skipped = [];
-    const importKeys = new Set(deduped.map((i) => getTituloKey(i)));
 
     for (const item of deduped) {
       const tKey = getTituloKey(item);
@@ -755,6 +776,7 @@ export default function Dashboard() {
           updated_by: "Importação",
         });
       } else {
+        const reabrirPagoImportacao = isPagoImportacaoDb(old);
         const mudou = (
           String(old.client_code || "") !== String(financeiro.client_code || "") ||
           String(old.client_name || "") !== String(financeiro.client_name || "") ||
@@ -763,7 +785,8 @@ export default function Dashboard() {
           String(old.portador || "") !== String(financeiro.portador || "") ||
           String(old.doc_type || "") !== String(financeiro.doc_type || "") ||
           String(old.serie || "") !== String(financeiro.serie || "") ||
-          !old.active
+          !old.active ||
+          reabrirPagoImportacao
         );
 
         if (!mudou) {
@@ -773,8 +796,8 @@ export default function Dashboard() {
             dbId: old.id,
             payload: {
               ...financeiro,
-              current_status: old.current_status || "Não Contatado",
-              current_motive: old.current_motive || null,
+              current_status: reabrirPagoImportacao ? "Não Contatado" : (old.current_status || "Não Contatado"),
+              current_motive: reabrirPagoImportacao ? null : (old.current_motive || null),
               current_contact_type: old.current_contact_type || null,
               client_category: old.client_category || null,
               promise_date: old.promise_date || null,
@@ -782,7 +805,7 @@ export default function Dashboard() {
               last_note: old.last_note || null,
               contact_count: Number(old.contact_count || 0),
               protest_requested_by: old.protest_requested_by || null,
-              workflow_status: old.workflow_status || "normal",
+              workflow_status: reabrirPagoImportacao ? "normal" : (old.workflow_status || "normal"),
               updated_by: "Importação",
             }
           });
@@ -815,48 +838,12 @@ export default function Dashboard() {
     }
     lap("updates");
 
-    // ── 7. Títulos que saíram da carteira (não estão no arquivo) → Pago / Impacto no Caixa ──
-    // NÃO inativa (active continua true) — apenas muda status para "Pago Aguard. Baixa"
-    // e workflow_status para "pago_importacao" para aparecer na aba Impacto no Caixa
+    // ── 7. Baixa automática ──
+    // Este fluxo legado importa relatórios isolados. Não marca ausências como pagas aqui,
+    // pois isso pode esvaziar a Carteira Geral quando a planilha é parcial ou de outra origem.
     let deact = 0, baixados = 0, valorBaixado = 0;
     const isCarteirCompleta = existMap.size === 0 || deduped.length >= existMap.size;
-    if (isCarteirCompleta) {
-      const toBaixa = (existingAll || []).filter((r) => {
-        const key = getTituloKey({ origem: r.source, nrCli: r.client_code, nomeCli: r.client_name, titulo: r.title_number, seq: r.seq, vencimento: r.due_date });
-        // Só marca como pago se: sumiu do arquivo E não está já encerrado/baixado/pago
-        return String(r.source || "") === source && !importKeys.has(key) && r.active &&
-          !["Baixado","Recebido","Pago","Encerrado","Pago Aguard. Baixa"].includes(r.current_status);
-      });
-      if (toBaixa.length > 0) {
-        onProgress(`💰 Marcando ${toBaixa.length} títulos como pagos (saíram da carteira)...`);
-        const BAIXA_BATCH = 20;
-        for (let i = 0; i < toBaixa.length; i += BAIXA_BATCH) {
-          const lote = toBaixa.slice(i, i + BAIXA_BATCH);
-          // Mantém active: true — aparece na aba Impacto no Caixa
-          await Promise.all(lote.map((r) => base44.entities.Titulo.update(r.id, {
-            current_status: "Pago Aguard. Baixa",
-            current_motive: "Título saiu da carteira — provável pagamento",
-            last_contact_date: hojeISO,
-            workflow_status: "pago_importacao",
-            updated_by: "Importação Automática"
-          })));
-          await Promise.all(lote.map((r) => {
-            const valorTit = Number(r.original_value || 0);
-            valorBaixado += valorTit;
-            deact++; baixados++;
-            return base44.entities.ChargeEvent.create({
-              titulo_id: r.id, client_code: r.client_code, client_name: r.client_name,
-              event_type: "BAIXA", event_subtype: "PAGO_IMPORTACAO", event_date: hojeISO,
-              status: "Pago Aguard. Baixa",
-              motive: "Título não presente na nova importação — cliente provavelmente pagou",
-              note: `Arquivo: ${fileName}. Valor original: R$ ${valorTit.toFixed(2).replace(".",",")}. Aguardando confirmação de baixa.`,
-              event_user: "Importação Automática"
-            });
-          }));
-          await yieldUI();
-        }
-      }
-    }
+    const baixaAutomaticaBloqueada = true;
     lap("baixa");
 
     // ── 8. Cruzar carteiras: clientes que só existem em UMA origem → "sem_carteira" ──
@@ -930,7 +917,7 @@ export default function Dashboard() {
     });
 
     const elapsed = ((Date.now() - T.t0) / 1000).toFixed(1);
-    return { ins, upd, deact, baixados, valorBaixado, isCarteirCompleta, elapsed, skipped: skipped.length, dupArquivo };
+    return { ins, upd, deact, baixados, valorBaixado, isCarteirCompleta, baixaAutomaticaBloqueada, elapsed, skipped: skipped.length, dupArquivo };
   }
 
   async function prepararPlanoNovaImportacao(preview, importFile) {
@@ -1087,11 +1074,12 @@ export default function Dashboard() {
         const ignoradosMsg = r.skipped > 0 ? ` | ${r.skipped} ignorados (sem alteração)` : "";
         const dupArqMsg = r.dupArquivo > 0 ? ` | ${r.dupArquivo} dup. do arquivo ignoradas` : "";
         const parcialMsg = !r.isCarteirCompleta ? " ⚠️ Parcial: baixa automática desabilitada." : "";
+        const baixaBloqueadaMsg = r.baixaAutomaticaBloqueada ? " | baixa automática não aplicada" : "";
         const sourceLabel = source === "FINR1253" ? "Topcon" : "EB";
         const criadosMsg = r.ins > 0 ? ` | ${r.ins} ${sourceLabel} criados e disponíveis na Carteira Geral` : "";
         setFiltroOrigem("");
         setFCart((prev) => ({ ...(prev || {}), origem: null }));
-        setImportStatus({ ok: true, msg: `✅ "${file.name}" [${sourceLabel}] — ${rawRows.length} linhas | ${imported.length} válidos | ${r.ins} novos | ${r.upd} atualizados${criadosMsg}${ignoradosMsg}${dupArqMsg}${baixaMsg}${parcialMsg} — ⏱ ${elapsed}s` });
+        setImportStatus({ ok: true, msg: `✅ "${file.name}" [${sourceLabel}] — ${rawRows.length} linhas | ${imported.length} válidos | ${r.ins} novos | ${r.upd} atualizados${criadosMsg}${ignoradosMsg}${dupArqMsg}${baixaMsg}${parcialMsg}${baixaBloqueadaMsg} — ⏱ ${elapsed}s` });
       }
       e.target.value = "";
       setSyncMsg("⏳ Importação concluída. Atualizando carteira...");

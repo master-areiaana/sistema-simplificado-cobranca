@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildItem, dateISO, dbToItem, getTituloKey } from "./cobranca.js";
+import { buildItem, dateISO, dbToItem, dedupeTitulos, getTituloKey } from "./cobranca.js";
 
 test("buildItem mantém sem_carteira como diagnóstico sem bloquear workflow da carteira", () => {
   const item = buildItem({
@@ -144,4 +144,34 @@ test("getTituloKey normaliza datas equivalentes", () => {
 
 test("dateISO converte data serial do Excel", () => {
   assert.equal(dateISO(46174), "2026-06-01");
+});
+
+test("dedupeTitulos prefere título aberto a pago por importação", () => {
+  const base = {
+    origem: "RPT_7007_CONS_CAR_EB",
+    nrCli: "67",
+    nomeCli: "PREMIX CONCRETO LTDA",
+    titulo: "6598",
+    seq: "1",
+    vencimento: "2026-04-15",
+    valorOriginal: 46853.53,
+    valorEmAberto: 46853.53,
+    valorTotalDebito: 46853.53,
+  };
+  const pagoImportacao = buildItem({
+    ...base,
+    status: "Pago Aguard. Baixa",
+    workflow_status: "pago_importacao",
+    obs: "movido automaticamente",
+  });
+  const aberto = buildItem({
+    ...base,
+    status: "Não Contatado",
+    workflow_status: "normal",
+  });
+
+  const [mantido] = dedupeTitulos([pagoImportacao, aberto]);
+
+  assert.equal(mantido.workflow_status, "normal");
+  assert.equal(mantido.status, "Não Contatado");
 });

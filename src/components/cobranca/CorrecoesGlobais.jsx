@@ -116,10 +116,11 @@ export default function CorrecoesGlobais() {
           color: #aaa !important;
         }
         #tab-assessoria-interno {
-          background: transparent !important;
           color: inherit !important;
-          border-radius: 0 !important;
           box-shadow: none !important;
+        }
+        #sc-nav-mode-toggle {
+          display: none !important;
         }
       `;
       document.head.appendChild(style);
@@ -128,6 +129,95 @@ export default function CorrecoesGlobais() {
     const syncTheme = () => {
       const isDark = (localStorage.getItem("sc_theme") || "dark") === "dark";
       document.body.classList.toggle("sc-theme-dark", isDark);
+    };
+
+    const getTheme = () => {
+      const isDark = (localStorage.getItem("sc_theme") || "dark") === "dark";
+      return {
+        bg: isDark ? "#050505" : "#f5f5f5",
+        surf: isDark ? "#111" : "#fff",
+        surf2: isDark ? "#1f1f1f" : "#f3f4f6",
+        bor: isDark ? "#333" : "#ddd",
+        txt: isDark ? "#f0f0f0" : "#1a1a1a",
+        muted: isDark ? "#9ca3af" : "#6b7280",
+        p: "#E87722",
+      };
+    };
+
+    const findTabs = () => {
+      const buttons = Array.from(document.querySelectorAll("button"));
+      const impacto = buttons.find(btn => (btn.textContent || "").includes("Impacto no Caixa"));
+      return impacto?.parentElement || null;
+    };
+
+    const aplicarVisaoGeralLateral = () => {
+      try { localStorage.setItem("sc_nav_mode", "left"); } catch {}
+      const tabs = findTabs();
+      const main = tabs?.closest("main");
+      if (!tabs || !main || window.innerWidth < 980) return;
+
+      const th = getTheme();
+      const collapsed = localStorage.getItem("sc_nav_collapsed") === "1";
+      const sideWidth = collapsed ? 58 : 230;
+
+      let header = document.getElementById("sc-visao-geral-header");
+      if (!header) {
+        header = document.createElement("div");
+        header.id = "sc-visao-geral-header";
+        tabs.insertBefore(header, tabs.firstChild);
+      }
+      header.style.cssText = `display:flex;align-items:center;justify-content:${collapsed ? "center" : "space-between"};gap:8px;padding:4px 4px 8px;margin-bottom:4px;border-bottom:1px solid ${th.bor};color:${th.muted};`;
+      header.innerHTML = collapsed
+        ? `<button id="sc-visao-geral-collapse" title="Abrir Visão Geral" style="width:36px;height:32px;border-radius:8px;border:1px solid ${th.bor};background:${th.surf2};color:${th.txt};font-weight:900;cursor:pointer;">›</button>`
+        : `<span style="font-size:10px;font-weight:900;letter-spacing:1.2px;text-transform:uppercase;">Visão Geral</span><button id="sc-visao-geral-collapse" title="Fechar Visão Geral" style="width:32px;height:30px;border-radius:8px;border:1px solid ${th.bor};background:${th.surf2};color:${th.txt};font-weight:900;cursor:pointer;">‹</button>`;
+      const collapseBtn = header.querySelector("#sc-visao-geral-collapse");
+      if (collapseBtn) {
+        collapseBtn.onclick = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          localStorage.setItem("sc_nav_collapsed", collapsed ? "0" : "1");
+          aplicarVisaoGeralLateral();
+        };
+      }
+
+      main.style.paddingLeft = `${sideWidth + 28}px`;
+      tabs.style.setProperty("position", "fixed", "important");
+      tabs.style.setProperty("top", "78px", "important");
+      tabs.style.setProperty("left", "12px", "important");
+      tabs.style.setProperty("bottom", "12px", "important");
+      tabs.style.setProperty("width", `${sideWidth}px`, "important");
+      tabs.style.setProperty("z-index", "90", "important");
+      tabs.style.setProperty("display", "flex", "important");
+      tabs.style.setProperty("flex-direction", "column", "important");
+      tabs.style.setProperty("align-items", "stretch", "important");
+      tabs.style.setProperty("gap", "7px", "important");
+      tabs.style.setProperty("overflow-x", "hidden", "important");
+      tabs.style.setProperty("overflow-y", "auto", "important");
+      tabs.style.setProperty("padding", collapsed ? "8px" : "10px", "important");
+      tabs.style.setProperty("margin", "0", "important");
+      tabs.style.setProperty("border", `1px solid ${th.bor}`, "important");
+      tabs.style.setProperty("border-radius", "12px", "important");
+      tabs.style.setProperty("background", th.surf, "important");
+      tabs.style.setProperty("box-shadow", "0 10px 26px rgba(0,0,0,.18)", "important");
+
+      Array.from(tabs.querySelectorAll("button")).forEach(btn => {
+        if (btn.id === "sc-nav-mode-toggle") {
+          btn.style.display = "none";
+          return;
+        }
+        if (btn.id === "sc-visao-geral-collapse") return;
+        const label = (btn.textContent || "").trim();
+        if (label) btn.title = label;
+        btn.style.setProperty("width", "100%", "important");
+        btn.style.setProperty("justify-content", collapsed ? "center" : "flex-start", "important");
+        btn.style.setProperty("text-align", collapsed ? "center" : "left", "important");
+        btn.style.setProperty("border-radius", "8px", "important");
+        btn.style.setProperty("min-height", "40px", "important");
+        btn.style.setProperty("padding", collapsed ? "0" : "10px 12px", "important");
+        btn.style.setProperty("overflow", "hidden", "important");
+        btn.style.setProperty("white-space", "nowrap", "important");
+        btn.style.setProperty("font-size", collapsed ? "0" : "10.5px", "important");
+      });
     };
 
     const limparFiltrosVisuais = () => {
@@ -169,17 +259,21 @@ export default function CorrecoesGlobais() {
     syncTheme();
     limparFiltrosVisuais();
     corrigirBaixarRelatorio();
+    aplicarVisaoGeralLateral();
 
     const timer = setInterval(() => {
       syncTheme();
       limparFiltrosVisuais();
       corrigirBaixarRelatorio();
-    }, 800);
+      aplicarVisaoGeralLateral();
+    }, 600);
 
     window.addEventListener("storage", syncTheme);
+    window.addEventListener("resize", aplicarVisaoGeralLateral);
     return () => {
       clearInterval(timer);
       window.removeEventListener("storage", syncTheme);
+      window.removeEventListener("resize", aplicarVisaoGeralLateral);
     };
   }, []);
 

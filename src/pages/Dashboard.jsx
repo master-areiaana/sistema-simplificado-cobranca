@@ -376,7 +376,7 @@ export default function Dashboard() {
         }
         if (filtroSentinela && g.maiorAtraso <= 90) return false;
         if (filtroCategoria && !g.titulos.some((ti) => ti.clientCategory === filtroCategoria)) return false;
-                if (g.titulos.some((ti) => ti.workflow_status === "sem_carteira")) return false;
+        // "sem_carteira" é diagnóstico de cruzamento e não remove saldo válido da Carteira Geral.
         // Clientes marcados como pagos pela importação SEMPRE saem da carteira geral
         if (g.titulos.every((ti) => ti.workflow_status === "pago_importacao")) return false;
         if (!showPaid) {

@@ -10,7 +10,6 @@ This project contains everything you need to run your app locally.
 
 Any change pushed to the repo will also be reflected in the Base44 Builder.
 
-Teste de sincronização GitHub → Base44 realizado em 2026-06-25.
 
 **Prerequisites:** 
 

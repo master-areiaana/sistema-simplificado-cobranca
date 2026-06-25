@@ -115,12 +115,40 @@ export default function CorrecoesGlobais() {
         body.sc-theme-dark [style*="color: rgb(102, 102, 102)"] {
           color: #aaa !important;
         }
-        #tab-assessoria-interno {
-          color: inherit !important;
-          box-shadow: none !important;
-        }
         #sc-nav-mode-toggle {
           display: none !important;
+        }
+        .sc-side-nav {
+          box-sizing: border-box !important;
+        }
+        .sc-side-nav button:not(#sc-visao-geral-collapse):not(#sc-nav-mode-toggle),
+        .sc-side-menu-item {
+          width: 100% !important;
+          height: 40px !important;
+          min-height: 40px !important;
+          max-height: 40px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: flex-start !important;
+          gap: 8px !important;
+          padding: 0 12px !important;
+          margin: 0 !important;
+          border-radius: 8px !important;
+          font-size: 11px !important;
+          font-weight: 800 !important;
+          line-height: 1.2 !important;
+          text-align: left !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+        .sc-side-nav-collapsed button:not(#sc-visao-geral-collapse):not(#sc-nav-mode-toggle) {
+          justify-content: center !important;
+          padding: 0 !important;
+          font-size: 0 !important;
+        }
+        .sc-side-nav-collapsed button:not(#sc-visao-geral-collapse):not(#sc-nav-mode-toggle)::first-letter {
+          font-size: 13px !important;
         }
       `;
       document.head.appendChild(style);
@@ -158,7 +186,11 @@ export default function CorrecoesGlobais() {
 
       const th = getTheme();
       const collapsed = localStorage.getItem("sc_nav_collapsed") === "1";
-      const sideWidth = collapsed ? 58 : 230;
+      const sideWidth = collapsed ? 58 : 212;
+
+      tabs.classList.add("sc-side-nav");
+      tabs.classList.toggle("sc-side-nav-collapsed", collapsed);
+      document.body.dataset.scNavMode = collapsed ? "left-collapsed" : "left";
 
       let header = document.getElementById("sc-visao-geral-header");
       if (!header) {
@@ -166,10 +198,22 @@ export default function CorrecoesGlobais() {
         header.id = "sc-visao-geral-header";
         tabs.insertBefore(header, tabs.firstChild);
       }
-      header.style.cssText = `display:flex;align-items:center;justify-content:${collapsed ? "center" : "space-between"};gap:8px;padding:4px 4px 8px;margin-bottom:4px;border-bottom:1px solid ${th.bor};color:${th.muted};`;
+
+      header.style.cssText = [
+        "display:grid",
+        `grid-template-columns:${collapsed ? "1fr" : "1fr 34px"}`,
+        "align-items:center",
+        "gap:8px",
+        "padding:2px 2px 10px",
+        "margin:0 0 8px 0",
+        `border-bottom:1px solid ${th.bor}`,
+        `color:${th.muted}`,
+        "min-height:42px",
+        "box-sizing:border-box"
+      ].join(";");
       header.innerHTML = collapsed
-        ? `<button id="sc-visao-geral-collapse" title="Abrir Visão Geral" style="width:36px;height:32px;border-radius:8px;border:1px solid ${th.bor};background:${th.surf2};color:${th.txt};font-weight:900;cursor:pointer;">›</button>`
-        : `<span style="font-size:10px;font-weight:900;letter-spacing:1.2px;text-transform:uppercase;">Visão Geral</span><button id="sc-visao-geral-collapse" title="Fechar Visão Geral" style="width:32px;height:30px;border-radius:8px;border:1px solid ${th.bor};background:${th.surf2};color:${th.txt};font-weight:900;cursor:pointer;">‹</button>`;
+        ? `<button id="sc-visao-geral-collapse" title="Abrir Visão Geral" style="width:36px;height:32px;border-radius:8px;border:1px solid ${th.bor};background:${th.surf2};color:${th.txt};font-weight:900;cursor:pointer;margin:0 auto;">›</button>`
+        : `<span style="display:block;font-size:9.5px;font-weight:900;letter-spacing:1.6px;text-transform:uppercase;line-height:1.25;padding-left:3px;">VISÃO<br/>GERAL</span><button id="sc-visao-geral-collapse" title="Fechar Visão Geral" style="width:34px;height:32px;border-radius:8px;border:1px solid ${th.bor};background:${th.surf2};color:${th.txt};font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;margin:0;">‹</button>`;
       const collapseBtn = header.querySelector("#sc-visao-geral-collapse");
       if (collapseBtn) {
         collapseBtn.onclick = (ev) => {
@@ -180,25 +224,25 @@ export default function CorrecoesGlobais() {
         };
       }
 
-      main.style.paddingLeft = `${sideWidth + 28}px`;
+      main.style.paddingLeft = `${sideWidth + 24}px`;
       tabs.style.setProperty("position", "fixed", "important");
-      tabs.style.setProperty("top", "78px", "important");
-      tabs.style.setProperty("left", "12px", "important");
+      tabs.style.setProperty("top", "72px", "important");
+      tabs.style.setProperty("left", "10px", "important");
       tabs.style.setProperty("bottom", "12px", "important");
       tabs.style.setProperty("width", `${sideWidth}px`, "important");
       tabs.style.setProperty("z-index", "90", "important");
       tabs.style.setProperty("display", "flex", "important");
       tabs.style.setProperty("flex-direction", "column", "important");
       tabs.style.setProperty("align-items", "stretch", "important");
-      tabs.style.setProperty("gap", "7px", "important");
+      tabs.style.setProperty("gap", "6px", "important");
       tabs.style.setProperty("overflow-x", "hidden", "important");
       tabs.style.setProperty("overflow-y", "auto", "important");
-      tabs.style.setProperty("padding", collapsed ? "8px" : "10px", "important");
+      tabs.style.setProperty("padding", collapsed ? "8px 7px" : "10px", "important");
       tabs.style.setProperty("margin", "0", "important");
       tabs.style.setProperty("border", `1px solid ${th.bor}`, "important");
       tabs.style.setProperty("border-radius", "12px", "important");
       tabs.style.setProperty("background", th.surf, "important");
-      tabs.style.setProperty("box-shadow", "0 10px 26px rgba(0,0,0,.18)", "important");
+      tabs.style.setProperty("box-shadow", "0 10px 26px rgba(0,0,0,.10)", "important");
 
       Array.from(tabs.querySelectorAll("button")).forEach(btn => {
         if (btn.id === "sc-nav-mode-toggle") {
@@ -208,15 +252,22 @@ export default function CorrecoesGlobais() {
         if (btn.id === "sc-visao-geral-collapse") return;
         const label = (btn.textContent || "").trim();
         if (label) btn.title = label;
+        btn.classList.add("sc-side-menu-item");
         btn.style.setProperty("width", "100%", "important");
+        btn.style.setProperty("height", "40px", "important");
+        btn.style.setProperty("min-height", "40px", "important");
+        btn.style.setProperty("display", "flex", "important");
+        btn.style.setProperty("align-items", "center", "important");
         btn.style.setProperty("justify-content", collapsed ? "center" : "flex-start", "important");
+        btn.style.setProperty("gap", collapsed ? "0" : "8px", "important");
         btn.style.setProperty("text-align", collapsed ? "center" : "left", "important");
         btn.style.setProperty("border-radius", "8px", "important");
-        btn.style.setProperty("min-height", "40px", "important");
-        btn.style.setProperty("padding", collapsed ? "0" : "10px 12px", "important");
+        btn.style.setProperty("padding", collapsed ? "0" : "0 12px", "important");
+        btn.style.setProperty("margin", "0", "important");
         btn.style.setProperty("overflow", "hidden", "important");
         btn.style.setProperty("white-space", "nowrap", "important");
-        btn.style.setProperty("font-size", collapsed ? "0" : "10.5px", "important");
+        btn.style.setProperty("font-size", collapsed ? "0" : "11px", "important");
+        btn.style.setProperty("line-height", "1.2", "important");
       });
     };
 

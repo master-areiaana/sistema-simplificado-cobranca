@@ -5,6 +5,7 @@ import {
   STALE_APPLICATION_PLAN_MESSAGE,
   assertApplicationPlanStillCurrent,
   buildImportApplicationPlan,
+  canApplyAbsenceSafely,
   createImportApplicationAttemptGuard,
 } from "./applyImport.js";
 
@@ -158,6 +159,39 @@ test("baixa por ausência apenas inativa e mantém o registro", () => {
   assert.equal(plan.summary.totalAbsence, 1);
 });
 
+test("importacao completa e segura permite baixa por ausencia", () => {
+  const safePreview = preview([canonical({ "Número Documento": "999" })]);
+  const plan = buildImportApplicationPlan({
+    preview: safePreview,
+    existingTitles: [existing()],
+  });
+
+  assert.equal(canApplyAbsenceSafely({
+    preview: safePreview,
+    totalAtivosAnteriores: 1,
+    totalNovaImportacao: 1,
+  }), true);
+  assert.equal(plan.summary.totalAbsence, 1);
+  assert.equal(plan.safety.podeAplicarBaixaAutomatica, true);
+});
+
+test("sem previa ou sem registros consolidados bloqueia baixa por ausencia", () => {
+  const withoutPreview = buildImportApplicationPlan({
+    existingTitles: [existing()],
+  });
+  const emptyPreview = buildImportApplicationPlan({
+    preview: preview([]),
+    existingTitles: [existing()],
+  });
+
+  assert.equal(withoutPreview.summary.totalAbsence, 0);
+  assert.equal(withoutPreview.summary.totalAbsenceBlocked, 1);
+  assert.equal(withoutPreview.safety.podeAplicarBaixaAutomatica, false);
+  assert.equal(emptyPreview.summary.totalAbsence, 0);
+  assert.equal(emptyPreview.summary.totalAbsenceBlocked, 1);
+  assert.equal(emptyPreview.safety.podeAplicarBaixaAutomatica, false);
+});
+
 test("importação parcial bloqueia todas as baixas por ausência", () => {
   const plan = buildImportApplicationPlan({
     preview: preview([], true),
@@ -167,6 +201,39 @@ test("importação parcial bloqueia todas as baixas por ausência", () => {
   assert.equal(plan.absences.length, 0);
   assert.equal(plan.summary.totalAbsenceBlocked, 1);
   assert.equal(plan.safety.podeAplicarBaixaAutomatica, false);
+});
+
+test("importacao muito menor que a base existente bloqueia baixa por ausencia", () => {
+  const existingTitles = Array.from({ length: 10 }, (_, index) => existing({
+    id: `titulo-${index + 1}`,
+    title_number: String(1000 + index),
+  }));
+  const plan = buildImportApplicationPlan({
+    preview: preview([canonical({ "Número Documento": "9999" })]),
+    existingTitles,
+  });
+
+  assert.equal(plan.summary.totalAbsence, 0);
+  assert.equal(plan.summary.totalAbsenceBlocked, 10);
+  assert.equal(plan.safety.importacaoParcial, true);
+});
+
+test("importacao RPT isolada nao baixa titulo FINR ausente", () => {
+  const rptOnlyPreview = {
+    ...preview([canonical({
+      "Número Documento": "999",
+      _meta: { source_status: "SOMENTE_RPT", needs_review: false },
+    })]),
+    rptItems: [canonical()],
+    finrItems: [],
+  };
+  const plan = buildImportApplicationPlan({
+    preview: rptOnlyPreview,
+    existingTitles: [existing({ source: "FINR1253" })],
+  });
+
+  assert.equal(plan.summary.totalAbsenceCandidates, 0);
+  assert.equal(plan.summary.totalAbsence, 0);
 });
 
 test("múltiplos candidatos equivalentes exigem revisão sem criar ou baixar", () => {

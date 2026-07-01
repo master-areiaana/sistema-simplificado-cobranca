@@ -128,6 +128,34 @@ function isManagedActiveTitle(item) {
   return item?.active !== false && MANAGED_SOURCES.has(String(item?.source || ""));
 }
 
+function getImportedSourceCoverage(preview, consolidados) {
+  const hasRPT = Array.isArray(preview?.rptItems) && preview.rptItems.length > 0;
+  const hasFINR = Array.isArray(preview?.finrItems) && preview.finrItems.length > 0;
+
+  if (hasRPT && hasFINR) return new Set(MANAGED_SOURCES);
+  if (hasRPT) return new Set(["RPT_7007", "RPT_7007_CONS_CAR_EB"]);
+  if (hasFINR) return new Set(["FINR1253"]);
+
+  const sources = new Set();
+  for (const record of consolidados) {
+    const source = sourceFromRecord(record);
+    if (source === "RPT_7007_CONS_CAR_EB") {
+      sources.add("RPT_7007");
+      sources.add("RPT_7007_CONS_CAR_EB");
+    } else if (source === "RPT_E_FINR") {
+      MANAGED_SOURCES.forEach((managedSource) => sources.add(managedSource));
+    } else {
+      sources.add(source);
+    }
+  }
+
+  return sources;
+}
+
+function isCoveredManagedActiveTitle(item, coveredSources) {
+  return isManagedActiveTitle(item) && coveredSources.has(String(item?.source || ""));
+}
+
 function buildAlternativeTitleKey(item) {
   return buildOfficialTitleKey(item).split("|").slice(0, 4).join("|");
 }
@@ -190,6 +218,29 @@ export function createImportApplicationAttemptGuard() {
   };
 }
 
+export function canApplyAbsenceSafely({
+  preview,
+  totalAtivosAnteriores = 0,
+  totalNovaImportacao = 0,
+} = {}) {
+  const hasPreview = Boolean(preview && typeof preview === "object");
+  const totalAtual = Number(totalNovaImportacao || 0);
+  const importacaoParcial = !hasPreview ||
+    totalAtual <= 0 ||
+    preview?.seguranca?.importacaoParcial === true ||
+    isImportacaoParcial({
+      totalAtivosAnteriores,
+      totalNovaImportacao: totalAtual,
+    });
+
+  return hasPreview &&
+    totalAtual > 0 &&
+    !importacaoParcial &&
+    preview?.seguranca?.podeProsseguir !== false &&
+    preview?.seguranca?.podeAplicarBaixaAutomatica !== false &&
+    !(Array.isArray(preview?.seguranca?.bloqueios) && preview.seguranca.bloqueios.length > 0);
+}
+
 export function buildImportApplicationPlan({
   preview,
   existingTitles = [],
@@ -211,6 +262,7 @@ export function buildImportApplicationPlan({
   const reviewRequired = [];
   const matchedExistingIds = new Set();
   const protectedExistingIds = new Set();
+  const coveredSources = getImportedSourceCoverage(preview, consolidados);
 
   for (const record of consolidados) {
     const key = buildOfficialTitleKey(record);
@@ -261,19 +313,30 @@ export function buildImportApplicationPlan({
     }
   }
 
-  const absenceCandidates = existing.filter((item) =>
+  const potentialAbsenceCandidates = existing.filter((item) =>
     isManagedActiveTitle(item) &&
     !matchedExistingIds.has(item.id) &&
     !protectedExistingIds.has(item.id),
   );
-  const managedActiveCount = existing.filter(isManagedActiveTitle).length;
-  const importacaoParcial = preview?.seguranca?.importacaoParcial === true ||
+  const absenceCandidates = coveredSources.size > 0
+    ? potentialAbsenceCandidates.filter((item) => isCoveredManagedActiveTitle(item, coveredSources))
+    : [];
+  const managedActiveCount = coveredSources.size > 0
+    ? existing.filter((item) => isCoveredManagedActiveTitle(item, coveredSources)).length
+    : existing.filter(isManagedActiveTitle).length;
+  const totalConsolidados = Number(preview?.resumo?.totalConsolidados ?? consolidados.length);
+  const importacaoParcial = !preview ||
+    totalConsolidados <= 0 ||
+    preview?.seguranca?.importacaoParcial === true ||
     isImportacaoParcial({
       totalAtivosAnteriores: managedActiveCount,
-      totalNovaImportacao: consolidados.length,
+      totalNovaImportacao: totalConsolidados,
     });
-  const canApplyAbsence = !importacaoParcial &&
-    preview?.seguranca?.podeAplicarBaixaAutomatica !== false;
+  const canApplyAbsence = canApplyAbsenceSafely({
+    preview,
+    totalAtivosAnteriores: managedActiveCount,
+    totalNovaImportacao: totalConsolidados,
+  });
   const absences = canApplyAbsence
     ? absenceCandidates.map((item) => ({
         key: buildOfficialTitleKey(item),
@@ -297,7 +360,9 @@ export function buildImportApplicationPlan({
       totalNeedsReview: reviewRequired.length,
       totalAbsenceCandidates: absenceCandidates.length,
       totalAbsence: absences.length,
-      totalAbsenceBlocked: canApplyAbsence ? 0 : absenceCandidates.length,
+      totalAbsenceBlocked: canApplyAbsence
+        ? 0
+        : (coveredSources.size > 0 ? absenceCandidates.length : potentialAbsenceCandidates.length),
     },
     safety: {
       importacaoParcial,

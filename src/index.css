@@ -84,19 +84,8 @@
     @apply bg-background text-foreground;
   }
 
-  /* Oculta o botão antigo "Importar" do cabeçalho. A importação de carteira deve ser feita pela Pré-validação. */
+  /* Oculta somente o botão antigo "Importar" do cabeçalho. Não oculta cards, filtros ou blocos da tela. */
   header > div:last-child > button:last-child {
-    display: none !important;
-  }
-
-  /* Oculta filtros superiores redundantes. Os filtros oficiais ficam no cabeçalho das colunas. */
-  main > div:has(input[placeholder="Buscar por nome ou nº..."]),
-  main > div:has(input[placeholder="Buscar por nº ou nome..."]) {
-    display: none !important;
-  }
-
-  /* Esconde só a busca extra da Carteira, mas mantém o botão Limpar filtros visível quando houver filtro ativo. */
-  input[placeholder="Buscar cliente/título"] {
     display: none !important;
   }
 
@@ -162,5 +151,46 @@
     justify-content: center !important;
   }
 
-  /* KPI Container Standardization */
+  .kpi-container {
+    width: 100%;
+    max-width: 1405px;
+    margin: 0 auto 16px;
+    display: grid;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .kpi-container-8 { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .kpi-container-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .kpi-container-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .kpi-container-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .kpi-container-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .kpi-card {
+    min-height: 92px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+  }
+
+  @media (max-width: 1200px) {
+    .kpi-container-8,
+    .kpi-container-6,
+    .kpi-container-5,
+    .kpi-container-4 {
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    }
+  }
+
+  @media (max-width: 900px) {
+    .kpi-container,
+    .kpi-container-8,
+    .kpi-container-6,
+    .kpi-container-5,
+    .kpi-container-4,
+    .kpi-container-2 {
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+  }
 }

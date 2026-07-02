@@ -1,0 +1,18 @@
+{
+  "appId": "69f14ec85dcdced93f9de899",
+  "appName": "Sistema Simplificado de Cobrança",
+  "workspace": "Master's Workspace",
+  "publicUrl": "blazing-cred-flow-pro.base44.app",
+  "apiVersion": "1.0",
+  "buildConfig": {
+    "framework": "vite",
+    "language": "javascript",
+    "buildCommand": "npm run build",
+    "outputDir": "dist"
+  },
+  "deployment": {
+    "platform": "base44",
+    "autoSync": true,
+    "branch": "main"
+  }
+}

@@ -72,7 +72,8 @@ function parseWorkbook(fileName, workbook) {
     }
   }
 
-  if (topconItems.length > 0 && ebItems.length > 0) {
+  const mixedSignals = topconItems.length > 0 && ebItems.length > 0;
+  if (mixedSignals) {
     detectionNote += " Atenção: o conteúdo teve sinais das duas origens; foi mantida a origem mais provável.";
   }
 
@@ -80,6 +81,7 @@ function parseWorkbook(fileName, workbook) {
     source,
     items,
     detectionNote,
+    mixedSignals,
     totalRows: Math.max(objectRows.length, arrayRows.length),
     parsedBySource: {
       FINR1253: topconItems.length,
@@ -95,6 +97,7 @@ function resumoPlano(plan) {
     { label: "Atualizar", value: summary.totalUpdate || 0 },
     { label: "Sem alteração", value: summary.totalUnchanged || 0 },
     { label: "Revisar", value: summary.totalNeedsReview || 0 },
+    { label: "Baixar ausência", value: summary.totalAbsence || 0 },
     { label: "Baixas bloqueadas", value: summary.totalAbsenceBlocked || 0 },
   ];
 }
@@ -134,12 +137,25 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
 
       const consolidados = parsed.items.map((item) => canonicalFromItem(item, parsed.source));
       const totalAberto = consolidados.reduce((sum, item) => sum + Number(item["Saldo Restante (R$)"] || 0), 0);
+      const bloqueios = [];
+      if (parsed.mixedSignals) bloqueios.push("Sinais das duas origens na mesma planilha.");
+
+      const podeAplicarBaixaAutomatica = bloqueios.length === 0;
       const preview = {
         consolidados,
+        finrItems: parsed.source === "FINR1253" ? consolidados : [],
+        rptItems: parsed.source === "RPT_7007_CONS_CAR_EB" ? consolidados : [],
         seguranca: {
-          importacaoParcial: true,
-          podeAplicarBaixaAutomatica: false,
-          motivo: "Pré-validação segura: ausências não baixam títulos automaticamente.",
+          importacaoParcial: false,
+          podeProsseguir: true,
+          podeAplicarBaixaAutomatica,
+          bloqueios,
+          motivo: podeAplicarBaixaAutomatica
+            ? "Pré-validação completa: a baixa por ausência será aplicada somente se o plano confirmar que a importação é segura e não parcial."
+            : "Pré-validação com alerta: a baixa por ausência ficou bloqueada por segurança.",
+        },
+        resumo: {
+          totalConsolidados: consolidados.length,
         },
         estatisticas: {
           arquivo: file.name,
@@ -151,13 +167,15 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
       };
 
       const plan = await onPreparePlan?.(preview, file.name);
+      const totalBaixas = plan?.summary?.totalAbsence || 0;
+      const totalBloqueadas = plan?.summary?.totalAbsenceBlocked || 0;
       setState({
         status: "ready",
         fileName: file.name,
         preview,
         plan,
         parsed,
-        message: `${file.name} validado: ${consolidados.length} título(s) válido(s), ${fmtM(totalAberto)} em aberto.`,
+        message: `${file.name} validado: ${consolidados.length} título(s) válido(s), ${fmtM(totalAberto)} em aberto.${totalBaixas > 0 ? ` ${totalBaixas} baixa(s) por ausência serão aplicadas.` : ""}${totalBloqueadas > 0 ? ` ${totalBloqueadas} baixa(s) bloqueadas por segurança.` : ""}`,
       });
     } catch (error) {
       setState({ status: "error", message: `Erro ao validar a planilha: ${error.message}` });
@@ -167,13 +185,13 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
   async function aplicarPlano() {
     if (!state.plan || !state.preview || applying) return;
     setApplying(true);
-    setState((prev) => ({ ...prev, status: "applying", message: "Aplicando somente inclusões e atualizações. Baixas por ausência permanecem bloqueadas..." }));
+    setState((prev) => ({ ...prev, status: "applying", message: "Aplicando inclusões, atualizações e baixas por ausência somente quando o plano estiver seguro..." }));
     try {
       const result = await onApplyPlan?.(state.plan, state.preview, state.fileName);
       setState((prev) => ({
         ...prev,
         status: "done",
-        message: `Importação segura aplicada: ${result?.created || 0} novo(s), ${result?.updated || 0} atualizado(s), ${result?.lowered || 0} baixa(s).`,
+        message: `Importação segura aplicada: ${result?.created || 0} novo(s), ${result?.updated || 0} atualizado(s), ${result?.lowered || 0} baixa(s) por ausência.`,
       }));
     } catch (error) {
       setState((prev) => ({ ...prev, status: "error", message: error.message }));
@@ -192,7 +210,7 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
         <div>
           <div style={{ fontSize: 13, fontWeight: 800 }}>Pré-validação da importação</div>
           <div style={{ fontSize: 11, color: muted, marginTop: 3 }}>
-            Use esta opção para conferir a leitura da planilha antes de gravar. A baixa automática por ausência fica bloqueada por segurança.
+            Use esta opção para conferir a leitura da planilha antes de gravar. Se o relatório for completo e seguro, o sistema baixa por ausência o que saiu da carteira.
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -224,6 +242,12 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
       {state.parsed && (
         <div style={{ marginTop: 8, fontSize: 11, color: muted }}>
           {state.parsed.detectionNote} Leitura: {state.parsed.parsedBySource.FINR1253} Topcon / {state.parsed.parsedBySource.RPT_7007_CONS_CAR_EB} EB.
+        </div>
+      )}
+
+      {state.preview?.seguranca?.motivo && (
+        <div style={{ marginTop: 8, fontSize: 11, color: state.preview.seguranca.podeAplicarBaixaAutomatica ? "#16a34a" : "#dc2626" }}>
+          {state.preview.seguranca.motivo}
         </div>
       )}
 

@@ -1,23 +1,17 @@
-import base44 from "@base44/vite-plugin"
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import path from 'path'
 
-const enableBase44BuilderTools = process.env.VITE_ENABLE_BASE44_BUILDER === 'true';
+// Base path do deploy:
+// - GitHub Pages (projeto):  defina VITE_BASE_PATH="/NOME-DO-REPO/"
+// - Domínio próprio / Vercel / Netlify:  deixe "/" (padrão)
+const BASE_PATH = process.env.VITE_BASE_PATH || '/'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/sistema-simplificado-cobranca/',
-  logLevel: 'error', // Suppress warnings, only show errors
-  plugins: [
-    base44({
-      // Support for legacy code that imports the base44 SDK with @/integrations, @/entities, etc.
-           // can be removed if the code has been updated to use the new SDK imports from @base44/sdk
-           legacySDKImports: process.env.BASE44_LEGACY_SDK_IMPORTS === 'true',
-      hmrNotifier: enableBase44BuilderTools,
-      navigationNotifier: enableBase44BuilderTools,
-      analyticsTracker: enableBase44BuilderTools,
-      visualEditAgent: enableBase44BuilderTools
-    }),
-    react(),
-    ]
-});
+  base: BASE_PATH,
+  plugins: [react()],
+  resolve: {
+    alias: { '@': path.resolve(__dirname, './src') },
+  },
+})

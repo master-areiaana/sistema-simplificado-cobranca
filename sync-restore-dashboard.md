@@ -1,1 +1,0 @@
-Restauracao do Dashboard para nova sincronizacao.

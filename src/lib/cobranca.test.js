@@ -11,7 +11,7 @@ test("buildItem mantém sem_carteira como diagnóstico sem bloquear workflow da 
     tp: "EB",
     titulo: "10457",
     seq: "1",
-    vencimento: "2026-06-01",
+        vencimento: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     valorOriginal: 1000,
     valorEmAberto: 1000,
     valorTotalDebito: 1000,

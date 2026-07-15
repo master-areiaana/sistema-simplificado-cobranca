@@ -7,6 +7,13 @@ import {
 const SOURCE_RPT = "RPT_7007";
 const SOURCE_FINR = "FINR1253";
 
+// A consolidação legada compara as duas fontes para gerar diagnósticos. A chave
+// oficial de persistência inclui a origem; aqui ela é removida deliberadamente
+// apenas para localizar possíveis equivalências entre RPT e FINR.
+function buildCrossSourceTitleKey(item = {}) {
+  return buildOfficialTitleKey(item).split("|").slice(1).join("|");
+}
+
 const RPT_PRIORITY_FIELDS = new Set([
   "Id da Empresa",
   "Vendedor",
@@ -169,7 +176,7 @@ function recalculateFinancial(values, options = {}) {
 function buildCombinedRecord(rptItems, finrItems, options) {
   const rptItem = sourceRepresentative(rptItems);
   const finrItem = sourceRepresentative(finrItems);
-  const titleKey = buildOfficialTitleKey(rptItem);
+  const titleKey = buildCrossSourceTitleKey(rptItem);
   const values = {};
   const diagnostics = [
     duplicateDiagnostic(SOURCE_RPT, titleKey, rptItems),
@@ -261,7 +268,7 @@ function buildCombinedRecord(rptItems, finrItems, options) {
 
 function buildExclusiveRecord(items, source, options) {
   const values = sourceRepresentative(items);
-  const titleKey = buildOfficialTitleKey(values);
+  const titleKey = buildCrossSourceTitleKey(values);
   const sourceStatus = source === SOURCE_RPT ? "SOMENTE_RPT" : "SOMENTE_FINR";
   const diagnostics = [
     buildDiagnostic(
@@ -293,7 +300,7 @@ function groupByOfficialKey(items) {
   const groups = new Map();
 
   for (const item of Array.isArray(items) ? items : []) {
-    const key = buildOfficialTitleKey(item);
+    const key = buildCrossSourceTitleKey(item);
     const group = groups.get(key) || [];
     group.push(item);
     groups.set(key, group);
@@ -315,7 +322,7 @@ function indexRecordsByKey(records) {
   const indexed = new Map();
 
   for (const record of records) {
-    indexed.set(buildOfficialTitleKey(record), record);
+    indexed.set(buildCrossSourceTitleKey(record), record);
   }
 
   return indexed;

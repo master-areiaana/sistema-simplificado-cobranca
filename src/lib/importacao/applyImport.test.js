@@ -79,6 +79,25 @@ test("cria título canônico novo sem apagar dados", () => {
   assert.equal(plan.creates[0].payload.active, true);
 });
 
+test("persistência mantém o mesmo título separado entre EB e Topcon", () => {
+  const rpt = canonical({ _meta: { source_status: "SOMENTE_RPT", origem_detectada: "RPT_7007_CONS_CAR_EB" } });
+  const finr = canonical({ _meta: { source_status: "SOMENTE_FINR", origem_detectada: "FINR1253" } });
+  const plan = buildImportApplicationPlan({
+    preview: {
+      ...preview([canonical()]),
+      rptItems: [rpt],
+      finrItems: [finr],
+    },
+    existingTitles: [],
+  });
+
+  assert.equal(plan.summary.totalCreate, 2);
+  assert.deepEqual(
+    new Set(plan.creates.map((item) => item.payload.source)),
+    new Set(["RPT_7007_CONS_CAR_EB", "FINR1253"]),
+  );
+});
+
 test("atualização preserva campos manuais ao omiti-los do payload", () => {
   const plan = buildImportApplicationPlan({
     preview: preview([canonical({ "Saldo Restante (R$)": 650 })]),
@@ -356,4 +375,25 @@ test("aplicação em andamento bloqueia clique duplo e reexecução", () => {
   assert.equal(guard.begin(), false);
   guard.finish();
   assert.equal(guard.begin(), false);
+});
+
+test("planeja mil títulos em memória sem comparação quadrática", () => {
+  const total = 1000;
+  const existingTitles = Array.from({ length: total }, (_, index) => existing({
+    id: `titulo-${index}`,
+    title_number: String(10000 + index),
+  }));
+  const consolidados = Array.from({ length: total }, (_, index) => canonical({
+    "Número Documento": String(10000 + index),
+  }));
+  const startedAt = performance.now();
+  const plan = buildImportApplicationPlan({
+    preview: preview(consolidados),
+    existingTitles,
+  });
+  const elapsed = performance.now() - startedAt;
+
+  assert.equal(plan.summary.totalUnchanged, total);
+  assert.equal(plan.summary.totalCreate, 0);
+  assert.ok(elapsed < 2000, `planejamento levou ${elapsed.toFixed(0)}ms`);
 });

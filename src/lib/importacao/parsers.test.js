@@ -250,6 +250,6 @@ test("chave oficial funciona nos registros canônicos gerados pelos dois parsers
     ["REC", "A", "800", "2", "", "01/06/2026", "20/06/2026", 200, "", 0, "", "", 0, "", "P1"],
   ]);
 
-  assert.equal(buildOfficialTitleKey(rpt), "10|NF|700|1|2026-06-10");
-  assert.equal(buildOfficialTitleKey(finr), "20|REC|800|2|2026-06-20");
+  assert.equal(buildOfficialTitleKey({ ...rpt, source: "RPT_7007_CONS_CAR_EB" }), "RPT_7007_CONS_CAR_EB|10|NF|700|1|2026-06-10");
+  assert.equal(buildOfficialTitleKey({ ...finr, source: "FINR1253" }), "FINR1253|20|REC|800|2|2026-06-20");
 });

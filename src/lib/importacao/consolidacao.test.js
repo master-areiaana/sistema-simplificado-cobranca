@@ -235,17 +235,15 @@ test("recalcula saldo, multa, juros e total após consolidação", () => {
   assert.equal(record["Total a Receber (R$)"], 716.33);
 });
 
-test("buildOfficialTitleKey continua funcionando no registro consolidado", () => {
+test("buildOfficialTitleKey identifica a origem do registro consolidado", () => {
   const source = title();
   const result = consolidarFontesImportacao({
     rptItems: [source],
     finrItems: [title()],
   });
 
-  assert.equal(
-    buildOfficialTitleKey(result.consolidados[0]),
-    buildOfficialTitleKey(source),
-  );
+  assert.equal(buildOfficialTitleKey(result.consolidados[0]), "RPT_E_FINR|10|NF|100|1|2026-06-30");
+  assert.equal(buildOfficialTitleKey(source), "|10|NF|100|1|2026-06-30");
 });
 
 test("mantém as 23 colunas oficiais separadas dos metadados", () => {

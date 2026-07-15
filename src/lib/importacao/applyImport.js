@@ -3,6 +3,7 @@ import {
   getStatusBaixaPorAusencia,
   isImportacaoParcial,
   isTituloElegivelCarteira,
+  normalizeImportSource,
 } from "./domain.js";
 
 const MANAGED_SOURCES = new Set([
@@ -14,9 +15,6 @@ const MANAGED_SOURCES = new Set([
 
 export const STALE_APPLICATION_PLAN_MESSAGE =
   "A carteira mudou desde que o plano foi gerado. Gere uma nova prévia antes de aplicar.";
-
-export const PARTIAL_APPLICATION_FAILURE_MESSAGE =
-  "A aplicação falhou parcialmente. Gere uma nova prévia antes de tentar novamente.";
 
 const COMPARED_FIELDS = [
   "source",
@@ -38,9 +36,13 @@ const COMPARED_FIELDS = [
 ];
 
 function sourceFromRecord(record) {
-  if (record?._meta?.source_status === "SOMENTE_RPT") return "RPT_7007_CONS_CAR_EB";
-  if (record?._meta?.source_status === "SOMENTE_FINR") return "FINR1253";
-  return "RPT_E_FINR";
+  return normalizeImportSource(
+    record?.source ||
+    record?.origem ||
+    record?._meta?.origem_detectada ||
+    record?._meta?.source_status ||
+    "RPT_E_FINR",
+  );
 }
 
 function isReappearingImportAbsence(existing) {
@@ -157,13 +159,45 @@ function isCoveredManagedActiveTitle(item, coveredSources) {
 }
 
 function buildAlternativeTitleKey(item) {
-  return buildOfficialTitleKey(item).split("|").slice(0, 4).join("|");
+  return buildOfficialTitleKey(item).split("|").slice(0, 5).join("|");
 }
 
 function addToIndex(index, key, item) {
   const items = index.get(key) || [];
   items.push(item);
   index.set(key, items);
+}
+
+function normalizedClientName(item = {}) {
+  return String(
+    item["Nome Cliente"] ?? item.client_name ?? item.nomeCli ?? "",
+  )
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\b(LTDA|EIRELI|S A|SA|ME|EPP)\b/g, " ")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function countUniqueClients(items = []) {
+  return new Set(items.map(normalizedClientName).filter(Boolean)).size;
+}
+
+function openValue(item = {}) {
+  const values = [
+    item["Saldo Restante (R$)"],
+    item.open_value,
+    item.valorEmAberto,
+    item.erp_balance,
+    item.original_value,
+  ];
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== "") return Number(value) || 0;
+  }
+  return 0;
 }
 
 export function getApplicationWriteTotals(plan = {}) {
@@ -247,6 +281,28 @@ export function buildImportApplicationPlan({
   importFile = "",
 } = {}) {
   const consolidados = Array.isArray(preview?.consolidados) ? preview.consolidados : [];
+  const sourceRecords = [
+    ...(Array.isArray(preview?.rptItems) ? preview.rptItems : []),
+    ...(Array.isArray(preview?.finrItems) ? preview.finrItems : []),
+  ];
+  // A consolidação continua servindo para diagnósticos e conferência visual,
+  // mas a persistência precisa manter EB e Topcon como títulos separados.
+  const recordsForPersistence = sourceRecords.length > 0 ? sourceRecords : consolidados;
+  const uniqueImportedByKey = new Map();
+  const duplicateImported = [];
+  for (const record of recordsForPersistence) {
+    const key = buildOfficialTitleKey(record);
+    if (uniqueImportedByKey.has(key)) {
+      duplicateImported.push({
+        code: "DUPLICATE_IMPORTED_TITLE_KEY",
+        key,
+        record,
+      });
+      continue;
+    }
+    uniqueImportedByKey.set(key, record);
+  }
+  const importedRecords = Array.from(uniqueImportedByKey.values());
   const existing = Array.isArray(existingTitles) ? existingTitles : [];
   const exactExistingByKey = new Map();
   const alternativeExistingByKey = new Map();
@@ -259,12 +315,12 @@ export function buildImportApplicationPlan({
   const creates = [];
   const updates = [];
   const unchanged = [];
-  const reviewRequired = [];
+  const reviewRequired = [...duplicateImported];
   const matchedExistingIds = new Set();
   const protectedExistingIds = new Set();
-  const coveredSources = getImportedSourceCoverage(preview, consolidados);
+  const coveredSources = getImportedSourceCoverage(preview, importedRecords);
 
-  for (const record of consolidados) {
+  for (const record of importedRecords) {
     const key = buildOfficialTitleKey(record);
     const alternativeKey = buildAlternativeTitleKey(record);
     const exactCandidates = exactExistingByKey.get(key) || [];
@@ -324,7 +380,7 @@ export function buildImportApplicationPlan({
   const managedActiveCount = coveredSources.size > 0
     ? existing.filter((item) => isCoveredManagedActiveTitle(item, coveredSources)).length
     : existing.filter(isManagedActiveTitle).length;
-  const totalConsolidados = Number(preview?.resumo?.totalConsolidados ?? consolidados.length);
+  const totalConsolidados = importedRecords.length;
   const importacaoParcial = !preview ||
     totalConsolidados <= 0 ||
     preview?.seguranca?.importacaoParcial === true ||
@@ -345,6 +401,14 @@ export function buildImportApplicationPlan({
         payload: getStatusBaixaPorAusencia(),
       }))
     : [];
+  const absenceBlocked = canApplyAbsence
+    ? []
+    : (coveredSources.size > 0 ? absenceCandidates : potentialAbsenceCandidates);
+  const coveredActiveTitles = coveredSources.size > 0
+    ? existing.filter((item) => isCoveredManagedActiveTitle(item, coveredSources))
+    : [];
+  const previousCount = coveredActiveTitles.length;
+  const coverageRatio = previousCount > 0 ? totalConsolidados / previousCount : 1;
 
   return {
     creates,
@@ -352,7 +416,8 @@ export function buildImportApplicationPlan({
     unchanged,
     reviewRequired,
     absences,
-    canApply: consolidados.length > 0 && reviewRequired.length === 0,
+    absenceBlocked,
+    canApply: importedRecords.length > 0 && reviewRequired.length === 0,
     summary: {
       totalCreate: creates.length,
       totalUpdate: updates.length,
@@ -364,9 +429,31 @@ export function buildImportApplicationPlan({
         ? 0
         : (coveredSources.size > 0 ? absenceCandidates.length : potentialAbsenceCandidates.length),
     },
+    snapshot: {
+    source: importedRecords[0] ? sourceFromRecord(importedRecords[0]) : "",
+      coveredSources: Array.from(coveredSources),
+      current: {
+        titles: coveredActiveTitles.length,
+        clients: countUniqueClients(coveredActiveTitles),
+        value: coveredActiveTitles.reduce((sum, item) => sum + openValue(item), 0),
+      },
+      imported: {
+        titles: importedRecords.length,
+        clients: countUniqueClients(importedRecords),
+        value: importedRecords.reduce((sum, item) => sum + openValue(item), 0),
+      },
+    },
     safety: {
       importacaoParcial,
       podeAplicarBaixaAutomatica: canApplyAbsence,
+      totalAtivosOrigem: previousCount,
+      totalImportadosOrigem: totalConsolidados,
+      percentualCobertura: Math.round(coverageRatio * 10000) / 100,
+      motivoBloqueio: canApplyAbsence
+        ? ""
+        : importacaoParcial
+          ? `O relatório representa ${Math.round(coverageRatio * 10000) / 100}% da carteira ativa desta origem; a baixa por ausência foi bloqueada.`
+          : "A baixa por ausência foi bloqueada pelos alertas de segurança da Pré-validação.",
     },
   };
 }

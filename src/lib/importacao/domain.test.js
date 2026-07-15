@@ -122,7 +122,7 @@ test("não considera importação de 490 títulos sobre 500 anteriores como parc
   );
 });
 
-test("gera a chave oficial sem incluir a origem", () => {
+test("gera a chave oficial incluindo a origem", () => {
   assert.equal(
     buildOfficialTitleKey({
       "Código Cliente": "123",
@@ -132,7 +132,22 @@ test("gera a chave oficial sem incluir a origem", () => {
       "Data Vencimento": "2026-06-30",
       origem: "FINR1253",
     }),
-    "123|NF|456|01|2026-06-30",
+    "FINR1253|123|NF|456|01|2026-06-30",
+  );
+});
+
+test("não junta o mesmo título de EB e Topcon", () => {
+  const base = {
+    client_code: "123",
+    doc_type: "NF",
+    title_number: "456",
+    seq: "1",
+    due_date: "2026-06-30",
+  };
+
+  assert.notEqual(
+    buildOfficialTitleKey({ ...base, source: "FINR1253" }),
+    buildOfficialTitleKey({ ...base, source: "RPT_7007_CONS_CAR_EB" }),
   );
 });
 

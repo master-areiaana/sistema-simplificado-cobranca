@@ -17,7 +17,7 @@ class ErrorBoundary extends Component {
   }
 }
 import * as XLSX from "xlsx";
-import { base44 } from "@/api/base44Client";
+import { base44, getDataModeStatus, subscribeDataMode } from "@/api/base44Client";
 import {
   hojeISO, fmtM, fmtD, normText, dbToItem,
   detectSrc, parseRows1253, parseRows7007, dateISO, num, pick,
@@ -44,7 +44,6 @@ import TabelaProtesto from "@/components/cobranca/TabelaProtesto";
 import ImpactoCaixaTab from "@/components/cobranca/ImpactoCaixaTab";
 import ImportPreviewPanel from "@/components/importacao/ImportPreviewPanel";
 import {
-  PARTIAL_APPLICATION_FAILURE_MESSAGE,
   assertApplicationPlanStillCurrent,
   buildImportApplicationPlan,
 } from "@/lib/importacao/applyImport";
@@ -82,6 +81,7 @@ function uniqCobr(rows) {
 
 export default function Dashboard() {
   const fileRef = useRef(null);
+  const rawTitlesRef = useRef([]);
   const [isDark, setIsDark] = useState(() => loadL(LOCAL_THEME, "dark") === "dark");
   const t = isDark ? DARK : LIGHT;
 
@@ -127,8 +127,11 @@ export default function Dashboard() {
   const [kpiFilter, setKpiFilter] = useState(null);
   const [cleanupMsg, setCleanupMsg] = useState(null);
   const [showPaid, setShowPaid] = useState(false);
+  const [dataMode, setDataMode] = useState(() => getDataModeStatus());
 
   const importingRef = useRef(false);
+
+  useEffect(() => subscribeDataMode(setDataMode), []);
 
   const loadData = useCallback(async () => {
     const t0perf = performance.now();
@@ -136,11 +139,15 @@ export default function Dashboard() {
     try {
       const t1 = performance.now();
       const [titulos, evts, baixados] = await Promise.all([
-        base44.entities.Titulo.filter({ active: true }, "client_name", 10000),
-        base44.entities.ChargeEvent.list("-created_date", 10000),
-        base44.entities.Titulo.filter({ workflow_status: "baixado_importacao" }, "-updated_date", 1000)
+        base44.entities.Titulo.filter({ active: true }, "client_name", 50000),
+        base44.entities.ChargeEvent.list("-created_date", 50000),
+        // A base Supabase original não tinha workflow_status. Títulos inativos
+        // continuam auditáveis no Impacto no Caixa e são normalizados no adaptador.
+        base44.entities.Titulo.filter({ active: false }, "-updated_date", 50000)
       ]);
       const t2 = performance.now();
+
+      rawTitlesRef.current = [...(titulos || []), ...(baixados || [])];
 
       const tituloKeyMap = new Map();
       for (const r of titulos || []) {
@@ -162,8 +169,8 @@ export default function Dashboard() {
           );
         };
         const sr = sc(r), sp = sc(prev);
-        const dc = r.updated_date || r.created_date || "";
-        const dp = prev.updated_date || prev.created_date || "";
+        const dc = r.updated_date || r.updated_at || r.created_date || r.created_at || "";
+        const dp = prev.updated_date || prev.updated_at || prev.created_date || prev.created_at || "";
         if (sr > sp || (sr === sp && dc > dp)) tituloKeyMap.set(key, r);
       }
       const t3 = performance.now();
@@ -245,8 +252,6 @@ export default function Dashboard() {
     function getClienteKey(item) {
       const chaveCliente = getClienteAgrupamentoKey(item);
       if (chaveCliente) return chaveCliente;
-      const cod = normCod(item.nrCli);
-      if (cod) return `COD:${cod}`;
       return `ID:${item.id || Math.random()}`;
     }
 
@@ -526,7 +531,7 @@ export default function Dashboard() {
 
     try {
       const t1 = performance.now();
-      const allTitulos = await base44.entities.Titulo.filter({ active: true }, "client_name", 5000);
+      const allTitulos = await base44.entities.Titulo.filter({ active: true }, "client_name", 50000);
       const fetchMs = (performance.now() - t1).toFixed(0);
 
       const temDadosManuais = (r) =>
@@ -700,7 +705,7 @@ export default function Dashboard() {
 
     onProgress(`📥 Consultando banco de dados (origem: ${source})...`);
     await yieldUI();
-    const existingAllRaw = await base44.entities.Titulo.filter({ source }, "client_name", 10000);
+    const existingAllRaw = await base44.entities.Titulo.filter({ source }, "client_name", 50000);
     const existingAll = (existingAllRaw || []).filter((r) => String(r.source || "") === source);
     lap("fetch");
 
@@ -874,7 +879,7 @@ export default function Dashboard() {
       const outraOrigem = source === "FINR1253" ? "RPT_7007_CONS_CAR_EB" : "FINR1253";
       onProgress(`🔀 Cruzando carteiras — buscando títulos da origem ${outraOrigem === "FINR1253" ? "TOPCON" : "EB"}...`);
       await yieldUI();
-      const outraCarteira = await base44.entities.Titulo.filter({ source: outraOrigem, active: true }, "client_name", 5000);
+      const outraCarteira = await base44.entities.Titulo.filter({ source: outraOrigem, active: true }, "client_name", 50000);
 
       // Normalizar nome para match robusto (sem acento, sem pontuação, maiúsculo)
       function normNomeCross(v) {
@@ -941,13 +946,19 @@ export default function Dashboard() {
   }
 
   async function prepararPlanoNovaImportacao(preview, importFile) {
-    const existingTitles = await base44.entities.Titulo.list("-updated_date", 5000);
-    return buildImportApplicationPlan({ preview, existingTitles, importFile });
+    const startedAt = performance.now();
+    const plan = buildImportApplicationPlan({
+      preview,
+      existingTitles: rawTitlesRef.current,
+      importFile,
+    });
+    console.info(`[importação] plano calculado em ${(performance.now() - startedAt).toFixed(0)}ms`);
+    return plan;
   }
 
   async function aplicarNovaImportacao(plan, preview, importFile) {
     if (!plan?.canApply) throw new Error("O plano de aplicação não possui registros consolidados.");
-    const currentTitles = await base44.entities.Titulo.list("-updated_date", 5000);
+    const currentTitles = await base44.entities.Titulo.list("-updated_date", 50000);
     const revalidatedPlan = assertApplicationPlanStillCurrent(
       plan,
       buildImportApplicationPlan({ preview, existingTitles: currentTitles, importFile }),
@@ -958,29 +969,15 @@ export default function Dashboard() {
 
     setIsImporting(true);
     importingRef.current = true;
-    let writeStarted = false;
     try {
-      const CREATE_BATCH = 50;
-      for (let i = 0; i < revalidatedPlan.creates.length; i += CREATE_BATCH) {
-        writeStarted = true;
-        await base44.entities.Titulo.bulkCreate(revalidatedPlan.creates.slice(i, i + CREATE_BATCH).map((item) => item.payload));
-        await yieldUI();
-      }
-
-      const updates = [...revalidatedPlan.updates, ...revalidatedPlan.absences];
-      const UPDATE_BATCH = 15;
-      for (let i = 0; i < updates.length; i += UPDATE_BATCH) {
-        writeStarted = true;
-        await Promise.all(updates.slice(i, i + UPDATE_BATCH).map((item) =>
-          base44.entities.Titulo.update(item.id, item.payload),
-        ));
-        await yieldUI();
-      }
-
+      const applied = await base44.entities.Titulo.applyImportPlan(revalidatedPlan, {
+        source: preview?.estatisticas?.origem,
+        importFile,
+      });
       const result = {
-        created: revalidatedPlan.creates.length,
-        updated: revalidatedPlan.updates.length,
-        lowered: revalidatedPlan.absences.length,
+        created: Number(applied?.created ?? revalidatedPlan.creates.length),
+        updated: Number(applied?.updated ?? revalidatedPlan.updates.length),
+        lowered: Number(applied?.lowered ?? revalidatedPlan.absences.length),
       };
       setImportStatus({
         ok: true,
@@ -988,9 +985,6 @@ export default function Dashboard() {
       });
       await loadData();
       return result;
-    } catch (error) {
-      if (writeStarted) throw new Error(PARTIAL_APPLICATION_FAILURE_MESSAGE, { cause: error });
-      throw error;
     } finally {
       importingRef.current = false;
       setIsImporting(false);
@@ -1131,10 +1125,12 @@ export default function Dashboard() {
           <button onClick={() => setIsDark((x) => !x)} style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{isDark ? "☀️" : "🌙"}</button>
           <Btn t={t} sm onClick={() => setEmailModal(true)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📧 Enviar PDF</Btn>
           <Btn t={t} sm onClick={() => exportarPDFExecutivo({ grouped, filteredCart: sortedCart, dash, faixaAtraso, filtroOrigem, hojeISO })} style={{ background: "#0369a1", border: "none", color: "#fff" }}>📊 Baixar Relatório</Btn>
-          <Btn t={t} sm onClick={() => fileRef.current?.click()} disabled={isImporting} style={{ background: isImporting ? "#ccc" : t.p, border: "none", color: isImporting ? "#999" : "#fff", cursor: isImporting ? "not-allowed" : "pointer" }}>⬆️ {isImporting ? "Importando..." : "Importar"}</Btn>
         </div>
       </header>
       <main style={{ padding: "14px 16px", maxWidth: "100%", margin: "0 auto" }}>
+        <div style={{ background: dataMode.mode === "supabase" ? (isDark ? "#052e16" : "#f0fdf4") : dataMode.mode === "cache" ? (isDark ? "#2d0a0a" : "#fef2f2") : (isDark ? "#422006" : "#fffbeb"), border: `1px solid ${dataMode.mode === "supabase" ? "#16a34a" : dataMode.mode === "cache" ? "#dc2626" : "#f59e0b"}`, borderRadius: 8, padding: "7px 10px", marginBottom: 10, fontSize: 11, fontWeight: 700, color: dataMode.mode === "supabase" ? "#16a34a" : dataMode.mode === "cache" ? "#dc2626" : "#b45309" }}>
+          {dataMode.mode === "supabase" ? "● Modo de dados: Supabase" : dataMode.mode === "cache" ? "⚠ Modo de dados: cache local (gravações bloqueadas)" : "⚠ Modo de dados: somente este navegador"} — {dataMode.message}
+        </div>
         {importStatus && <div style={{ background: importStatus.ok ? isDark ? "#052e16" : "#f0fdf4" : isDark ? "#2d0a0a" : "#fef2f2", border: `1px solid ${importStatus.ok ? "#16a34a" : "#dc2626"}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: importStatus.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{importStatus.msg}</span><button onClick={() => setImportStatus(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
         {cleanupMsg && <div style={{ background: isDark ? "#0c1a2e" : "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#3b82f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{cleanupMsg}</span><button onClick={() => setCleanupMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
         <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{loading && !isImporting ? "⏳ Carregando..." : syncMsg}</div>

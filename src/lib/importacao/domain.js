@@ -32,6 +32,8 @@ const TITLE_KEY_FIELDS = [
   ["Data Vencimento", "dataVencimento", "dueDate", "due_date", "vencimento"],
 ];
 
+const SOURCE_KEY_FIELDS = ["source", "origem", "origem_detectada"];
+
 const CHARGE_BLOCKING_STATUS = [
   "PAGO",
   "BAIXADO",
@@ -139,6 +141,22 @@ function readFirst(item, fields) {
   return "";
 }
 
+export function normalizeImportSource(value) {
+  const source = normalizeKeyPart(value);
+  if (source === "RPT_7007" || source === "RPT_7007_CONS_CAR_EB" || source === "SOMENTE_RPT") {
+    return "RPT_7007_CONS_CAR_EB";
+  }
+  if (source === "FINR1253" || source === "SOMENTE_FINR") return "FINR1253";
+  return source;
+}
+
+function readSource(item) {
+  const direct = readFirst(item, SOURCE_KEY_FIELDS);
+  if (direct) return normalizeImportSource(direct);
+  const metadata = item?._meta || {};
+  return normalizeImportSource(metadata.origem_detectada || metadata.source_status || "");
+}
+
 function hasBlockingStatus(status, blockingStatuses) {
   const normalized = normalizeText(status);
   return blockingStatuses.some((blocked) => normalized.includes(blocked));
@@ -166,6 +184,7 @@ export function buildOfficialTitleKey(item = {}) {
   const { title, sequence } = readNormalizedTitleAndSequence(item);
 
   return [
+    readSource(item),
     normalizeKeyPart(readFirst(item, TITLE_KEY_FIELDS[0])),
     normalizeKeyPart(readFirst(item, TITLE_KEY_FIELDS[1])),
     title,

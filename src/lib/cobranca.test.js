@@ -201,6 +201,25 @@ test("dbToItem preserva saldo em aberto importado do EB", () => {
   assert.equal(item.valorTotalDebito, 9159.07);
 });
 
+test("dbToItem lê os campos financeiros legados da tabela titles do Supabase", () => {
+  const item = dbToItem({
+    id: "legacy-live-schema",
+    source: "RPT_7007_CONS_CAR_EB",
+    client_code: "202",
+    client_name: "ARTEFATOS DE CIMENTO RAIMONDI LTDA",
+    title_number: "EB-1",
+    due_date: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+    original_value: 202798.30,
+    recebido_parcial: 1000,
+    current_value: 201798.30,
+    active: true,
+  });
+
+  assert.equal(item.valorRecebido, 1000);
+  assert.equal(item.valorEmAberto, 201798.30);
+  assert.equal(item.workflow_status, "normal");
+});
+
 test("dbToItem oculta observação gerada por sistema ou importação", () => {
   const item = dbToItem({
     id: "auto-note",
@@ -326,12 +345,12 @@ test("getClienteAgrupamentoKey une o mesmo cliente entre EB e Topcon", () => {
   assert.equal(eb, topcon);
 });
 
-test("getClienteAgrupamentoKey prioriza CPF/CNPJ quando existir", () => {
+test("getClienteAgrupamentoKey prioriza nome normalizado mesmo quando existe CPF/CNPJ", () => {
   const porDoc = getClienteAgrupamentoKey({
     nrCli: "67",
     nomeCli: "Cliente Teste LTDA",
     cpfCnpj: "12.345.678/0001-90",
   });
 
-  assert.equal(porDoc, "DOC:12345678000190");
+  assert.equal(porDoc, "NOME:CLIENTE TESTE");
 });

@@ -18,7 +18,7 @@ function baixarWorkbook(nome, sheets) {
 
 async function exportarRelatorioCompletoExcel() {
   const [titulos, eventos] = await Promise.all([
-    base44.entities.Titulo.filter({ active: true }, "client_name", 5000),
+    base44.entities.Titulo.filter({ active: true }, "client_name", 50000),
     base44.entities.ChargeEvent.list("-created_date", 5000)
   ]);
 

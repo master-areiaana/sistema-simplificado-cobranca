@@ -153,44 +153,40 @@
 
   .kpi-container {
     width: 100%;
-    max-width: 1405px;
+    max-width: 100%;
     margin: 0 auto 16px;
-    display: grid;
+    display: flex;
+    flex-wrap: nowrap;
     gap: 12px;
     align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 2px 8px;
+    box-sizing: border-box;
+    scrollbar-width: thin;
   }
-
-  .kpi-container-8 { grid-template-columns: repeat(8, minmax(0, 1fr)); }
-  .kpi-container-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .kpi-container-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .kpi-container-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .kpi-container-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .kpi-card {
     min-height: 92px !important;
+    min-width: 180px;
+    width: max-content;
+    flex: 1 0 max-content;
     display: flex !important;
     flex-direction: column !important;
     justify-content: center !important;
+    padding: 14px 18px !important;
+    box-sizing: border-box !important;
     box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
   }
 
-  @media (max-width: 1200px) {
-    .kpi-container-8,
-    .kpi-container-6,
-    .kpi-container-5,
-    .kpi-container-4 {
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    }
+  .kpi-card .kpi-value {
+    white-space: nowrap !important;
+    overflow: visible !important;
   }
 
-  @media (max-width: 900px) {
-    .kpi-container,
-    .kpi-container-8,
-    .kpi-container-6,
-    .kpi-container-5,
-    .kpi-container-4,
-    .kpi-container-2 {
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  @media (max-width: 1000px) {
+    .import-summary-grid {
+      grid-template-columns: 1fr !important;
     }
   }
 }

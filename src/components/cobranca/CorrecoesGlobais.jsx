@@ -2,6 +2,9 @@ import { useEffect } from "react";
 import * as XLSX from "xlsx";
 import { base44 } from "@/api/base44Client";
 import { dbToItem, fmtD } from "@/lib/cobranca";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
+
+const NAV_COLLAPSED_KEY = "sc_nav_collapsed_base44_v1";
 
 function money(v) {
   return Number(v || 0);
@@ -134,7 +137,7 @@ export default function CorrecoesGlobais() {
           padding: 0 12px !important;
           margin: 0 !important;
           border-radius: 8px !important;
-          font-size: 11px !important;
+          font-size: 9.5px !important;
           font-weight: 800 !important;
           line-height: 1.2 !important;
           text-align: left !important;
@@ -155,12 +158,12 @@ export default function CorrecoesGlobais() {
     }
 
     const syncTheme = () => {
-      const isDark = (localStorage.getItem("sc_theme") || "dark") === "dark";
+      const isDark = (localStorage.getItem(THEME_STORAGE_KEY) || "light") === "dark";
       document.body.classList.toggle("sc-theme-dark", isDark);
     };
 
     const getTheme = () => {
-      const isDark = (localStorage.getItem("sc_theme") || "dark") === "dark";
+      const isDark = (localStorage.getItem(THEME_STORAGE_KEY) || "light") === "dark";
       return {
         bg: isDark ? "#050505" : "#f5f5f5",
         surf: isDark ? "#111" : "#fff",
@@ -185,8 +188,8 @@ export default function CorrecoesGlobais() {
       if (!tabs || !main || window.innerWidth < 980) return;
 
       const th = getTheme();
-      const collapsed = localStorage.getItem("sc_nav_collapsed") === "1";
-      const sideWidth = collapsed ? 58 : 212;
+      const collapsed = localStorage.getItem(NAV_COLLAPSED_KEY) === "1";
+      const sideWidth = collapsed ? 58 : 178;
 
       tabs.classList.add("sc-side-nav");
       tabs.classList.toggle("sc-side-nav-collapsed", collapsed);
@@ -219,12 +222,12 @@ export default function CorrecoesGlobais() {
         collapseBtn.onclick = (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          localStorage.setItem("sc_nav_collapsed", collapsed ? "0" : "1");
+          localStorage.setItem(NAV_COLLAPSED_KEY, collapsed ? "0" : "1");
           aplicarVisaoGeralLateral();
         };
       }
 
-      main.style.paddingLeft = `${sideWidth + 24}px`;
+      main.style.paddingLeft = `${sideWidth + 20}px`;
       tabs.style.setProperty("position", "fixed", "important");
       tabs.style.setProperty("top", "72px", "important");
       tabs.style.setProperty("left", "10px", "important");
@@ -266,7 +269,7 @@ export default function CorrecoesGlobais() {
         btn.style.setProperty("margin", "0", "important");
         btn.style.setProperty("overflow", "hidden", "important");
         btn.style.setProperty("white-space", "nowrap", "important");
-        btn.style.setProperty("font-size", collapsed ? "0" : "11px", "important");
+        btn.style.setProperty("font-size", collapsed ? "0" : "9.5px", "important");
         btn.style.setProperty("line-height", "1.2", "important");
       });
     };

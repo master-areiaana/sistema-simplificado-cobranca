@@ -7,6 +7,7 @@ import PageNotFound from './lib/PageNotFound';
 import Dashboard from './pages/Dashboard';
 import AssessoriaHub from './pages/AssessoriaHub';
 import CorrecoesGlobais from './components/cobranca/CorrecoesGlobais';
+import { THEME_STORAGE_KEY } from './lib/theme';
 
 function AssessoriaTabInjector() {
   const location = useLocation();
@@ -19,7 +20,7 @@ function AssessoriaTabInjector() {
     const hiddenNodes = new Map();
 
     const readTheme = () => {
-      try { return localStorage.getItem("sc_theme") || "dark"; } catch { return "dark"; }
+      try { return localStorage.getItem(THEME_STORAGE_KEY) || "light"; } catch { return "light"; }
     };
 
     const theme = () => {
@@ -60,7 +61,7 @@ function AssessoriaTabInjector() {
       btn.style.setProperty("justify-content", "flex-start", "important");
       btn.style.setProperty("gap", "8px", "important");
       btn.style.setProperty("padding", "0 12px", "important");
-      btn.style.setProperty("font-size", "11px", "important");
+      btn.style.setProperty("font-size", "9.5px", "important");
       btn.style.setProperty("font-weight", "800", "important");
       btn.style.setProperty("width", "100%", "important");
       btn.style.setProperty("white-space", "nowrap", "important");

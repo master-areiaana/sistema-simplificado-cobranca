@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Assessoria from "./Assessoria";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 const PORTAL_CREDOR_URL = "https://portal-recuperacob.cobcloud.com.br/login";
 
 function readThemeMode() {
-  try { return localStorage.getItem("sc_theme") || "dark"; } catch { return "dark"; }
+  try { return localStorage.getItem(THEME_STORAGE_KEY) || "light"; } catch { return "light"; }
 }
 
 function getTheme(mode) {

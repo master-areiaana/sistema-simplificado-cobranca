@@ -82,11 +82,40 @@
 
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    overflow-x: hidden;
   }
 
-  /* Oculta somente o botão antigo "Importar" do cabeçalho. Não oculta cards, filtros ou blocos da tela. */
-  header > div:last-child > button:last-child {
-    display: none !important;
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-height: 100%;
+  }
+
+  main {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden;
+  }
+
+  .sc-system-status {
+    min-height: 22px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sc-import-preview {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
   }
 
   /* Mantém o redimensionador das colunas como linha fina, sem faixa grossa sobre a tabela. */

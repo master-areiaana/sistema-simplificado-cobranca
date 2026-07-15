@@ -270,16 +270,15 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
   const isBusy = state.status === "loading" || state.status === "applying";
 
   return (
-    <section style={{ background: surface, border: `1px solid ${border}`, borderRadius: 10, padding: 12, marginBottom: 12, color: text, minWidth: 0, boxSizing: "border-box" }}>
+    <section className="sc-import-preview" style={{ background: surface, border: `1px solid ${border}`, borderRadius: 10, padding: "9px 10px", marginBottom: 12, color: text, minWidth: 0, boxSizing: "border-box" }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={prepararArquivo} />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div style={{ minWidth: 220, flex: "1 1 360px" }}>
           <div style={{ fontSize: 13, fontWeight: 900 }}>Pré-validação da importação</div>
-          <div style={{ fontSize: 11, color: muted, marginTop: 3 }}>Fluxo oficial: validar, conferir o plano e somente então aplicar.</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={isBusy} style={{ background: isBusy ? "#9ca3af" : primary, color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 800, cursor: isBusy ? "not-allowed" : "pointer" }}>Validar planilha</button>
-          <button type="button" onClick={aplicarPlano} disabled={!canApply} style={{ background: canApply ? "#16a34a" : "#9ca3af", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 800, cursor: canApply ? "pointer" : "not-allowed" }}>Aplicar importação segura</button>
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={isBusy} style={{ background: isBusy ? "#9ca3af" : primary, color: "#fff", border: "none", borderRadius: 7, padding: "7px 11px", fontSize: 11, fontWeight: 800, cursor: isBusy ? "not-allowed" : "pointer" }}>Validar planilha</button>
+          <button type="button" onClick={aplicarPlano} disabled={!canApply} style={{ background: canApply ? "#16a34a" : "#9ca3af", color: "#fff", border: "none", borderRadius: 7, padding: "7px 11px", fontSize: 11, fontWeight: 800, cursor: canApply ? "pointer" : "not-allowed" }}>Aplicar importação segura</button>
         </div>
       </div>
 

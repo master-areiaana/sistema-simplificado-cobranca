@@ -24,7 +24,7 @@ import {
   dlCsv, sugestaoEncaminhamento,
   getTituloKey, isValidClientName, getClienteAgrupamentoKey, manualObservationText } from
 "@/lib/cobranca";
-import { DARK, LIGHT, loadL, saveL } from "@/lib/theme";
+import { DARK, LIGHT, THEME_STORAGE_KEY, loadL, saveL } from "@/lib/theme";
 import { KPI, TabBtn, Badge, Btn } from "@/components/cobranca/UI";
 import TabelaCarteira from "@/components/cobranca/TabelaCarteira";
 import ModalCobranca from "@/components/cobranca/ModalCobranca";
@@ -48,7 +48,7 @@ import {
   buildImportApplicationPlan,
 } from "@/lib/importacao/applyImport";
 
-const LOCAL_THEME = "sc_theme";
+const LOCAL_THEME = THEME_STORAGE_KEY;
 const LOCAL_TAB = "sc_tab";
 const STATUS_OPC = ["Não Contatado", "Em Cobrança", "Sem Retorno", "Prometeu Pagar", "Pago Aguard. Baixa", "Em Permuta", "Encerrado"];
 const VERIF_RESP = ["Confirmado", "Não localizado", "Baixado", "Erro", "Duplicidade", "Devolver para cobrança"];
@@ -82,7 +82,7 @@ function uniqCobr(rows) {
 export default function Dashboard() {
   const fileRef = useRef(null);
   const rawTitlesRef = useRef([]);
-  const [isDark, setIsDark] = useState(() => loadL(LOCAL_THEME, "dark") === "dark");
+  const [isDark, setIsDark] = useState(() => loadL(LOCAL_THEME, "light") === "dark");
   const t = isDark ? DARK : LIGHT;
 
   const [records, setRecords] = useState([]);
@@ -1128,12 +1128,12 @@ export default function Dashboard() {
         </div>
       </header>
       <main style={{ padding: "14px 16px", maxWidth: "100%", margin: "0 auto" }}>
-        <div style={{ background: dataMode.mode === "supabase" ? (isDark ? "#052e16" : "#f0fdf4") : dataMode.mode === "cache" ? (isDark ? "#2d0a0a" : "#fef2f2") : (isDark ? "#422006" : "#fffbeb"), border: `1px solid ${dataMode.mode === "supabase" ? "#16a34a" : dataMode.mode === "cache" ? "#dc2626" : "#f59e0b"}`, borderRadius: 8, padding: "7px 10px", marginBottom: 10, fontSize: 11, fontWeight: 700, color: dataMode.mode === "supabase" ? "#16a34a" : dataMode.mode === "cache" ? "#dc2626" : "#b45309" }}>
-          {dataMode.mode === "supabase" ? "● Modo de dados: Supabase" : dataMode.mode === "cache" ? "⚠ Modo de dados: cache local (gravações bloqueadas)" : "⚠ Modo de dados: somente este navegador"} — {dataMode.message}
+        <div className={`sc-system-status sc-system-status-${dataMode.mode}`} style={{ color: dataMode.mode === "supabase" ? "#16a34a" : dataMode.mode === "cache" ? "#dc2626" : "#b45309" }}>
+          <span>{dataMode.mode === "supabase" ? "● Supabase conectado" : dataMode.mode === "cache" ? "⚠ Cache local · gravações bloqueadas" : "⚠ Dados somente neste navegador"}</span>
+          <span style={{ color: t.muted, fontWeight: 500 }}>{loading && !isImporting ? "⏳ Carregando..." : syncMsg}</span>
         </div>
         {importStatus && <div style={{ background: importStatus.ok ? isDark ? "#052e16" : "#f0fdf4" : isDark ? "#2d0a0a" : "#fef2f2", border: `1px solid ${importStatus.ok ? "#16a34a" : "#dc2626"}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: importStatus.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{importStatus.msg}</span><button onClick={() => setImportStatus(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
         {cleanupMsg && <div style={{ background: isDark ? "#0c1a2e" : "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#3b82f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{cleanupMsg}</span><button onClick={() => setCleanupMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button></div>}
-        <div style={{ fontSize: 11, color: t.muted, marginBottom: 12 }}>{loading && !isImporting ? "⏳ Carregando..." : syncMsg}</div>
         <ImportPreviewPanel
           totalAtivosAnteriores={records.length}
           onPreparePlan={prepararPlanoNovaImportacao}

@@ -107,3 +107,16 @@ Não serão copiados do ZIP:
 - teste de falha remota sem fallback silencioso;
 - inspeção visual dos KPIs, tabela, badge e Pré-validação;
 - verificação do GitHub Actions e abertura de Pull Request sem merge.
+
+## Validação visual do ZIP mais recente
+
+Em 15/07/2026, o arquivo `blazing-cred-flow-pro (1).zip` e as dez capturas enviadas foram comparados novamente com a branch de trabalho.
+
+- O modelo visual correto é o tema claro, com menu lateral branco compacto, item ativo laranja, cards brancos e tabelas densas com rolagem interna.
+- O tema passou a usar uma chave versionada e abrir em modo claro mesmo para navegadores que tinham o antigo tema escuro salvo.
+- O menu lateral foi ajustado para a largura das capturas e continua recolhível.
+- A área principal recebeu contenção explícita de largura para impedir corte lateral do bloco.
+- A Pré-validação foi compactada para manter título e ações na mesma barra.
+- O aviso do modo de dados foi reduzido a uma linha de estado, sem ocupar um card inteiro.
+- O botão azul `Baixar Relatório`, ocultado por um seletor antigo destinado ao botão `Importar`, voltou a ficar visível.
+- Carteira Geral, Histórico/Promessas, Calendário, Conferência de Pagamento, Aprovação do Gestor, Produtividade/Metas, Impacto no Caixa e Assessoria foram inspecionados no build local.

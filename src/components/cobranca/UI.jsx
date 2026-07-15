@@ -71,14 +71,14 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
         background: t.card,
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 700, color: t.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6, whiteSpace: "nowrap" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: t.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6, whiteSpace: "nowrap", textAlign: "center" }}>
         {label}
       </div>
-      <div className="kpi-value" style={{ fontSize: "clamp(19px, 2vw, 24px)", fontWeight: 900, color: color, marginBottom: 4, lineHeight: 1, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+      <div className="kpi-value" style={{ fontSize: "clamp(19px, 2vw, 24px)", fontWeight: 900, color: color, marginBottom: 4, lineHeight: 1, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center" }}>
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: 11, color: t.muted, fontWeight: 500, lineHeight: 1.2, whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 11, color: t.muted, fontWeight: 500, lineHeight: 1.2, whiteSpace: "nowrap", textAlign: "center" }}>
           {sub}
         </div>
       )}

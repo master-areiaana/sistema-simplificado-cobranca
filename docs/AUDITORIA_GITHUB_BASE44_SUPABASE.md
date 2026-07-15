@@ -132,7 +132,7 @@ Em 15/07/2026, o arquivo real `rpt_7007_cons_car_EB.xlsx` enviado nesta tarefa f
 - Existem diferenças de centavos entre o saldo oficial do ERP e esse cálculo, portanto o valor exibido na Carteira Geral podia divergir do relatório.
 - A correção prioriza `Saldo` quando ele existe e é válido. O cálculo permanece apenas como fallback para arquivos sem saldo oficial.
 
-### Resultado do arquivo recebido
+### Resultado da primeira revisão encontrada em Downloads
 
 - 74 títulos válidos;
 - 26 clientes únicos pelo nome normalizado;
@@ -149,7 +149,7 @@ Casos conferidos:
 - título 1627: saldo oficial de R$ 27.989,53, em vez do cálculo de R$ 27.989,76;
 - valores de R$ 0,01 continuam válidos e não são descartados.
 
-O arquivo recebido nesta tarefa não corresponde aos totais de 41 títulos, 18 clientes e R$ 1.598.198,51 descritos no texto de referência. Esses números não foram forçados no código. A validação e os testes usam a planilha efetivamente anexada, com rastreabilidade da divergência entre revisões do arquivo.
+Essa primeira revisão não corresponde aos totais de 41 títulos, 18 clientes e R$ 1.598.198,51 descritos no texto de referência. Os números não foram forçados no código. Uma segunda revisão do mesmo relatório foi localizada e validada separadamente, conforme registrado a seguir.
 
 ### Validação automatizada
 
@@ -158,3 +158,70 @@ O arquivo recebido nesta tarefa não corresponde aos totais de 41 títulos, 18 c
 - multa e juros continuam separados do saldo do ERP;
 - reimportação, origem, chave dos títulos, agrupamento por nome e dados manuais permanecem protegidos pelos testes;
 - 117 testes aprovados, lint aprovado e build de produção aprovado.
+
+## Validação da revisão RPT 7007 com 41 títulos
+
+Também em 15/07/2026 foi localizada a revisão exata descrita no pedido, em `Downloads/Nova pasta/rpt_7007_cons_car_EB.xlsx`. Para evitar qualquer confusão entre arquivos com o mesmo nome, foram registrados os hashes SHA-256:
+
+- revisão de 74 títulos: `7F4383F1848C6B04E32CEDF649581BCC00200B2461E29D078DA465FB8E83136C`;
+- revisão correta de 41 títulos: `D6F2C86801B8E3D78B4EF02707BB6B1C08D5922F085B357C50C648E8C3B1FBCF`.
+
+### Totais confirmados na revisão correta
+
+- 41 títulos válidos;
+- 18 clientes únicos pelo nome normalizado;
+- valor original: R$ 1.782.448,20;
+- valor recebido: R$ 184.249,00;
+- saldo oficial do ERP: R$ 1.598.198,51;
+- cálculo simples `Valor Total - Valor Recebido`: R$ 1.598.199,20;
+- diferença de arredondamento/saldo oficial: R$ 0,69.
+
+Casos de regressão confirmados diretamente na planilha:
+
+- PREMIX CONCRETO LTDA: 19 títulos, códigos `67`, `70`, `71`, `73`, `88` e `728`, agrupado visualmente em um único cliente e saldo oficial de R$ 1.091.939,37;
+- título 6598: saldo oficial de R$ 9.159,07, e não R$ 9.159,53;
+- título 1627: saldo oficial de R$ 3.339,53, e não R$ 3.339,76;
+- ARTEFATOS DE CIMENTO RAIMONDI LTDA: um título EB, saldo oficial de R$ 202.798,30.
+
+Os nomes BALNEARIO MATERIAIS DE CONSTRUCAO EIRELI, BRUMIX TRANSPORTES E SERVICOS DE BOMBEAM e CONSTRUCOES SCHOROEDER LTDA não existem nessa revisão de 41 títulos e, portanto, não foram fabricados nem inseridos pelo sistema.
+
+### Reimportação e aplicação segura
+
+A execução do plano de aplicação com os 41 registros confirmou:
+
+- zero criações indevidas na reimportação;
+- 2 atualizações de saldo oficial;
+- 39 títulos sem alteração;
+- zero itens para revisão;
+- uma baixa EB por ausência quando a importação é completa e segura;
+- título Topcon de controle preservado e não baixado por uma importação EB;
+- `current_status`, `current_motive`, `promise_date` e `last_note` manuais preservados;
+- total de `open_value`/`erp_balance` após o plano: R$ 1.598.198,51.
+
+Durante essa validação foi encontrado e corrigido um problema de integração: os registros canônicos dos parsers RPT e FINR não carregavam metadados de origem para o plano compartilhado de aplicação. Sem isso, a rota compartilhada podia cair na origem genérica `RPT_E_FINR`. Os metadados agora são anexados de forma não enumerável, preservando exatamente as 23 colunas oficiais e garantindo `RPT_7007_CONS_CAR_EB` para EB e `FINR1253` para Topcon.
+
+## Conferência visual final das abas
+
+Todas as telas foram abertas no build local e comparadas com o ZIP/capturas da Base44:
+
+- Carteira Geral;
+- Histórico de Cobrança;
+- Promessas & Calendário;
+- Conferência de Pagamento;
+- Aprovação do Gestor;
+- Produtividade por Usuário;
+- Metas de Cobrança;
+- Impacto no Caixa;
+- Assessoria — Transferência;
+- Assessoria — Portal do Credor.
+
+A estrutura visual está alinhada ao modelo: tema claro, menu lateral compacto, item ativo laranja, cards brancos, barra de Pré-validação, tabelas densas e rolagem interna. O alinhamento de título, valor e subtítulo dos KPIs foi centralizado para corresponder às capturas. Permanecem intencionalmente diferentes apenas os elementos funcionais necessários no sistema oficial: indicador Supabase/local, filtros de carteira e a seção auditável de baixas por importação. O cromado do editor Base44 não foi reproduzido porque pertence à plataforma Base44, não ao sistema publicado.
+
+## Validação automatizada final
+
+- `npm test`: 118 testes aprovados, zero falhas;
+- `npm run lint`: aprovado sem erros;
+- `npm run build -- --configLoader runner`: aprovado;
+- planejamento de 1.000 títulos em memória: aproximadamente 40 ms no teste automatizado;
+- carregamento visual local da carteira de teste: aproximadamente 557 ms;
+- build final aberto e conferido novamente na Carteira Geral após a centralização dos KPIs.

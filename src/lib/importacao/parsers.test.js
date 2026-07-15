@@ -35,6 +35,8 @@ test("RPT_7007 produz registro com exatamente as 23 colunas oficiais", () => {
   }]);
 
   assertCanonicalColumns(record);
+  assert.equal(record._meta.source_status, "SOMENTE_RPT");
+  assert.equal(record._meta.origem_detectada, "RPT_7007_CONS_CAR_EB");
   assert.equal(record["Número Documento"], "000123");
   assert.equal(record["Sequência"], "02");
   assert.equal(record["Valor Total (R$)"], 1000);
@@ -228,6 +230,8 @@ test("FINR1253 produz registro canônico preservando cliente, contato e valores"
   const [record] = parseFINR1253Canonical(rows);
 
   assertCanonicalColumns(record);
+  assert.equal(record._meta.source_status, "SOMENTE_FINR");
+  assert.equal(record._meta.origem_detectada, "FINR1253");
   assert.equal(record["Código Cliente"], "000123");
   assert.equal(record["Nome Cliente"], "Cliente Financeiro Ltda");
   assert.equal(record["CPF/CNPJ"], "12.345.678/0001-99");

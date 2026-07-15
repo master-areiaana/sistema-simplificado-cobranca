@@ -141,6 +141,19 @@ function createCanonicalRecord(values = {}) {
   );
 }
 
+function attachSourceMetadata(record, sourceStatus, detectedSource) {
+  Object.defineProperty(record, "_meta", {
+    value: {
+      source_status: sourceStatus,
+      origem_detectada: detectedSource,
+    },
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+  return record;
+}
+
 function addCalculatedValues(values, options = {}) {
   const charges = calculateCharges({
     valorTotal: values["Valor Total (R$)"],
@@ -237,7 +250,7 @@ export function parseRPT7007Canonical(rows, options = {}) {
       const saldoRaw = readMapped(row, headerMap, "Saldo Restante (R$)");
       const temSaldoOficial = isValidMoney(saldoRaw);
 
-      return addCalculatedValues({
+      return attachSourceMetadata(addCalculatedValues({
         "Id da Empresa": text(readMapped(row, headerMap, "Id da Empresa")),
         "Tipo Documento": text(readMapped(row, headerMap, "Tipo Documento")).toUpperCase(),
         "Série": text(readMapped(row, headerMap, "Série")),
@@ -258,7 +271,7 @@ export function parseRPT7007Canonical(rows, options = {}) {
         "Contato": text(readMapped(row, headerMap, "Contato")),
         "CPF/CNPJ": text(readMapped(row, headerMap, "CPF/CNPJ")),
         "NF Serviço": text(readMapped(row, headerMap, "NF Serviço")),
-      }, options);
+      }, options), "SOMENTE_RPT", "RPT_7007_CONS_CAR_EB");
     });
 }
 
@@ -377,13 +390,13 @@ export function parseFINR1253Canonical(rows, options = {}) {
   const flush = (clientTotal = {}) => {
     if (client) {
       for (const title of titleRows) {
-        records.push(buildFinrCanonicalRecord(
+        records.push(attachSourceMetadata(buildFinrCanonicalRecord(
           title.row,
           client,
           clientTotal,
           title.headerMap,
           options,
-        ));
+        ), "SOMENTE_FINR", "FINR1253"));
       }
     }
     titleRows = [];

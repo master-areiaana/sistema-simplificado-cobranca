@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildImportPreview } from "./preview.js";
+import { buildImportApplicationPlan } from "./applyImport.js";
 
 const PARTIAL_IMPORT_ALERT =
   "Planilha parcial detectada — baixa automática não aplicada.";
@@ -236,4 +237,33 @@ test("repassa multaPercent e jurosPercent para o cálculo financeiro", () => {
   assert.equal(record["Multa (R$)"], 14);
   assert.equal(record["Juros (R$)"], 2.33);
   assert.equal(record["Total a Receber (R$)"], 716.33);
+});
+
+test("prévia RPT preserva origem EB ao criar e reimportar o mesmo título", () => {
+  const preview = buildImportPreview({
+    rptRows: [rptRow()],
+    totalAtivosAnteriores: 0,
+  });
+  const firstPlan = buildImportApplicationPlan({
+    preview,
+    existingTitles: [],
+    importFile: "rpt_7007.xlsx",
+  });
+
+  assert.equal(firstPlan.summary.totalCreate, 1);
+  assert.equal(firstPlan.creates[0].payload.source, "RPT_7007_CONS_CAR_EB");
+
+  const existingTitle = {
+    id: "eb-1",
+    ...firstPlan.creates[0].payload,
+  };
+  const secondPlan = buildImportApplicationPlan({
+    preview,
+    existingTitles: [existingTitle],
+    importFile: "rpt_7007.xlsx",
+  });
+
+  assert.equal(secondPlan.summary.totalCreate, 0);
+  assert.equal(secondPlan.summary.totalUnchanged, 1);
+  assert.equal(secondPlan.absences.length, 0);
 });

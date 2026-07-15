@@ -291,7 +291,68 @@ test("parseRows7007 importa a primeira linha de dados da planilha EB", () => {
   assert.equal(item.vencimento, "2026-06-18");
   assert.equal(item.valorOriginal, 9813.01);
   assert.equal(item.valorEmAberto, 9813.01);
+  assert.equal(item.saldoErp, 9813.01);
+  assert.equal(item.saldoOficialDisponivel, true);
   assert.equal(item.origem, "RPT_7007_CONS_CAR_EB");
+});
+
+test("parseRows7007 prioriza Saldo oficial e usa fallback apenas quando ausente", () => {
+  const [oficial, fallback, minimo] = parseRows7007([
+    {
+      "Tipo Documento": "NFe",
+      "Numero Documento": 6598,
+      "Sequência": 1,
+      "Código Cliente": 67,
+      "Razão Social": "PREMIX CONCRETO LTDA",
+      "Valor Total": 46853.53,
+      "Valor Recebido": 37694,
+      "Saldo": 9159.07,
+    },
+    {
+      "Tipo Documento": "NFe",
+      "Numero Documento": 6600,
+      "Sequência": 1,
+      "Código Cliente": 67,
+      "Razão Social": "PREMIX CONCRETO LTDA",
+      "Valor Total": 100,
+      "Valor Recebido": 20,
+      "Saldo": "",
+    },
+    {
+      "Tipo Documento": "NFe",
+      "Numero Documento": 6601,
+      "Sequência": 1,
+      "Código Cliente": 67,
+      "Razão Social": "PREMIX CONCRETO LTDA",
+      "Valor Total": 10,
+      "Valor Recebido": 9.99,
+      "Saldo": 0.01,
+    },
+  ]);
+
+  assert.equal(oficial.valorEmAberto, 9159.07);
+  assert.equal(oficial.saldoCalculado, 9159.53);
+  assert.equal(oficial.saldoDivergencia, -0.46);
+  assert.equal(fallback.valorEmAberto, 80);
+  assert.equal(fallback.saldoOficialDisponivel, false);
+  assert.equal(minimo.valorEmAberto, 0.01);
+});
+
+test("parseRows7007 usa o Saldo oficial do título 1627", () => {
+  const [item] = parseRows7007([{
+    "Tipo Documento": "FAT",
+    "Numero Documento": 1627,
+    "Sequência": 1,
+    "Código Cliente": 451,
+    "Razão Social": "SUPERTEX CONCRETO LTDA",
+    "Valor Total": 149894.76,
+    "Valor Recebido": 146555,
+    "Saldo": 3339.53,
+  }]);
+
+  assert.equal(item.valorEmAberto, 3339.53);
+  assert.equal(item.saldoErp, 3339.53);
+  assert.equal(item.saldoCalculado, 3339.76);
 });
 
 test("parseRows7007 agrupa cliente EB por razão social sem deduplicar códigos diferentes", () => {
@@ -326,7 +387,50 @@ test("parseRows7007 agrupa cliente EB por razão social sem deduplicar códigos 
 
   assert.equal(items.length, 2);
   assert.equal(items[0].clientGroupKey, items[1].clientGroupKey);
+  assert.equal(items[0].clientGroupKey, "NOME:PREMIX CONCRETO");
+  assert.deepEqual(items.map((item) => item.erpClientCodes), [["67"], ["70"]]);
   assert.notEqual(getTituloKey(items[0]), getTituloKey(items[1]));
+});
+
+test("PREMIX mantém 19 títulos EB em um grupo visual e preserva seis códigos", () => {
+  const codes = [67, 70, 71, 73, 88, 728];
+  const rows = Array.from({ length: 19 }, (_, index) => ({
+    "Tipo Documento": "NFe",
+    "Numero Documento": 6500 + index,
+    "Sequência": 1,
+    "Código Cliente": codes[index % codes.length],
+    "Razão Social": codes[index % codes.length] === 728 ? "PREMIX CONCRETO LTDA." : "PREMIX CONCRETO LTDA",
+    "Data Vencimento": "30/06/2026",
+    "Valor Total": 100 + index,
+    "Valor Recebido": 0,
+    "Saldo": 100 + index,
+  }));
+  const items = parseRows7007(rows);
+
+  assert.equal(items.length, 19);
+  assert.deepEqual(new Set(items.map((item) => item.clientGroupKey)), new Set(["NOME:PREMIX CONCRETO"]));
+  assert.deepEqual(new Set(items.map((item) => item.nrCli)), new Set(codes.map(String)));
+  assert.deepEqual(new Set(items.map((item) => item.origem)), new Set(["RPT_7007_CONS_CAR_EB"]));
+  assert.equal(new Set(items.map(getTituloKey)).size, 19);
+});
+
+test("buildItem mantém saldo ERP separado de multa e juros", () => {
+  const item = buildItem({
+    origem: "RPT_7007_CONS_CAR_EB",
+    nrCli: "67",
+    nomeCli: "PREMIX CONCRETO LTDA",
+    titulo: "6598",
+    seq: "1",
+    vencimento: "2000-01-01",
+    valorOriginal: 46853.53,
+    valorRecebido: 37694,
+    valorEmAberto: 9159.07,
+    saldoErp: 9159.07,
+  });
+
+  assert.equal(item.valorEmAberto, 9159.07);
+  assert.equal(item.saldoErp, 9159.07);
+  assert.ok(item.valorTotalDebito > item.valorEmAberto);
 });
 
 test("getClienteAgrupamentoKey une o mesmo cliente entre EB e Topcon", () => {

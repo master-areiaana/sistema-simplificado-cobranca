@@ -210,13 +210,13 @@ test("duplicidade na FINR gera DUPLICATE_KEY_IN_FINR sem perder linhas originais
   assert.equal(record._meta.needs_review, true);
 });
 
-test("recalcula saldo, multa, juros e total após consolidação", () => {
+test("preserva saldo oficial e recalcula somente multa, juros e total após consolidação", () => {
   const result = consolidarFontesImportacao({
     rptItems: [title({
       "Valor Total (R$)": 1000,
       "Receb. Parcial (R$)": 300,
       "Dias de Atraso": 10,
-      "Saldo Restante (R$)": 9999,
+      "Saldo Restante (R$)": 699.77,
       "Multa (R$)": 9999,
       "Juros (R$)": 9999,
       "Total a Receber (R$)": 9999,
@@ -229,10 +229,10 @@ test("recalcula saldo, multa, juros e total após consolidação", () => {
   });
   const [record] = result.consolidados;
 
-  assert.equal(record["Saldo Restante (R$)"], 700);
+  assert.equal(record["Saldo Restante (R$)"], 699.77);
   assert.equal(record["Multa (R$)"], 14);
   assert.equal(record["Juros (R$)"], 2.33);
-  assert.equal(record["Total a Receber (R$)"], 716.33);
+  assert.equal(record["Total a Receber (R$)"], 716.10);
 });
 
 test("buildOfficialTitleKey identifica a origem do registro consolidado", () => {

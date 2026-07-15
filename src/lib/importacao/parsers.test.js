@@ -91,7 +91,7 @@ test("RPT_7007 mapeia os nomes oficiais da fonte para o modelo canônico", () =>
   assert.equal(record["Saldo Restante (R$)"], 800);
 });
 
-test("RPT_7007 não usa a coluna Saldo como Valor Total ou Recebimento Parcial", () => {
+test("RPT_7007 prioriza a coluna Saldo sem alterar Valor Total ou Valor Recebido", () => {
   const [record] = parseRPT7007Canonical([{
     "Tipo Documento": "NF",
     "Número Documento": "551",
@@ -99,15 +99,16 @@ test("RPT_7007 não usa a coluna Saldo como Valor Total ou Recebimento Parcial",
     "Nome Cliente": "Cliente com Saldo Auxiliar",
     "Valor Total": 1000,
     "Valor Recebido": 300,
-    "Saldo": 9999,
+    "Saldo": 699.77,
   }]);
 
   assert.equal(record["Valor Total (R$)"], 1000);
   assert.equal(record["Receb. Parcial (R$)"], 300);
-  assert.equal(record["Saldo Restante (R$)"], 700);
+  assert.equal(record["Saldo Restante (R$)"], 699.77);
+  assert.equal(record["Total a Receber (R$)"], 699.77);
 });
 
-test("RPT_7007 não infere recebimento parcial quando somente Saldo está disponível", () => {
+test("RPT_7007 usa Saldo oficial mesmo quando Valor Recebido não está disponível", () => {
   const [record] = parseRPT7007Canonical([{
     "Tipo Documento": "NF",
     "Número Documento": "552",
@@ -119,7 +120,64 @@ test("RPT_7007 não infere recebimento parcial quando somente Saldo está dispon
 
   assert.equal(record["Valor Total (R$)"], 1000);
   assert.equal(record["Receb. Parcial (R$)"], 0);
-  assert.equal(record["Saldo Restante (R$)"], 1000);
+  assert.equal(record["Saldo Restante (R$)"], 650);
+});
+
+test("RPT_7007 usa Valor Total menos Valor Recebido quando Saldo está vazio", () => {
+  const [record] = parseRPT7007Canonical([{
+    "Tipo Documento": "NF",
+    "Número Documento": "553",
+    "Código Cliente": "18",
+    "Nome Cliente": "Cliente com fallback",
+    "Valor Total": 1000,
+    "Valor Recebido": 300,
+    "Saldo": "",
+  }]);
+
+  assert.equal(record["Saldo Restante (R$)"], 700);
+});
+
+test("RPT_7007 preserva saldo oficial de um centavo", () => {
+  const [record] = parseRPT7007Canonical([{
+    "Tipo Documento": "NF",
+    "Número Documento": "554",
+    "Código Cliente": "19",
+    "Nome Cliente": "Cliente saldo mínimo",
+    "Valor Total": 10,
+    "Valor Recebido": 9.99,
+    "Saldo em Aberto": 0.01,
+  }]);
+
+  assert.equal(record["Saldo Restante (R$)"], 0.01);
+  assert.equal(record["Total a Receber (R$)"], 0.01);
+});
+
+test("RPT_7007 usa os saldos oficiais dos títulos 6598 e 1627", () => {
+  const records = parseRPT7007Canonical([
+    {
+      "Tipo Documento": "NFe",
+      "Número Documento": 6598,
+      "Sequência": 1,
+      "Código Cliente": 67,
+      "Razão Social": "PREMIX CONCRETO LTDA",
+      "Valor Total": 46853.53,
+      "Valor Recebido": 37694,
+      "Saldo": 9159.07,
+    },
+    {
+      "Tipo Documento": "FAT",
+      "Número Documento": 1627,
+      "Sequência": 1,
+      "Código Cliente": 451,
+      "Razão Social": "SUPERTEX CONCRETO LTDA",
+      "Valor Total": 149894.76,
+      "Valor Recebido": 146555,
+      "Saldo": 3339.53,
+    },
+  ]);
+
+  assert.equal(records[0]["Saldo Restante (R$)"], 9159.07);
+  assert.equal(records[1]["Saldo Restante (R$)"], 3339.53);
 });
 
 test("RPT_7007 calcula encargos usando percentuais informados ao parser", () => {

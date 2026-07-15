@@ -106,6 +106,7 @@ test("atualização preserva campos manuais ao omiti-los do payload", () => {
 
   assert.equal(plan.summary.totalUpdate, 1);
   assert.equal(plan.updates[0].payload.open_value, 650);
+  assert.equal(plan.updates[0].payload.erp_balance, 650);
   assert.equal("last_note" in plan.updates[0].payload, false);
   assert.equal("promise_date" in plan.updates[0].payload, false);
   assert.equal("contact_count" in plan.updates[0].payload, false);

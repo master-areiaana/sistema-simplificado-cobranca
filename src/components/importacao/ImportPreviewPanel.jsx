@@ -53,6 +53,30 @@ function canonicalFromItem(item, source) {
   };
 }
 
+function summarizeEbBalances(items = []) {
+  const money = (value) => Number(value || 0);
+  const round = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+  const summary = items.reduce((totals, item) => {
+    totals.original += money(item.valorOriginal);
+    totals.received += money(item.valorRecebido);
+    totals.balance += money(item.saldoErp ?? item.valorEmAberto);
+    totals.calculated += money(item.saldoCalculado ?? Math.max(0, money(item.valorOriginal) - money(item.valorRecebido)));
+    if (item.saldoOficialDisponivel) totals.officialCount += 1;
+    else totals.fallbackCount += 1;
+    return totals;
+  }, { original: 0, received: 0, balance: 0, calculated: 0, officialCount: 0, fallbackCount: 0 });
+
+  return {
+    original: round(summary.original),
+    received: round(summary.received),
+    balance: round(summary.balance),
+    calculated: round(summary.calculated),
+    divergence: round(summary.balance - summary.calculated),
+    officialCount: summary.officialCount,
+    fallbackCount: summary.fallbackCount,
+  };
+}
+
 function parseWorkbook(fileName, workbook) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const objectRows = limparRows(XLSX.utils.sheet_to_json(sheet, { defval: "" }));
@@ -88,6 +112,7 @@ function parseWorkbook(fileName, workbook) {
       FINR1253: topconItems.length,
       RPT_7007_CONS_CAR_EB: ebItems.length,
     },
+    balanceAudit: source === "RPT_7007_CONS_CAR_EB" ? summarizeEbBalances(items) : null,
   };
 }
 
@@ -116,6 +141,7 @@ function AuditDetails({ plan, parsed, border, surface, text, muted }) {
   const review = plan.reviewRequired || [];
   const topconClients = plan.snapshot?.source === "FINR1253" ? plan.snapshot?.imported?.clients || 0 : 0;
   const ebClients = plan.snapshot?.source === "RPT_7007_CONS_CAR_EB" ? plan.snapshot?.imported?.clients || 0 : 0;
+  const balanceAudit = parsed?.balanceAudit;
 
   return (
     <div style={{ marginTop: 10 }}>
@@ -130,6 +156,16 @@ function AuditDetails({ plan, parsed, border, surface, text, muted }) {
             <span><b>Leitura bruta:</b> {parsed?.parsedBySource?.FINR1253 || 0} Topcon / {parsed?.parsedBySource?.RPT_7007_CONS_CAR_EB || 0} EB</span>
             <span><b>Cobertura:</b> {plan.safety?.percentualCobertura ?? 100}%</span>
           </div>
+          {balanceAudit && (
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${border}` }}>
+              <span><b>Valor original:</b> {fmtM(balanceAudit.original)}</span>
+              <span><b>Valor recebido:</b> {fmtM(balanceAudit.received)}</span>
+              <span><b>Saldo oficial:</b> {fmtM(balanceAudit.balance)}</span>
+              <span><b>Linhas com Saldo:</b> {balanceAudit.officialCount}</span>
+              <span><b>Fallback:</b> {balanceAudit.fallbackCount}</span>
+              <span><b>Diferença para Total - Recebido:</b> {fmtM(balanceAudit.divergence)}</span>
+            </div>
+          )}
           {plan.safety?.motivoBloqueio && <div style={{ marginTop: 8, color: "#dc2626", fontWeight: 700 }}>{plan.safety.motivoBloqueio}</div>}
           {review.length > 0 && (
             <div style={{ marginTop: 9 }}>

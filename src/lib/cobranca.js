@@ -30,6 +30,8 @@ const FINR1253_TITLE_TOKENS = new Set(["FAT", "REC", "NF", "NFE"]);
 export function fmtD(d) { if (!d) return "—"; const dt = new Date(`${d}T00:00:00`); return Number.isNaN(dt.getTime()) ? "—" : dt.toLocaleDateString("pt-BR"); }
 export function fmtM(v) { return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 export function num(v) { if (typeof v === "number") return Number.isFinite(v) ? v : 0; const raw = String(v ?? "").trim().replace(/[R$\s]/g, ""); if (!raw) return 0; const normalized = raw.replace(/\./g, "").replace(/,/, "."); return Number.parseFloat(normalized) || 0; }
+function optionalMoney(v) { if (typeof v === "number") return { valid: Number.isFinite(v), value: Number.isFinite(v) ? v : 0 }; const raw = String(v ?? "").trim().replace(/[R$\s]/g, ""); if (!raw) return { valid: false, value: 0 }; const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw; const parsed = Number(normalized); return { valid: Number.isFinite(parsed), value: Number.isFinite(parsed) ? parsed : 0 }; }
+function roundMoney(v) { return Math.round((Number(v || 0) + Number.EPSILON) * 100) / 100; }
 export function dateISO(v) { if (v == null || v === "") return ""; if (typeof v === "number") { const dt = new Date(Date.UTC(1899, 11, 30) + Math.round(v * 86400000)); if (Number.isNaN(dt.getTime())) return ""; return dt.toISOString().slice(0, 10); } const raw = String(v).trim(); const pts = raw.split(/[-/]/); if (pts.length === 3) { const iso = pts[0].length === 4 ? `${pts[0]}-${pts[1].padStart(2, "0")}-${pts[2].padStart(2, "0")}` : `${pts[2]}-${pts[1].padStart(2, "0")}-${pts[0].padStart(2, "0")}`; return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : ""; } return ""; }
 export function diffDias(d) { if (!d) return 0; const r = Math.floor((hoje - new Date(`${d}T00:00:00`)) / 86400000); return r > 0 ? r : 0; }
 export function promAlerta(ds) { if (!ds) return null; const diff = Math.floor((new Date(`${ds}T00:00:00`) - new Date(`${hojeISO}T00:00:00`)) / 86400000); if (diff < 0) return { label: "Vencida", cor: "#dc2626" }; if (diff === 0) return { label: "Vence hoje", cor: "#ea580c" }; if (diff <= 3) return { label: `${diff}d`, cor: "#ea580c" }; return null; }
@@ -66,7 +68,7 @@ export function cliKey(item) { return `${String(item.nrCli || "").trim()}||${nor
 
 function origemExibicaoCarteira(source) { return source === "RPT_E_FINR" ? "FINR1253" : source; }
 function normalizeWorkflowStatusForCarteira(status) { return String(status || "").trim() === "sem_carteira" ? "" : status; }
-export function buildItem(o) { const valorOriginal = num(o.valorOriginal ?? o.original_value ?? 0); const valorRecebido = num(o.valorRecebido ?? o.received_value ?? 0); const saldoErp = num(o.saldoErp ?? o.erp_balance ?? 0); const valorEmAberto = num(o.valorEmAberto ?? o.open_value ?? saldoErp ?? Math.max(0, valorOriginal - valorRecebido)); const cFin = calcFin(valorEmAberto, o.vencimento ?? o.due_date); const workflowOriginal = o.encaminhar ?? o.workflow_status ?? ""; const workflowNormalizado = normalizeWorkflowStatusForCarteira(workflowOriginal); return { id: o._dbId || o.id || Math.random(), _dbId: o._dbId || o.id, origem: origemExibicaoCarteira(o.origem ?? o.source ?? ""), nrCli: o.nrCli ?? o.client_code ?? "", nomeCli: o.nomeCli ?? o.client_name ?? "", titulo: o.titulo ?? o.title_number ?? "", seq: o.seq ?? o["Sequência"] ?? "", tp: o.tp ?? o.doc_type ?? "", ser: o.ser ?? o.serie ?? "", nfServico: o.nfServico ?? o.nf_servico ?? "", emissao: o.emissao ?? o.issue_date ?? "", vencimento: o.vencimento ?? o.due_date ?? "", valorOriginal, valorRecebido, valorEmAberto: cFin.valorTotalDebito, valorMulta: cFin.valorMulta, valorJuros: cFin.valorJuros, valorTotalDebito: cFin.valorTotalDebito, diasAtraso: cFin.diasAtraso, qtd: o.qtd ?? o.contact_count ?? 0, status: o.status ?? o.current_status ?? "Não Contatado", dataContato: o.dataContato ?? o.last_contact_date ?? "", dataPromessa: o.dataPromessa ?? o.promise_date ?? "", encaminhar: workflowNormalizado, workflow_status: workflowNormalizado, workflow_status_diagnostico: workflowOriginal, obs: manualObservationText(o.obs ?? o.last_note ?? "", o.usuario ?? o.updated_by ?? ""), usuario: o.usuario ?? o.updated_by ?? "", solicitanteProtesto: o.solicitanteProtesto ?? o.protest_requested_by ?? "", clientCategory: o.clientCategory ?? o.client_category ?? "", clientGroupKey: o.clientGroupKey ?? o.client_group_key ?? "", updated_by: o.updated_by, portador: o.portador ?? "", erpClientCodes: o.erpClientCodes ?? o.erp_client_codes ?? [] }; }
+export function buildItem(o) { const valorOriginal = num(o.valorOriginal ?? o.original_value ?? 0); const valorRecebido = num(o.valorRecebido ?? o.received_value ?? 0); const saldoErp = num(o.saldoErp ?? o.erp_balance ?? 0); const valorEmAberto = num(o.valorEmAberto ?? o.open_value ?? saldoErp ?? Math.max(0, valorOriginal - valorRecebido)); const cFin = calcFin(valorEmAberto, o.vencimento ?? o.due_date); const workflowOriginal = o.encaminhar ?? o.workflow_status ?? ""; const workflowNormalizado = normalizeWorkflowStatusForCarteira(workflowOriginal); return { id: o._dbId || o.id || Math.random(), _dbId: o._dbId || o.id, origem: origemExibicaoCarteira(o.origem ?? o.source ?? ""), nrCli: o.nrCli ?? o.client_code ?? "", nomeCli: o.nomeCli ?? o.client_name ?? "", titulo: o.titulo ?? o.title_number ?? "", seq: o.seq ?? o["Sequência"] ?? "", tp: o.tp ?? o.doc_type ?? "", ser: o.ser ?? o.serie ?? "", nfServico: o.nfServico ?? o.nf_servico ?? "", emissao: o.emissao ?? o.issue_date ?? "", vencimento: o.vencimento ?? o.due_date ?? "", valorOriginal, valorRecebido, valorEmAberto, saldoErp, valorMulta: cFin.valorMulta, valorJuros: cFin.valorJuros, valorTotalDebito: cFin.valorTotalDebito, diasAtraso: cFin.diasAtraso, qtd: o.qtd ?? o.contact_count ?? 0, status: o.status ?? o.current_status ?? "Não Contatado", dataContato: o.dataContato ?? o.last_contact_date ?? "", dataPromessa: o.dataPromessa ?? o.promise_date ?? "", encaminhar: workflowNormalizado, workflow_status: workflowNormalizado, workflow_status_diagnostico: workflowOriginal, obs: manualObservationText(o.obs ?? o.last_note ?? "", o.usuario ?? o.updated_by ?? ""), usuario: o.usuario ?? o.updated_by ?? "", solicitanteProtesto: o.solicitanteProtesto ?? o.protest_requested_by ?? "", clientCategory: o.clientCategory ?? o.client_category ?? "", clientGroupKey: o.clientGroupKey ?? o.client_group_key ?? "", updated_by: o.updated_by, portador: o.portador ?? "", erpClientCodes: o.erpClientCodes ?? o.erp_client_codes ?? [] }; }
 export function dbToItem(r) { const saldoLegado = r.current_value ?? r.calculado; const workflow = r.workflow_status || (r.active === false ? "baixado_importacao" : "normal"); return buildItem({ _dbId: r.id, origem: origemExibicaoCarteira(r.source), nrCli: r.client_code, nomeCli: r.client_name, clientGroupKey: r.client_group_key || "", primaryClientCode: r.primary_client_code || "", erpClientCodes: r.erp_client_codes || [], titulo: r.title_number, seq: r.seq, tp: r.doc_type, ser: r.serie, nfServico: r.nf_servico, emissao: r.issue_date, vencimento: r.due_date, valorOriginal: r.original_value, valorRecebido: r.received_value ?? r.recebido_parcial, valorEmAberto: r.open_value ?? saldoLegado, saldoErp: r.erp_balance ?? saldoLegado, status: r.current_status, dataContato: r.last_contact_date, dataPromessa: r.promise_date, encaminhar: workflow, workflow_status: workflow, obs: r.last_note, usuario: r.updated_by, solicitanteProtesto: r.protest_requested_by, qtd: r.contact_count, clientCategory: r.client_category, portador: r.portador }); }
 function cleanClientCode(v) { return String(v ?? "").replace(/\D/g, "").trim(); }
 function cellText(row, idx) { return String((row || [])[idx] ?? "").trim(); }
@@ -75,11 +77,75 @@ function parseClienteLinha(row) { const raw = cellText(row, 0); const m = raw.ma
 function parseTotalCliente(row) { const raw = joinedRow(row); return { telefone: String(raw.match(/(?:Tel\.?|Telefone)\s*:?\s*(.+?)(?:\s+Contato\s*:|$)/i)?.[1] || "").trim(), contato: String(raw.match(/Contato\s*:?\s*(.+?)$/i)?.[1] || "").trim() }; }
 function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) { const tp = cellText(row, 0).toUpperCase(); if (!clienteAtivo || !isValidClientName(clienteAtivo.nomeCli) || !isFinr1253TitleToken(tp)) return null; const nDoc = cellText(row, 1); const seq = cellText(row, 2); const emissao = dateISO(cellText(row, 3)) || ""; const vencimento = dateISO(cellText(row, 4)) || ""; const vOriginal = num(cellText(row, 5)); const vRecebido = num(cellText(row, 6)); return { origem: "FINR1253", nrCli: clienteAtivo.nrCli, nomeCli: clienteAtivo.nomeCli, cpfCnpj: clienteAtivo.cpfCnpj, tp, titulo: nDoc, seq, emissao, vencimento, valorOriginal: vOriginal, valorRecebido: vRecebido, valorEmAberto: Math.max(0, vOriginal - vRecebido) }; }
 export function parseRows1253(rows) { if (!Array.isArray(rows) || rows.length === 0) return []; const items = []; let clienteAtivo = null; let bufferTitulos = []; const flushBloco = (dadosTotal = {}) => { for (const row of bufferTitulos) { const item = buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal); if (item) items.push(item); } bufferTitulos = []; }; for (const row of rows) { const raiz = cellText(row, 0); if (!raiz) continue; const isCliente = raiz.toLowerCase().startsWith("cliente:"); if (isCliente) { flushBloco(); clienteAtivo = parseClienteLinha(row); } else if (raiz.toLowerCase().startsWith("total")) { flushBloco(parseTotalCliente(row)); clienteAtivo = null; } else if (clienteAtivo) { bufferTitulos.push(row); } } flushBloco(); return items; }
-const H7007 = { nomeCli: ["NOMCLI", "NOME CLIENTE", "RAZAO SOCIAL", "CLIENTE", "SACADO", "NOME SACADO", "DEVEDOR", "NOME", "RAZAO", "NOME DO CLIENTE", "FAVORECIDO"], nrCli: ["CODCLI", "COD CLIENTE", "CODIGO CLIENTE", "CODIGO", "COD", "CÓDIGO", "CÓDIGO CLIENTE", "CÓDIGO SACADO", "NÚMERO DO CLIENTE", "CÓDIGO DEVEDOR"], tp: ["TIPO DOCUMENTO", "TIPO DOC", "DOC", "TIPO", "TIPO_DOC", "TIPO_DOCUMENTO", "TIPO DOCUMENTO"], titulo: ["NUMERO DOCUMENTO", "NÚMERO DOCUMENTO", "NUM DOC", "NÚMERO DOC", "NUMERO DOC", "DOCUMENTO", "Nº DOC", "NÚMERO_DOCUMENTO", "N_DOCUMENTO", "TITULO", "NÚMERO TÍTULO", "NUMERO TITULO"], seq: ["SEQUENCIA", "SEQUÊNCIA", "SEQÜÊNCIA", "SEQ"], vencimento: ["VENCIMENTO", "DATA VENCIMENTO", "DT VENCIMENTO", "VENCIMENTO TITULO", "VENCIMENTO_TITULO"], emissao: ["EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA EMISSÃO", "DT EMISSAO", "DATA DOCUMENTO", "DATA DOC", "EMISSAO_TITULO"], valorOriginal: ["VALOR", "VALOR ORIGINAL", "VALOR TOTAL", "VL TOTAL", "VALOR NOTA FISCAL", "VALOR TITULO", "VALOR_TITULO", "VALOR_ORIGINAL", "VL ORIGINAL", "VL NOTA"], valorRecebido: ["RECEBIDO", "VALOR RECEBIDO", "VALOR PAGO", "VL RECEBIDO", "VL PAGO", "RECEBIMENTO"], portador: ["PORTADOR", "BANCO", "AGENCIA", "CODIGO PORTADOR", "CÓDIGO PORTADOR"], nfServico: ["NF SERVICO", "NF SERVIÇO", "NFE SERVICO", "NUMERO NF", "NUMERO NFSE", "NFSE"] };
+const H7007 = {
+  nomeCli: ["NOMCLI", "NOME CLIENTE", "RAZAO SOCIAL", "CLIENTE", "SACADO", "NOME SACADO", "DEVEDOR", "NOME", "RAZAO", "NOME DO CLIENTE", "FAVORECIDO"],
+  nrCli: ["CODCLI", "COD CLIENTE", "CODIGO CLIENTE", "CODIGO", "COD", "CÓDIGO", "CÓDIGO CLIENTE", "CÓDIGO SACADO", "NÚMERO DO CLIENTE", "CÓDIGO DEVEDOR"],
+  tp: ["TIPO DOCUMENTO", "TIPO DOC", "DOC", "TIPO", "TIPO_DOC", "TIPO_DOCUMENTO"],
+  titulo: ["NUMERO DOCUMENTO", "NÚMERO DOCUMENTO", "NUM DOC", "NÚMERO DOC", "NUMERO DOC", "DOCUMENTO", "Nº DOC", "NÚMERO_DOCUMENTO", "N_DOCUMENTO", "TITULO", "NÚMERO TÍTULO", "NUMERO TITULO"],
+  seq: ["SEQUENCIA", "SEQUÊNCIA", "SEQÜÊNCIA", "SEQ"],
+  vencimento: ["VENCIMENTO", "DATA VENCIMENTO", "DT VENCIMENTO", "VENCIMENTO TITULO", "VENCIMENTO_TITULO"],
+  emissao: ["EMISSAO", "EMISSÃO", "DATA EMISSAO", "DATA EMISSÃO", "DT EMISSAO", "DATA DOCUMENTO", "DATA DOC", "EMISSAO_TITULO"],
+  valorOriginal: ["VALOR", "VALOR ORIGINAL", "VALOR TOTAL", "VL TOTAL", "VALOR NOTA FISCAL", "VALOR TITULO", "VALOR_TITULO", "VALOR_ORIGINAL", "VL ORIGINAL", "VL NOTA"],
+  valorRecebido: ["RECEBIDO", "VALOR RECEBIDO", "VALOR PAGO", "VL RECEBIDO", "VL PAGO", "RECEBIMENTO"],
+  saldo: ["SALDO", "SALDO RESTANTE", "SALDO EM ABERTO", "VALOR EM ABERTO", "VL SALDO", "VL EM ABERTO"],
+  portador: ["PORTADOR", "BANCO", "AGENCIA", "CODIGO PORTADOR", "CÓDIGO PORTADOR"],
+  nfServico: ["NF SERVICO", "NF SERVIÇO", "NFE SERVICO", "NUMERO NF", "NUMERO NFSE", "NFSE"],
+};
 function countHeaderMatches7007(values) { let matches = 0; for (const value of values || []) { const n = normH(value); for (const aliases of Object.values(H7007)) if (aliases.some((a) => normH(a) === n)) matches++; } return matches; }
 function buildHeaderMap7007(sampleRow) { const map = {}; const keys = Object.keys(sampleRow || {}); for (const [field, aliases] of Object.entries(H7007)) { for (const realKey of keys) { const n = normH(realKey); if (aliases.some((a) => normH(a) === n)) { map[field] = realKey; break; } } } return map; }
 function buildHeaderMap7007FromValues(sampleRow) { const map = {}; const keys = Object.keys(sampleRow || {}); for (const [field, aliases] of Object.entries(H7007)) { for (const realKey of keys) { const n = normH(realKey); if (aliases.some((a) => normH(a) === n)) { map[field] = realKey; break; } } } return map; }
 function detectHeaderRow7007(rows) { for (let i = 0; i < Math.min(rows.length, 20); i += 1) { const row = rows[i]; if (!row || typeof row !== "object") continue; if (countHeaderMatches7007(Object.keys(row || {})) >= 3) return i; } return 0; }
-export function parseRows7007(rows) { if (!Array.isArray(rows) || rows.length === 0) return []; const headerMap = buildHeaderMap7007(rows[0]); const items = []; for (let i = 0; i < rows.length; i++) { const row = rows[i]; if (!row || typeof row !== "object") continue; const nomeCli = String(pick(row, [headerMap.nomeCli, "NOME CLIENTE", "CLIENTE", "Razão Social", "Nome"].filter(Boolean)) || ""); const nrCli = String(pick(row, [headerMap.nrCli, "CODIGO CLIENTE", "Código Cliente", "Código", "Código do Cliente"].filter(Boolean)) || ""); const tp = String(pick(row, [headerMap.tp, "TIPO DOCUMENTO", "Tipo Documento"].filter(Boolean)) || ""); const titulo = String(pick(row, [headerMap.titulo, "NUMERO DOCUMENTO", "Número Documento", "Número", "Número Título"].filter(Boolean)) || ""); const seq = String(pick(row, [headerMap.seq, "SEQUENCIA", "Sequência"].filter(Boolean)) || ""); const vencimento = dateISO(pick(row, [headerMap.vencimento, "VENCIMENTO", "Data Vencimento"].filter(Boolean)) || "") || ""; const emissao = dateISO(pick(row, [headerMap.emissao, "EMISSAO", "Data Emissão"].filter(Boolean)) || "") || ""; const valorOriginal = num(pick(row, [headerMap.valorOriginal, "VALOR ORIGINAL", "Valor", "VL ORIGINAL"].filter(Boolean)) || 0); const valorRecebido = num(pick(row, [headerMap.valorRecebido, "VALOR RECEBIDO", "Valor Recebido", "VL RECEBIDO"].filter(Boolean)) || 0); const portador = String(pick(row, [headerMap.portador, "PORTADOR", "Portador", "Banco"].filter(Boolean)) || ""); const nfServico = String(pick(row, [headerMap.nfServico, "NF SERVICO", "NF Serviço"].filter(Boolean)) || ""); if (!nomeCli && !nrCli) continue; if (!isValidClientName(nomeCli) && !nrCli) continue; items.push({ origem: "RPT_7007_CONS_CAR_EB", nrCli, nomeCli, tp, titulo, seq, vencimento, emissao, valorOriginal, valorRecebido, valorEmAberto: Math.max(0, valorOriginal - valorRecebido), portador, nfServico }); } return items; }
+export function parseRows7007(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const headerMap = buildHeaderMap7007(rows[0]);
+  const items = [];
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const nomeCli = String(pick(row, [headerMap.nomeCli, "NOME CLIENTE", "CLIENTE", "Razão Social", "Nome"].filter(Boolean)) || "");
+    const nrCli = String(pick(row, [headerMap.nrCli, "CODIGO CLIENTE", "Código Cliente", "Código", "Código do Cliente"].filter(Boolean)) || "");
+    const tp = String(pick(row, [headerMap.tp, "TIPO DOCUMENTO", "Tipo Documento"].filter(Boolean)) || "");
+    const titulo = String(pick(row, [headerMap.titulo, "NUMERO DOCUMENTO", "Número Documento", "Número", "Número Título"].filter(Boolean)) || "");
+    const seq = String(pick(row, [headerMap.seq, "SEQUENCIA", "Sequência"].filter(Boolean)) || "");
+    const vencimento = dateISO(pick(row, [headerMap.vencimento, "VENCIMENTO", "Data Vencimento"].filter(Boolean)) || "") || "";
+    const emissao = dateISO(pick(row, [headerMap.emissao, "EMISSAO", "Data Emissão"].filter(Boolean)) || "") || "";
+    const valorOriginal = roundMoney(num(pick(row, [headerMap.valorOriginal, "VALOR ORIGINAL", "Valor", "VL ORIGINAL"].filter(Boolean)) || 0));
+    const valorRecebido = roundMoney(num(pick(row, [headerMap.valorRecebido, "VALOR RECEBIDO", "Valor Recebido", "VL RECEBIDO"].filter(Boolean)) || 0));
+    const saldoRaw = pick(row, [headerMap.saldo, "Saldo", "SALDO", "Saldo Restante", "Saldo em Aberto", "Valor em Aberto"].filter(Boolean));
+    const saldoOficial = optionalMoney(saldoRaw);
+    const saldoCalculado = roundMoney(Math.max(0, valorOriginal - valorRecebido));
+    const valorEmAberto = roundMoney(Math.max(0, saldoOficial.valid ? saldoOficial.value : saldoCalculado));
+    const portador = String(pick(row, [headerMap.portador, "PORTADOR", "Portador", "Banco"].filter(Boolean)) || "");
+    const nfServico = String(pick(row, [headerMap.nfServico, "NF SERVICO", "NF Serviço"].filter(Boolean)) || "");
+    if (!nomeCli && !nrCli) continue;
+    if (!isValidClientName(nomeCli) && !nrCli) continue;
+
+    const item = {
+      origem: "RPT_7007_CONS_CAR_EB",
+      nrCli,
+      nomeCli,
+      tp,
+      titulo,
+      seq,
+      vencimento,
+      emissao,
+      valorOriginal,
+      valorRecebido,
+      valorEmAberto,
+      saldoErp: valorEmAberto,
+      saldoCalculado,
+      saldoOficialDisponivel: saldoOficial.valid,
+      saldoDivergencia: roundMoney(valorEmAberto - saldoCalculado),
+      partialPaymentDetected: valorRecebido > 0,
+      portador,
+      nfServico,
+      erpClientCodes: nrCli ? [nrCli] : [],
+    };
+    item.clientGroupKey = getClienteGroupKeyRPT7007(item);
+    items.push(item);
+  }
+
+  return items;
+}
 export function dlCsv(name, rows) { const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Dados"); XLSX.writeFile(wb, name); }
 export function openPrint() { window.print(); }

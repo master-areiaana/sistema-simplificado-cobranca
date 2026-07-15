@@ -200,35 +200,41 @@ export function calculateSaldoRestante({ valorTotal = 0, recebParcial = 0 } = {}
 export function calculateCharges({
   valorTotal = 0,
   recebParcial = 0,
+  saldoRestante,
   diasAtraso = 0,
   multaPercent = 0,
   jurosPercent = 0,
   status = "",
   active = true,
 } = {}) {
-  const saldoCalculado = calculateSaldoRestante({ valorTotal, recebParcial });
-  const saldoRestante = Math.max(0, saldoCalculado);
+  const temSaldoExplicito = saldoRestante !== undefined &&
+    saldoRestante !== null &&
+    !(typeof saldoRestante === "string" && saldoRestante.trim() === "");
+  const saldoCalculado = temSaldoExplicito
+    ? roundMoney(saldoRestante)
+    : calculateSaldoRestante({ valorTotal, recebParcial });
+  const saldoEmAberto = Math.max(0, saldoCalculado);
   const dias = Math.max(0, toNumber(diasAtraso));
   const naoCalculaEncargos =
     active === false ||
-    saldoRestante <= 0 ||
+    saldoEmAberto <= 0 ||
     dias <= 0 ||
     hasBlockingStatus(status, CHARGE_BLOCKING_STATUS);
 
   const multa = naoCalculaEncargos
     ? 0
-    : roundMoney(saldoRestante * (toNumber(multaPercent) / 100));
+    : roundMoney(saldoEmAberto * (toNumber(multaPercent) / 100));
   const juros = naoCalculaEncargos
     ? 0
-    : roundMoney(saldoRestante * (toNumber(jurosPercent) / 100) / 30 * dias);
+    : roundMoney(saldoEmAberto * (toNumber(jurosPercent) / 100) / 30 * dias);
 
   return {
     valorTotal: roundMoney(valorTotal),
     recebParcial: roundMoney(recebParcial),
-    saldoRestante,
+    saldoRestante: saldoEmAberto,
     multa,
     juros,
-    totalAReceber: roundMoney(saldoRestante + multa + juros),
+    totalAReceber: roundMoney(saldoEmAberto + multa + juros),
     diasAtraso: dias,
   };
 }

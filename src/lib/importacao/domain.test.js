@@ -136,6 +136,20 @@ test("gera a chave oficial incluindo a origem", () => {
   );
 });
 
+test("calcula encargos sobre o saldo oficial sem recalcular pelo recebimento", () => {
+  const result = calculateCharges({
+    valorTotal: 46853.53,
+    recebParcial: 37694,
+    saldoRestante: 9159.07,
+    diasAtraso: 0,
+  });
+
+  assert.equal(result.valorTotal, 46853.53);
+  assert.equal(result.recebParcial, 37694);
+  assert.equal(result.saldoRestante, 9159.07);
+  assert.equal(result.totalAReceber, 9159.07);
+});
+
 test("não junta o mesmo título de EB e Topcon", () => {
   const base = {
     client_code: "123",

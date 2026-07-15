@@ -28,6 +28,7 @@ const RPT_7007_ALIASES = {
   "Valor Total (R$)": ["VLRTIT", "VLR TIT", "VAL TITULO", "VALOR TITULO", "VALOR TOTAL", "VAL ORIG", "VALOR ORIGINAL", "VLR ORIG", "VALOR", "TOTAL", "VLR TOTAL", "VALOR FACE", "VALOR NOMINAL"],
   "Desconto (R$)": ["DESCONTO", "VLR DESCONTO", "VALOR DESCONTO"],
   "Receb. Parcial (R$)": ["RECEB PARCIAL", "RECEB PRC", "VALOR RECEBIDO", "VLR RECEBIDO", "VAL RECEBIDO", "RECEBIDO", "VLRREC", "VALREC", "VL REC", "VL RECEBIDO", "RECEBIMENTOS", "VALOR PAGO", "VLR PAGO"],
+  "Saldo Restante (R$)": ["SALDO", "SALDO RESTANTE", "SALDO EM ABERTO", "VALOR EM ABERTO", "VL SALDO", "VL EM ABERTO"],
   "Dias de Atraso": ["DIAS ATRASO", "DIAS DE ATRASO", "ATRASO"],
   "Portador": ["PORTAD", "PORTADOR", "BANCO", "CARTEIRA", "COBRANCA", "BANCO COBRADOR"],
   "Telefone": ["TELEFONE", "FONE", "TEL", "CELULAR"],
@@ -88,6 +89,16 @@ function normalizeMoney(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isValidMoney(value) {
+  if (typeof value === "number") return Number.isFinite(value);
+  const text = String(value ?? "").trim().replace(/[R$\s]/g, "");
+  if (!text) return false;
+  const normalized = text.includes(",")
+    ? text.replace(/\./g, "").replace(",", ".")
+    : text;
+  return Number.isFinite(Number(normalized));
+}
+
 function normalizeInteger(value) {
   const parsed = normalizeMoney(value);
   return parsed > 0 ? Math.trunc(parsed) : 0;
@@ -134,6 +145,7 @@ function addCalculatedValues(values, options = {}) {
   const charges = calculateCharges({
     valorTotal: values["Valor Total (R$)"],
     recebParcial: values["Receb. Parcial (R$)"],
+    saldoRestante: values["Saldo Restante (R$)"],
     diasAtraso: values["Dias de Atraso"],
     multaPercent: options.multaPercent,
     jurosPercent: options.jurosPercent,
@@ -222,6 +234,8 @@ export function parseRPT7007Canonical(rows, options = {}) {
       );
       const valorTotal = normalizeMoney(readMapped(row, headerMap, "Valor Total (R$)"));
       const recebParcial = normalizeMoney(readMapped(row, headerMap, "Receb. Parcial (R$)"));
+      const saldoRaw = readMapped(row, headerMap, "Saldo Restante (R$)");
+      const temSaldoOficial = isValidMoney(saldoRaw);
 
       return addCalculatedValues({
         "Id da Empresa": text(readMapped(row, headerMap, "Id da Empresa")),
@@ -237,6 +251,7 @@ export function parseRPT7007Canonical(rows, options = {}) {
         "Valor Total (R$)": valorTotal,
         "Desconto (R$)": normalizeMoney(readMapped(row, headerMap, "Desconto (R$)")),
         "Receb. Parcial (R$)": recebParcial,
+        "Saldo Restante (R$)": temSaldoOficial ? normalizeMoney(saldoRaw) : undefined,
         "Dias de Atraso": normalizeInteger(readMapped(row, headerMap, "Dias de Atraso")),
         "Portador": text(readMapped(row, headerMap, "Portador")),
         "Telefone": text(readMapped(row, headerMap, "Telefone")),

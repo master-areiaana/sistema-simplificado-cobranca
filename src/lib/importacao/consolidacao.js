@@ -29,7 +29,6 @@ const FINR_PRIORITY_FIELDS = new Set([
 ]);
 
 const CALCULATED_FIELDS = new Set([
-  "Saldo Restante (R$)",
   "Multa (R$)",
   "Juros (R$)",
   "Total a Receber (R$)",
@@ -156,6 +155,7 @@ function recalculateFinancial(values, options = {}) {
   const charges = calculateCharges({
     valorTotal: values["Valor Total (R$)"],
     recebParcial: values["Receb. Parcial (R$)"],
+    saldoRestante: values["Saldo Restante (R$)"],
     diasAtraso: values["Dias de Atraso"],
     multaPercent: options.multaPercent ?? 0,
     jurosPercent: options.jurosPercent ?? 0,

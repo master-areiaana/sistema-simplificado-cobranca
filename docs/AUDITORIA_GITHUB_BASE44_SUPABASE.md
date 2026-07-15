@@ -120,3 +120,41 @@ Em 15/07/2026, o arquivo `blazing-cred-flow-pro (1).zip` e as dez capturas envia
 - O aviso do modo de dados foi reduzido a uma linha de estado, sem ocupar um card inteiro.
 - O botão azul `Baixar Relatório`, ocultado por um seletor antigo destinado ao botão `Importar`, voltou a ficar visível.
 - Carteira Geral, Histórico/Promessas, Calendário, Conferência de Pagamento, Aprovação do Gestor, Produtividade/Metas, Impacto no Caixa e Assessoria foram inspecionados no build local.
+
+## Validação do saldo oficial do RPT 7007
+
+Em 15/07/2026, o arquivo real `rpt_7007_cons_car_EB.xlsx` enviado nesta tarefa foi processado diretamente pelos dois caminhos de importação EB: o parser legado usado na tela de cobrança e o parser canônico da Pré-validação.
+
+### Causa raiz
+
+- A planilha já informa o saldo oficial na coluna `Saldo`.
+- O sistema ignorava esse campo em parte do fluxo e recalculava o valor em aberto como `Valor Total - Valor Recebido`.
+- Existem diferenças de centavos entre o saldo oficial do ERP e esse cálculo, portanto o valor exibido na Carteira Geral podia divergir do relatório.
+- A correção prioriza `Saldo` quando ele existe e é válido. O cálculo permanece apenas como fallback para arquivos sem saldo oficial.
+
+### Resultado do arquivo recebido
+
+- 74 títulos válidos;
+- 26 clientes únicos pelo nome normalizado;
+- valor original: R$ 1.832.162,78;
+- valor recebido: R$ 183.746,00;
+- saldo oficial: R$ 1.648.416,07;
+- cálculo `Valor Total - Valor Recebido`: R$ 1.648.416,78;
+- diferença total identificada: R$ 0,71.
+
+Casos conferidos:
+
+- PREMIX CONCRETO LTDA: 19 títulos, seis códigos ERP preservados, um único grupo visual e saldo oficial de R$ 1.091.939,37;
+- título 6598: saldo oficial de R$ 9.159,07, em vez do cálculo de R$ 9.159,53;
+- título 1627: saldo oficial de R$ 27.989,53, em vez do cálculo de R$ 27.989,76;
+- valores de R$ 0,01 continuam válidos e não são descartados.
+
+O arquivo recebido nesta tarefa não corresponde aos totais de 41 títulos, 18 clientes e R$ 1.598.198,51 descritos no texto de referência. Esses números não foram forçados no código. A validação e os testes usam a planilha efetivamente anexada, com rastreabilidade da divergência entre revisões do arquivo.
+
+### Validação automatizada
+
+- os dois parsers totalizam exatamente R$ 1.648.416,07;
+- `open_value` e `erp_balance` preservam o saldo oficial;
+- multa e juros continuam separados do saldo do ERP;
+- reimportação, origem, chave dos títulos, agrupamento por nome e dados manuais permanecem protegidos pelos testes;
+- 117 testes aprovados, lint aprovado e build de produção aprovado.

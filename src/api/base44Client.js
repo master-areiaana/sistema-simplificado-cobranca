@@ -114,7 +114,11 @@ function cacheRemoteRowsInBackground(entityName, rows, operation) {
   const enqueue = () => {
     cacheQueue = cacheQueue.then(async () => {
       for (let index = 0; index < rows.length; index += CACHE_WRITE_CHUNK_SIZE) {
-        await localStorageAdapter.saveMany(entityName, rows.slice(index, index + CACHE_WRITE_CHUNK_SIZE));
+        await localStorageAdapter.saveMany(
+          entityName,
+          rows.slice(index, index + CACHE_WRITE_CHUNK_SIZE),
+          { notify: false },
+        );
         // Entrega o controle ao navegador entre lotes para nao travar a tela.
         await sleep(0);
       }

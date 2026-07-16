@@ -262,9 +262,10 @@ export function createLocalEntityStorage({ windowObj = defaultWindow(), prefix =
     return saved;
   }
 
-  async function saveMany(entityName, records = []) {
+  async function saveMany(entityName, records = [], options = {}) {
     if (!Array.isArray(records) || records.length === 0) return [];
     const timestamp = nowISO();
+    const shouldNotify = options.notify !== false;
 
     if (shouldUseIndexedDB(entityName)) {
       requireIndexedDB(entityName);
@@ -278,7 +279,7 @@ export function createLocalEntityStorage({ windowObj = defaultWindow(), prefix =
         };
       });
       await putIndexedRows(entityName, saved);
-      notify(entityName);
+      if (shouldNotify) notify(entityName);
       return saved;
     }
 
@@ -297,7 +298,8 @@ export function createLocalEntityStorage({ windowObj = defaultWindow(), prefix =
       byId.set(id, next);
       return next;
     });
-    await write(entityName, Array.from(byId.values()));
+    writeLocalStorageRows(entityName, Array.from(byId.values()));
+    if (shouldNotify) notify(entityName);
     return saved;
   }
 

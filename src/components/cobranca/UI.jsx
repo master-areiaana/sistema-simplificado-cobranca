@@ -67,7 +67,8 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
       onClick={onClick}
       style={{
         order: KPI_ORDEM[labelNorm] || 99,
-        borderLeft: `4px solid ${color}`,
+        border: `1px solid ${t.bor}`,
+        borderTop: `3px solid ${color}`,
         background: t.card,
       }}
     >
@@ -83,6 +84,31 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
         </div>
       )}
     </div>
+  );
+}
+
+export function SideNavItem({ active, icon, label, badge = 0, badgeColor = "#ef4444", onClick, t }) {
+  return (
+    <button
+      type="button"
+      className={`sc-nav-item${active ? " is-active" : ""}`}
+      aria-current={active ? "page" : undefined}
+      title={label}
+      onClick={onClick}
+      style={{
+        "--sc-nav-active": t.p,
+        "--sc-nav-text": t.txt,
+        "--sc-nav-border": t.bor,
+      }}
+    >
+      <span className="sc-nav-icon" aria-hidden="true">{icon}</span>
+      <span className="sc-nav-label">{label}</span>
+      {badge > 0 && (
+        <span className="sc-nav-badge" style={{ background: badgeColor }}>
+          {badge}
+        </span>
+      )}
+    </button>
   );
 }
 

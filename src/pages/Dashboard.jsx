@@ -25,7 +25,7 @@ import {
   getTituloKey, isValidClientName, getClienteAgrupamentoKey, manualObservationText } from
 "@/lib/cobranca";
 import { DARK, LIGHT, THEME_STORAGE_KEY, loadL, saveL } from "@/lib/theme";
-import { KPI, TabBtn, Badge, Btn } from "@/components/cobranca/UI";
+import { KPI, SideNavItem, Badge, Btn } from "@/components/cobranca/UI";
 import TabelaCarteira from "@/components/cobranca/TabelaCarteira";
 import ModalCobranca from "@/components/cobranca/ModalCobranca";
 import ModalResposta from "@/components/cobranca/ModalResposta";
@@ -43,6 +43,7 @@ import TabelaVerificacao from "@/components/cobranca/TabelaVerificacao";
 import TabelaProtesto from "@/components/cobranca/TabelaProtesto";
 import ImpactoCaixaTab from "@/components/cobranca/ImpactoCaixaTab";
 import ImportPreviewPanel from "@/components/importacao/ImportPreviewPanel";
+import AssessoriaHub from "@/pages/AssessoriaHub";
 import {
   assertApplicationPlanStillCurrent,
   buildImportApplicationPlan,
@@ -50,6 +51,7 @@ import {
 
 const LOCAL_THEME = THEME_STORAGE_KEY;
 const LOCAL_TAB = "sc_tab";
+const LOCAL_NAV_COLLAPSED = "sc_nav_collapsed_base44_v1";
 const STATUS_OPC = ["Não Contatado", "Em Cobrança", "Sem Retorno", "Prometeu Pagar", "Pago Aguard. Baixa", "Em Permuta", "Encerrado"];
 const VERIF_RESP = ["Confirmado", "Não localizado", "Baixado", "Erro", "Duplicidade", "Devolver para cobrança"];
 const PROT_RESP = ["Aprovado", "Reprovado", "Devolver para cobrança"];
@@ -93,6 +95,7 @@ export default function Dashboard() {
   const [importStatus, setImportStatus] = useState(null);
   const [isImporting, setIsImporting] = useState(false);
   const [activeTab, setActiveTab] = useState(() => loadL(LOCAL_TAB, "carteira"));
+  const [navCollapsed, setNavCollapsed] = useState(() => loadL(LOCAL_NAV_COLLAPSED, "0") === "1");
   const [subTabProd, setSubTabProd] = useState("produtividade");
 
   const [modal, setModal] = useState(null);
@@ -199,6 +202,7 @@ export default function Dashboard() {
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { saveL(LOCAL_THEME, isDark ? "dark" : "light"); }, [isDark]);
   useEffect(() => { saveL(LOCAL_TAB, activeTab); setKpiFilter(null); }, [activeTab]);
+  useEffect(() => { saveL(LOCAL_NAV_COLLAPSED, navCollapsed ? "1" : "0"); }, [navCollapsed]);
   useEffect(() => {
     let debounceTimer = null;
     const debouncedLoad = () => {
@@ -1120,17 +1124,60 @@ export default function Dashboard() {
 
   return (
     <ErrorBoundary>
-    <div style={{ fontFamily: "'Segoe UI',system-ui,sans-serif", background: t.bg, minHeight: "100vh", color: t.txt }}>
+    <div
+      className={`sc-app-shell${navCollapsed ? " is-nav-collapsed" : ""}`}
+      style={{
+        fontFamily: "Inter, 'Segoe UI', system-ui, sans-serif",
+        background: t.bg,
+        color: t.txt,
+        "--sc-bg": t.bg,
+        "--sc-surface": t.surf,
+        "--sc-surface-2": t.surf2,
+        "--sc-border": t.bor,
+        "--sc-text": t.txt,
+        "--sc-muted": t.muted,
+        "--sc-primary": t.p,
+      }}
+    >
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={importarArquivo} />
-      <header style={{ background: t.head, borderBottom: `1px solid ${t.bor}`, padding: "0 20px", height: 50, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: t.shad }}>
-        <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 4, color: t.txt }}>SISTEMA DE COBRANÇA</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <header className="sc-topbar" style={{ background: t.head, borderColor: t.bor, boxShadow: t.shad }}>
+        <div className="sc-brand">SISTEMA DE COBRANÇA</div>
+        <button type="button" className="sc-home-selector" onClick={loadData} title="Atualizar dados da tela">
+          <span aria-hidden="true">↻</span>
+          <span>Início</span>
+          <span aria-hidden="true">⌄</span>
+        </button>
+        <div className="sc-topbar-actions">
           <button onClick={() => setIsDark((x) => !x)} style={{ background: t.surf, border: `1px solid ${t.bor}`, color: t.txt, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{isDark ? "☀️" : "🌙"}</button>
           <Btn t={t} sm onClick={() => setEmailModal(true)} style={{ background: "#7c3aed", border: "none", color: "#fff" }}>📧 Enviar PDF</Btn>
           <Btn t={t} sm onClick={() => exportarPDFExecutivo({ grouped, filteredCart: sortedCart, dash, faixaAtraso, filtroOrigem, hojeISO })} style={{ background: "#0369a1", border: "none", color: "#fff" }}>📊 Baixar Relatório</Btn>
         </div>
       </header>
-      <main style={{ padding: "14px 16px", maxWidth: "100%", margin: "0 auto" }}>
+      <div className="sc-workspace">
+        <aside className="sc-sidebar" aria-label="Navegação principal">
+          <div className="sc-sidebar-heading">
+            <span className="sc-sidebar-title">VISÃO GERAL</span>
+            <button
+              type="button"
+              className="sc-sidebar-collapse"
+              aria-label={navCollapsed ? "Expandir menu" : "Recolher menu"}
+              title={navCollapsed ? "Expandir menu" : "Recolher menu"}
+              onClick={() => setNavCollapsed((value) => !value)}
+            >
+              {navCollapsed ? "›" : "‹"}
+            </button>
+          </div>
+          <nav className="sc-sidebar-nav">
+            <SideNavItem t={t} icon="📋" label="Carteira Geral" active={activeTab === "carteira"} badge={dash.devolvidos} badgeColor="#10b981" onClick={() => setActiveTab("carteira")} />
+            <SideNavItem t={t} icon="✅" label="Histórico / Promessas" active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")} />
+            <SideNavItem t={t} icon="🔍" label="Conferência de Pagamento" active={activeTab === "verificacao"} badge={dash.pendVerif} badgeColor="#3b82f6" onClick={() => setActiveTab("verificacao")} />
+            <SideNavItem t={t} icon="⚖️" label="Aprovação do Gestor" active={activeTab === "protesto"} badge={dash.pendProt} badgeColor="#ef4444" onClick={() => setActiveTab("protesto")} />
+            <SideNavItem t={t} icon="👥" label="Produtividade / Metas" active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")} />
+            <SideNavItem t={t} icon="📈" label="Impacto no Caixa" active={activeTab === "fluxo"} onClick={() => setActiveTab("fluxo")} />
+            <SideNavItem t={t} icon="⚓" label="Assessoria" active={activeTab === "assessoria"} onClick={() => setActiveTab("assessoria")} />
+          </nav>
+        </aside>
+      <main className="sc-main-content">
         <div className={`sc-system-status sc-system-status-${dataMode.mode}`} style={{ color: dataMode.mode === "supabase" ? "#16a34a" : dataMode.mode === "cache" ? "#dc2626" : "#b45309" }}>
           <span>{dataMode.mode === "supabase" ? "● Supabase conectado" : dataMode.mode === "cache" ? "⚠ Cache local · gravações bloqueadas" : "⚠ Dados somente neste navegador"}</span>
           <span style={{ color: t.muted, fontWeight: 500 }}>{loading && !isImporting ? "⏳ Carregando..." : syncMsg}</span>
@@ -1143,14 +1190,6 @@ export default function Dashboard() {
           onApplyPlan={aplicarNovaImportacao}
           t={t}
         />
-        <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto", paddingBottom: 8, paddingTop: 8, scrollbarWidth: "thin", WebkitOverflowScrolling: "touch", alignItems: "stretch", justifyContent: "flex-start", borderBottom: `1px solid ${t.bor}` }} className="bg-transparent">
-          <TabBtn t={t} active={activeTab === "carteira"} onClick={() => setActiveTab("carteira")} badge={dash.devolvidos} badgeColor="#10b981">📋 Carteira Geral</TabBtn>
-          <TabBtn t={t} active={activeTab === "cobrados"} onClick={() => setActiveTab("cobrados")}>✅ Histórico / Promessas</TabBtn>
-          <TabBtn t={t} active={activeTab === "verificacao"} onClick={() => setActiveTab("verificacao")} badge={dash.pendVerif} badgeColor="#3b82f6">🔍 Conferência de Pagamento</TabBtn>
-          <TabBtn t={t} active={activeTab === "protesto"} onClick={() => setActiveTab("protesto")} badge={dash.pendProt} badgeColor="#ef4444">⚖️ Aprovação do Gestor</TabBtn>
-          <TabBtn t={t} active={activeTab === "produtividade"} onClick={() => setActiveTab("produtividade")}>👥 Produtividade / Metas</TabBtn>
-          <TabBtn t={t} active={activeTab === "fluxo"} onClick={() => setActiveTab("fluxo")}>📈 Impacto no Caixa</TabBtn>
-        </div>
         {activeTab === "carteira" && <><div className="kpi-container kpi-container-8"><KPI t={t} label="Total em Aberto" color="#F59E0B" value={fmtM(dash.vTot)} sub="com multa/juros" /><KPI t={t} label="A Cobrar" color="#EF4444" value={fmtM(dash.aCobrar)} sub="sem contato" onClick={() => setKpiFilter((p) => p === "aCobrar" ? null : "aCobrar")} active={kpiFilter === "aCobrar"} /><KPI t={t} label="Cobrado" color="#10B981" value={fmtM(dash.cobrado)} sub="já contactados" onClick={() => setKpiFilter((p) => p === "cobrado" ? null : "cobrado")} active={kpiFilter === "cobrado"} /><KPI t={t} label="Cobrados Hoje" color="#FBBF24" value={dash.cobHoje} sub={`${dash.perc.toFixed(1).replace(".", ",")}% do total`} onClick={() => setKpiFilter((p) => p === "cobHoje" ? null : "cobHoje")} active={kpiFilter === "cobHoje"} /><KPI t={t} label="Faltam Cobrar" color="#EF4444" value={dash.faltando} sub="sem contato hoje" onClick={() => setKpiFilter((p) => p === "faltando" ? null : "faltando")} active={kpiFilter === "faltando"} /><KPI t={t} label="Nº Clientes" color="#6B7280" value={dash.numCli} sub="ativos" /><KPI t={t} label="Nº Títulos" color="#6B7280" value={dash.numTit} sub="ativos" /><KPI t={t} label="Val. Original" color="#10B981" value={fmtM(dash.vOrig)} sub="sem multa/juros" /></div>{kpiFilter && <div style={{ textAlign: "center", marginBottom: 12 }}><button onClick={() => setKpiFilter(null)} style={{ background: t.p, border: "none", borderRadius: 6, padding: "6px 14px", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 11 }}>✕ Limpar Filtro</button></div>}</>}
         {activeTab === "verificacao" && <div className="kpi-container kpi-container-2"><KPI t={t} label="Pendentes de Verificação" color="#3B82F6" value={verifLista.length} sub="aguardando resposta" /><KPI t={t} label="Valor em Verificação" color="#3B82F6" value={fmtM(verifLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a validar" /></div>}
         {activeTab === "protesto" && <div className="kpi-container kpi-container-2"><KPI t={t} label="Pendentes de Aprovação" color="#EF4444" value={protestoLista.length} sub="aguardando gestor" /><KPI t={t} label="Valor em Protesto" color="#EF4444" value={fmtM(protestoLista.reduce((s, x) => s + x.valorTotalDebito, 0))} sub="total a autorizar" /></div>}
@@ -1161,7 +1200,9 @@ export default function Dashboard() {
         {activeTab === "protesto" && <TabelaProtesto data={protestoLista} t={t} setRespModal={setRespModal} setRespForm={setRespForm} />}
         {activeTab === "produtividade" && <div style={{ display: "flex", flexDirection: "column", gap: 16 }}><div className="kpi-container kpi-container-4"><KPI t={t} label="Total de Contatos" color="#3B82F6" value={events.filter((e) => e.event_type === "COBRANCA").length} sub="no período" /><KPI t={t} label="Promessas Obtidas" color="#FBBF24" value={events.filter((e) => e.status === "Prometeu Pagar" || e.status === "Promessa ativa").length} sub="confirmadas" /><KPI t={t} label="Pagamentos Confirmados" color="#10B981" value={events.filter((e) => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Pagamento confirmado").length} sub="verificados" /><KPI t={t} label="Taxa de Sucesso" color="#A78BFA" value={`${events.length > 0 ? (events.filter((e) => e.status === "Pago Aguard. Baixa" || e.status === "Encerrado" || e.status === "Prometeu Pagar" || e.status === "Promessa ativa" || e.status === "Pagamento confirmado").length / events.length * 100).toFixed(1) : 0}%`} sub="conversão" /></div><div style={{ display: "flex", gap: 6 }}><button onClick={() => setSubTabProd("produtividade")} style={{ background: subTabProd === "produtividade" ? t.p : t.surf2, color: subTabProd === "produtividade" ? "#fff" : t.txt, border: `1px solid ${subTabProd === "produtividade" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>👤 Produtividade por Usuário</button><button onClick={() => setSubTabProd("metas")} style={{ background: subTabProd === "metas" ? t.p : t.surf2, color: subTabProd === "metas" ? "#fff" : t.txt, border: `1px solid ${subTabProd === "metas" ? t.p : t.bor}`, borderRadius: 6, padding: "5px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>🎯 Metas de Cobrança</button></div>{subTabProd === "produtividade" && <><PainelProdutividade events={events} t={t} /><div style={{ background: t.surf, border: `1px solid ${t.bor}`, borderRadius: 10, padding: "16px", boxShadow: t.shad }}><div style={{ fontSize: 14, fontWeight: 800, color: t.txt, marginBottom: 14 }}>📊 Analytics & Exportação</div><AnalyticsDashboard grouped={grouped} events={events} t={t} /></div></>}{subTabProd === "metas" && <PainelMetas grouped={grouped} events={events} t={t} />}</div>}
         {activeTab === "fluxo" && <ImpactoCaixaTab grouped={grouped} baixadosImportacao={baixadosImportacao} events={events} t={t} isDark={isDark} />}
+        {activeTab === "assessoria" && <AssessoriaHub embedded />}
       </main>
+      </div>
       {modal && <ModalCobranca title="✏️ Registrar Cobrança" frm={form} setFrm={setForm} onSave={() => salvarCobranca(form, modal.titulos, () => setModal(null))} onClose={() => setModal(null)} t={t} isDark={isDark} info={<div style={{ background: t.surf2, borderRadius: 8, padding: "10px 12px", marginBottom: 14, border: `1px solid ${t.bor}` }}><b>{modal.nomeCli}</b><div style={{ color: t.muted, fontSize: 12, marginTop: 3 }}>Cliente {modal.nrCli} · {modal.qtdTitulos} título(s) · <b style={{ color: t.p }}>{fmtM(modal.valorTotalDebito)}</b></div></div>} />}
       {batchModal && <ModalCobranca title={`✏️ Cobrança em Lote — ${selGroups.length} clientes`} frm={batchForm} setFrm={setBatchForm} onSave={() => salvarCobranca(batchForm, selGroups.flatMap((g) => g.titulos), () => { setBatchModal(false); setSelected(new Set()); })} onClose={() => setBatchModal(false)} t={t} isDark={isDark} info={<div style={{ background: t.surf2, borderRadius: 8, padding: "8px 12px", marginBottom: 14, border: `1px solid ${t.bor}`, maxHeight: 100, overflowY: "auto" }}>{selGroups.map((g) => <div key={g.clientKey} style={{ fontSize: 12, padding: "3px 0", borderBottom: `1px solid ${t.bor}`, display: "flex", justifyContent: "space-between" }}><b>{g.nomeCli}</b><span style={{ color: t.p, fontWeight: 700 }}>{fmtM(g.valorTotalDebito)}</span></div>)}</div>} />}
       <ModalResposta respModal={respModal} respForm={respForm} setRespForm={setRespForm} onSave={salvarResposta} onClose={() => setRespModal(null)} t={t} isDark={isDark} />

@@ -413,19 +413,35 @@ async function applyImportPlanLocally(plan = {}) {
   return result;
 }
 
+export function buildImportAbsenceRpcPayload(plan = {}) {
+  const reconciliation = plan?.reconciliation;
+  if (reconciliation?.mode === 'source-reconciliation') {
+    return [{
+      mode: 'source-reconciliation',
+      source: reconciliation.source,
+      expected_absences: Number(reconciliation.expectedAbsences || 0),
+      expected_imported_count: Number(reconciliation.expectedImportedCount || 0),
+      imported_keys: Array.isArray(reconciliation.importedKeys) ? reconciliation.importedKeys : [],
+    }];
+  }
+
+  return (plan.absences || []).map((item) => ({ id: item.id, payload: item.payload }));
+}
+
 async function applyImportPlanRemotely(plan = {}, context = {}) {
   try {
     return await runRemote(async () => {
-      const { data, error } = await supabase.rpc('apply_import_plan', {
+      const { data, error } = await supabase.rpc('apply_import_plan_v2', {
         p_import_source: context.source || null,
         p_import_file: context.importFile || null,
         p_creates: (plan.creates || []).map((item) => item.payload),
         p_updates: (plan.updates || []).map((item) => ({ id: item.id, payload: item.payload })),
-        p_absences: (plan.absences || []).map((item) => ({ id: item.id, payload: item.payload })),
+        p_absences: buildImportAbsenceRpcPayload(plan),
         p_expected_counts: {
           created: Number(plan?.summary?.totalCreate || 0),
           updated: Number(plan?.summary?.totalUpdate || 0),
           lowered: Number(plan?.summary?.totalAbsence || 0),
+          imported: Number(plan?.snapshot?.imported?.titles || 0),
         },
       });
       if (error) throw error;
@@ -434,9 +450,9 @@ async function applyImportPlanRemotely(plan = {}, context = {}) {
   } catch (error) {
     markRemoteFailure(error);
     const missingRpc = ['PGRST202', '42883'].includes(String(error?.code || '')) ||
-      String(error?.message || '').includes('apply_import_plan');
+      String(error?.message || '').includes('apply_import_plan_v2');
     const message = missingRpc
-      ? 'A função transacional apply_import_plan ainda não existe no Supabase. Execute a migração indicada em docs/INSTRUCOES_SUPABASE.md antes de importar.'
+      ? 'A função transacional apply_import_plan_v2 ainda não existe no Supabase. Execute a migração indicada em docs/INSTRUCOES_SUPABASE.md antes de importar.'
       : `A importação foi recusada pelo Supabase e nenhuma etapa foi confirmada: ${error?.message || error}`;
     const wrapped = new Error(message);
     wrapped.code = error?.code || 'SUPABASE_IMPORT_FAILED';
@@ -447,6 +463,9 @@ async function applyImportPlanRemotely(plan = {}, context = {}) {
 
 export async function applyImportPlanAtomic(plan = {}, context = {}) {
   if (!plan?.canApply) throw new Error('O plano de importação não está liberado para aplicação.');
+  if (plan?.reconciliation && !isSupabaseConfigured()) {
+    throw new Error('A reconciliação integral exige Supabase conectado para garantir transação e auditoria.');
+  }
   if (isSupabaseConfigured()) return applyImportPlanRemotely(plan, context);
   return applyImportPlanLocally(plan);
 }

@@ -93,6 +93,37 @@ where routine_schema = 'public'
 
 O resultado deve conter uma linha.
 
+## 4.1. Correção de datas e reconciliação por origem (16/07/2026)
+
+Execute também, integralmente:
+
+`supabase/migrations/20260716180000_fix_dates_and_source_reconciliation.sql`
+
+Essa migração:
+
+- corrige o erro `column "issue_date" is of type date but expression is of type text`;
+- instala `apply_import_plan_v2`, usada pela versão atual do aplicativo;
+- mantém a trava normal de cobertura mínima de 70%;
+- permite uma reconciliação integral somente após confirmação explícita de que o arquivo é a carteira completa da origem;
+- recalcula as ausências no banco imediatamente antes de aplicar;
+- protege outras origens, registros manuais, chaves incompletas e chaves ambíguas;
+- salva o estado anterior em `title_import_reconciliation_audit`;
+- aplica criação, atualização, auditoria e baixas na mesma transação.
+
+Confirme a instalação:
+
+```sql
+select routine_name
+from information_schema.routines
+where routine_schema = 'public'
+  and routine_name in ('apply_import_plan', 'apply_import_plan_v2')
+order by routine_name;
+
+select to_regclass('public.title_import_reconciliation_audit') as tabela_auditoria;
+```
+
+Antes de usar **Preparar reconciliação integral**, confirme que o relatório selecionado é a carteira completa da origem exibida. A quantidade de candidatos precisa permanecer idêntica entre a prévia e a transação; qualquer mudança cancela tudo.
+
 ## 5. Secrets do GitHub Actions
 
 No GitHub, em **Settings → Secrets and variables → Actions**, confirme apenas a existência, sem copiar os valores para arquivos:

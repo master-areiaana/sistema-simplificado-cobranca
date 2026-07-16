@@ -10,9 +10,11 @@ export const CAMPOS_MANUAIS = [
 
 const AUTO_IMPACT_STATUSES = new Set(['pago_importacao', 'sem_carteira']);
 const TITLE_CONFLICT_COLUMNS = 'source,client_code,doc_type,title_number,seq,due_date';
+const CACHE_WRITE_CHUNK_SIZE = 500;
 const localStorageAdapter = createLocalEntityStorage();
 const dataModeSubscribers = new Set();
 let queue = Promise.resolve();
+let cacheQueue = Promise.resolve();
 let lastRemoteError = null;
 
 const TABLE_BY_ENTITY = {
@@ -109,9 +111,21 @@ async function runRemoteRead(fn) {
 
 function cacheRemoteRowsInBackground(entityName, rows, operation) {
   if (!Array.isArray(rows) || rows.length === 0) return;
-  void localStorageAdapter.saveMany(entityName, rows).catch((cacheError) => {
-    console.warn(`[dados] cache ${operation} ${entityName}`, cacheError);
-  });
+  const enqueue = () => {
+    cacheQueue = cacheQueue.then(async () => {
+      for (let index = 0; index < rows.length; index += CACHE_WRITE_CHUNK_SIZE) {
+        await localStorageAdapter.saveMany(entityName, rows.slice(index, index + CACHE_WRITE_CHUNK_SIZE));
+        // Entrega o controle ao navegador entre lotes para nao travar a tela.
+        await sleep(0);
+      }
+    }).catch((cacheError) => {
+      console.warn(`[dados] cache ${operation} ${entityName}`, cacheError);
+    });
+  };
+
+  // A renderizacao dos dados remotos tem prioridade sobre a copia de seguranca local.
+  if (typeof setTimeout === 'function') setTimeout(enqueue, 0);
+  else enqueue();
 }
 
 function sameValue(left, right) { return String(left ?? '').trim() === String(right ?? '').trim(); }

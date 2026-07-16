@@ -2,6 +2,12 @@
 
 ## 2026-07-16 — Órfãos e segurança da importação
 
+- Corrigida a função transacional do Supabase para converter `issue_date`, `due_date`, `promise_date` e `last_contact_date` de texto ISO para `date`, eliminando a recusa da importação por incompatibilidade de tipos.
+- Adicionada reconciliação integral explícita por origem para recuperar carteiras antigas infladas sem remover a trava normal de 70%.
+- A reconciliação recalcula as baixas no banco, protege registros manuais e outras origens, exige chave oficial completa e única, grava o estado anterior em auditoria e confirma tudo numa única transação.
+- O payload de reconciliação passou a enviar apenas as chaves do relatório atual, evitando transmitir e processar dezenas de milhares de IDs individualmente.
+- As listas de alerta e auditoria na tela foram limitadas visualmente para não travar o navegador; as contagens e o plano completo permanecem preservados.
+
 - Corrigido o mapeamento por índice do FINR1253/Topcon: série, número, sequência, NF Serviço, datas, valores, atraso e portador agora seguem o layout real do arquivo.
 - `Receb.Prc.` do FINR1253 deixou de ser tratado como valor pago: o saldo em aberto vem da coluna 9 e o total com juros permanece separado na coluna `Receber`.
 - Adicionado teste de regressão com a linha real do título 9831/2, incluindo datas seriais do Excel, saldo de R$ 147.900,75 e total a receber de R$ 181.281,95.

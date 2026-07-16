@@ -26,6 +26,7 @@ test("modo local fica explicitamente identificado sem variáveis do Supabase", (
   const status = getDataModeStatus();
   assert.equal(status.mode, "local");
   assert.equal(status.remoteAvailable, false);
+  assert.equal(status.message, "Supabase não configurado. Dados somente neste navegador");
 });
 
 test("aplicação local atômica preserva campos manuais na atualização financeira", () => {

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildItem, dateISO, dbToItem, dedupeTitulos, getClienteAgrupamentoKey, getTituloKey, manualObservationText, parseRows7007 } from "./cobranca.js";
+import { buildItem, dateISO, dbToItem, dedupeTitulos, getClienteAgrupamentoKey, getTituloKey, manualObservationText, parseRows1253, parseRows7007 } from "./cobranca.js";
+import { REAL_FINR_FINANCIAL_ROWS } from "./importacao/realImportFinancialFixtures.js";
 
 test("buildItem mantém sem_carteira como diagnóstico sem bloquear workflow da carteira", () => {
   const item = buildItem({
@@ -144,6 +145,48 @@ test("getTituloKey normaliza datas equivalentes", () => {
 
 test("dateISO converte data serial do Excel", () => {
   assert.equal(dateISO(46174), "2026-06-01");
+});
+
+test("parseRows1253 respeita o layout real do FINR1253/Topcon", () => {
+  const [item] = parseRows1253([
+    ["Cliente: 224 - ARTEFATOS DE CIMENTO RAIMONDI LTDA - CPF/CNPJ: 12.345.678/0001-90"],
+    ["FAT", "152", 9831.0, "2", 120.0, 46042.0, 46077.0, 147900.75, 0.0, 147900.75, 33381.2, 181281.95, 121.0, "", "COB ITAU 34222-7"],
+    ["Total Cliente", "Telefone: 47 99999-0000 Contato: Financeiro"],
+  ]);
+
+  assert.ok(item);
+  assert.equal(item.tp, "FAT");
+  assert.equal(item.ser, "152");
+  assert.equal(item.titulo, "9831");
+  assert.equal(item.seq, "2");
+  assert.equal(item.nfServico, "120");
+  assert.equal(item.emissao, "2026-01-20");
+  assert.equal(item.vencimento, "2026-02-24");
+  assert.equal(item.valorOriginal, 147900.75);
+  assert.equal(item.valorRecebido, 0);
+  assert.equal(item.recebPrc, 147900.75);
+  assert.equal(item.saldoErp, 147900.75);
+  assert.equal(item.valorJuros, 33381.2);
+  assert.equal(item.valorEmAberto, 147900.75);
+  assert.equal(item.valorTotalDebito, 181281.95);
+  assert.equal(item.diasAtraso, 121);
+  assert.equal(item.portador, "COB ITAU 34222-7");
+});
+
+test("parseRows1253 preserva a contagem e o saldo total do FINR1253 real", () => {
+  const rows = [
+    ["Cliente: 1 - CLIENTE FINR ANONIMIZADO LTDA - CPF/CNPJ: 00.000.000/0001-00"],
+    ...REAL_FINR_FINANCIAL_ROWS.map(([original, acrescimo, saldo, juros, receber], index) => [
+      "FAT", "152", 100000 + index, "1", "", 46042, 46077,
+      original, acrescimo, saldo, juros, receber, 1, "", "CARTEIRA",
+    ]),
+  ];
+  const items = parseRows1253(rows);
+
+  assert.equal(items.length, 199);
+  assert.equal(Number(items.reduce((sum, item) => sum + item.valorEmAberto, 0).toFixed(2)), 3196048.18);
+  assert.equal(Number(items.reduce((sum, item) => sum + item.valorTotalDebito, 0).toFixed(2)), 3631726.05);
+  assert.equal(items.filter((item) => item.valorEmAberto === 0).length, 0);
 });
 
 test("dedupeTitulos prefere título aberto a pago por importação", () => {

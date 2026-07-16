@@ -1,7 +1,8 @@
 import {
   buildOfficialTitleKey,
+  getImportCoverage,
   getStatusBaixaPorAusencia,
-  isImportacaoParcial,
+  hasCompleteOfficialTitleKey,
   isTituloElegivelCarteira,
   normalizeImportSource,
 } from "./domain.js";
@@ -158,6 +159,75 @@ function isCoveredManagedActiveTitle(item, coveredSources) {
   return isManagedActiveTitle(item) && coveredSources.has(String(item?.source || ""));
 }
 
+function getSourceCoverage(item, coveredSources) {
+  const source = String(item?.source || "");
+  if (coveredSources.has(source)) {
+    return { covered: true, exact: true, source: normalizeImportSource(source) };
+  }
+
+  const coversRPT = coveredSources.has("RPT_7007") || coveredSources.has("RPT_7007_CONS_CAR_EB");
+  const coversFINR = coveredSources.has("FINR1253");
+  if (source === "RPT_E_FINR" && (coversRPT || coversFINR)) {
+    return {
+      covered: true,
+      exact: coversRPT && coversFINR,
+      source,
+      legacyCombined: true,
+    };
+  }
+
+  return { covered: false, exact: false, source: normalizeImportSource(source) };
+}
+
+function buildPossibleOrphan(item, coveredSources, exactExistingByKey) {
+  const key = buildOfficialTitleKey(item);
+  const coverage = getSourceCoverage(item, coveredSources);
+  const exactKeyOccurrences = (exactExistingByKey.get(key) || []).length;
+  const completeKey = hasCompleteOfficialTitleKey(item);
+  const hasStableId = item?.id !== undefined && item?.id !== null && String(item.id).trim() !== "";
+  const eligibleForManualApproval = coverage.exact && completeKey && exactKeyOccurrences === 1 && hasStableId;
+  let reason = "Título ativo não encontrado no relatório da mesma fonte.";
+
+  if (!coverage.covered) {
+    reason = "A fonte deste título não foi coberta pela importação atual.";
+  } else if (coverage.legacyCombined && !coverage.exact) {
+    reason = "Fonte legada RPT_E_FINR coberta por apenas um dos relatórios; exige os dois arquivos para baixa automática.";
+  } else if (!completeKey) {
+    reason = "Chave oficial incompleta; exige revisão manual antes da baixa.";
+  } else if (exactKeyOccurrences !== 1) {
+    reason = "Chave existente ambígua; exige revisão manual antes da baixa.";
+  } else if (!hasStableId) {
+    reason = "Registro sem identificador persistido; exige revisão manual antes da baixa.";
+  }
+
+  return {
+    id: item.id,
+    key,
+    source: String(item?.source || ""),
+    client_name: item.client_name || "",
+    title_number: item.title_number || "",
+    due_date: item.due_date || null,
+    existing: item,
+    coverage,
+    completeKey,
+    hasStableId,
+    exactKeyOccurrences,
+    eligibleForManualApproval,
+    reason,
+  };
+}
+
+function buildBlockedTitleSummary(item, reason = "") {
+  return {
+    id: item?.id,
+    source: String(item?.source || ""),
+    client_name: item?.client_name || "",
+    title_number: item?.title_number || "",
+    due_date: item?.due_date || null,
+    reason,
+  };
+}
+
 function buildAlternativeTitleKey(item) {
   return buildOfficialTitleKey(item).split("|").slice(0, 5).join("|");
 }
@@ -259,19 +329,20 @@ export function canApplyAbsenceSafely({
 } = {}) {
   const hasPreview = Boolean(preview && typeof preview === "object");
   const totalAtual = Number(totalNovaImportacao || 0);
-  const importacaoParcial = !hasPreview ||
-    totalAtual <= 0 ||
-    preview?.seguranca?.importacaoParcial === true ||
-    isImportacaoParcial({
-      totalAtivosAnteriores,
-      totalNovaImportacao: totalAtual,
-    });
+  const coverage = getImportCoverage({
+    totalAtivosAnteriores,
+    totalNovaImportacao: totalAtual,
+  });
+  const coverageSignal = preview?.seguranca?.bloqueioCobertura === true;
+  const explicitPreviewBlock =
+    (preview?.seguranca?.importacaoParcial === true && !coverageSignal) ||
+    (preview?.seguranca?.podeProsseguir === false && !coverageSignal) ||
+    (preview?.seguranca?.podeAplicarBaixaAutomatica === false && !coverageSignal);
 
   return hasPreview &&
     totalAtual > 0 &&
-    !importacaoParcial &&
-    preview?.seguranca?.podeProsseguir !== false &&
-    preview?.seguranca?.podeAplicarBaixaAutomatica !== false &&
+    !coverage.importacaoParcial &&
+    !explicitPreviewBlock &&
     !(Array.isArray(preview?.seguranca?.bloqueios) && preview.seguranca.bloqueios.length > 0);
 }
 
@@ -374,41 +445,174 @@ export function buildImportApplicationPlan({
     !matchedExistingIds.has(item.id) &&
     !protectedExistingIds.has(item.id),
   );
-  const absenceCandidates = coveredSources.size > 0
-    ? potentialAbsenceCandidates.filter((item) => isCoveredManagedActiveTitle(item, coveredSources))
-    : [];
-  const managedActiveCount = coveredSources.size > 0
-    ? existing.filter((item) => isCoveredManagedActiveTitle(item, coveredSources)).length
-    : existing.filter(isManagedActiveTitle).length;
+  // Trava 2 — cobertura e confiança por fonte/chave.
+  // O limite de 70% continua impedindo baixa automática em massa, mas nunca
+  // oculta os ausentes. Cada órfão é relatado e somente uma chave completa,
+  // única e da fonte coberta pode ser aprovada individualmente pelo usuário.
   const totalConsolidados = importedRecords.length;
+  const importedSources = Array.from(new Set(importedRecords.map(sourceFromRecord).filter(Boolean)));
+  const coverageBySource = importedSources.map((source) => {
+    const currentTitles = existing.filter((item) =>
+      isManagedActiveTitle(item) && normalizeImportSource(item.source) === source,
+    );
+    const importedTitles = importedRecords.filter((item) => sourceFromRecord(item) === source);
+    const coverage = getImportCoverage({
+      totalAtivosAnteriores: currentTitles.length,
+      totalNovaImportacao: importedTitles.length,
+    });
+
+    return {
+      source,
+      totalAtivos: currentTitles.length,
+      totalImportados: importedTitles.length,
+      ...coverage,
+      podeAplicarBaixaAutomatica: canApplyAbsenceSafely({
+        preview,
+        totalAtivosAnteriores: currentTitles.length,
+        totalNovaImportacao: importedTitles.length,
+      }),
+    };
+  });
+  const coverageBySourceMap = new Map(coverageBySource.map((item) => [item.source, item]));
+  const automaticSources = new Set(
+    coverageBySource
+      .filter((item) => item.podeAplicarBaixaAutomatica)
+      .map((item) => item.source),
+  );
+  const rptCoverage = coverageBySourceMap.get("RPT_7007_CONS_CAR_EB");
+  const finrCoverage = coverageBySourceMap.get("FINR1253");
+  const legacyActiveCount = existing.filter((item) =>
+    isManagedActiveTitle(item) && item.source === "RPT_E_FINR",
+  ).length;
+  const legacyImportCoverage = rptCoverage && finrCoverage
+    ? getImportCoverage({
+        totalAtivosAnteriores: legacyActiveCount,
+        totalNovaImportacao: Math.min(rptCoverage.totalImportados, finrCoverage.totalImportados),
+      })
+    : null;
+  const legacyCoverage = legacyImportCoverage
+    ? {
+        source: "RPT_E_FINR",
+        totalAtivos: legacyActiveCount,
+        totalImportados: legacyImportCoverage.totalNovaImportacao,
+        ...legacyImportCoverage,
+        importacaoParcial:
+          legacyImportCoverage.importacaoParcial || rptCoverage.importacaoParcial || finrCoverage.importacaoParcial,
+        podeAplicarBaixaAutomatica:
+          !legacyImportCoverage.importacaoParcial &&
+          rptCoverage.podeAplicarBaixaAutomatica &&
+          finrCoverage.podeAplicarBaixaAutomatica,
+        coverageBasis: "RPT_7007_CONS_CAR_EB + FINR1253",
+      }
+    : null;
+  if (legacyCoverage?.podeAplicarBaixaAutomatica) automaticSources.add("RPT_E_FINR");
+  const coverageSignal = preview?.seguranca?.bloqueioCobertura === true;
+  const hasHardSafetyBlock = !preview ||
+    totalConsolidados <= 0 ||
+    (preview?.seguranca?.importacaoParcial === true && !coverageSignal) ||
+    (preview?.seguranca?.podeProsseguir === false && !coverageSignal) ||
+    (preview?.seguranca?.podeAplicarBaixaAutomatica === false && !coverageSignal) ||
+    (Array.isArray(preview?.seguranca?.bloqueios) && preview.seguranca.bloqueios.length > 0);
+  const possibleOrphanCandidates = coveredSources.size > 0
+    ? potentialAbsenceCandidates.filter((item) => getSourceCoverage(item, coveredSources).covered)
+    : potentialAbsenceCandidates;
+  const uncoveredSourceTitles = coveredSources.size > 0
+    ? potentialAbsenceCandidates
+        .filter((item) => !getSourceCoverage(item, coveredSources).covered)
+        .map((item) => buildBlockedTitleSummary(
+          item,
+          "A fonte deste título não foi incluída na importação atual.",
+        ))
+    : [];
+  const possibleOrphans = possibleOrphanCandidates.map((item) => {
+    const orphan = buildPossibleOrphan(item, coveredSources, exactExistingByKey);
+    const sourceCoverage = coverageBySourceMap.get(orphan.coverage.source) ||
+      (orphan.coverage.source === "RPT_E_FINR" ? legacyCoverage : null);
+    const eligibleForManualApproval = orphan.eligibleForManualApproval &&
+      !hasHardSafetyBlock &&
+      sourceCoverage?.importacaoParcial === true;
+
+    return {
+      ...orphan,
+      sourceCoverage: sourceCoverage || null,
+      automatic: orphan.eligibleForManualApproval && automaticSources.has(orphan.coverage.source),
+      eligibleForManualApproval,
+    };
+  });
+  const approvedAbsenceIds = new Set(
+    (preview?.seguranca?.approvedAbsenceIds || []).map(String),
+  );
+  const selectedOrphans = possibleOrphans.filter((orphan) =>
+    orphan.automatic ||
+    (orphan.eligibleForManualApproval && approvedAbsenceIds.has(String(orphan.id))),
+  );
+  const selectedOrphanIds = new Set(selectedOrphans.map((orphan) => String(orphan.id)));
+  const absences = selectedOrphans.map((orphan) => ({
+    key: orphan.key,
+    id: orphan.id,
+    existing: orphan.existing,
+    confidence: "exact-key",
+    approvalMode: orphan.automatic ? "automatic" : "manual-partial",
+    payload: getStatusBaixaPorAusencia(),
+  }));
+  const absenceBlocked = possibleOrphans.filter((orphan) => !selectedOrphanIds.has(String(orphan.id)));
   const importacaoParcial = !preview ||
     totalConsolidados <= 0 ||
-    preview?.seguranca?.importacaoParcial === true ||
-    isImportacaoParcial({
-      totalAtivosAnteriores: managedActiveCount,
-      totalNovaImportacao: totalConsolidados,
-    });
-  const canApplyAbsence = canApplyAbsenceSafely({
-    preview,
-    totalAtivosAnteriores: managedActiveCount,
-    totalNovaImportacao: totalConsolidados,
-  });
-  const absences = canApplyAbsence
-    ? absenceCandidates.map((item) => ({
-        key: buildOfficialTitleKey(item),
-        id: item.id,
-        existing: item,
-        payload: getStatusBaixaPorAusencia(),
-      }))
-    : [];
-  const absenceBlocked = canApplyAbsence
-    ? []
-    : (coveredSources.size > 0 ? absenceCandidates : potentialAbsenceCandidates);
+    coverageBySource.some((item) => item.importacaoParcial) ||
+    legacyCoverage?.importacaoParcial === true ||
+    (preview?.seguranca?.importacaoParcial === true && !coverageSignal);
+  const coverageForDisplay = legacyCoverage
+    ? [...coverageBySource, legacyCoverage]
+    : coverageBySource;
+  const canApplyAbsence = coverageForDisplay.length > 0 &&
+    coverageForDisplay.every((item) => item.podeAplicarBaixaAutomatica);
   const coveredActiveTitles = coveredSources.size > 0
     ? existing.filter((item) => isCoveredManagedActiveTitle(item, coveredSources))
     : [];
   const previousCount = coveredActiveTitles.length;
-  const coverageRatio = previousCount > 0 ? totalConsolidados / previousCount : 1;
+  const coverage = getImportCoverage({
+    totalAtivosAnteriores: previousCount,
+    totalNovaImportacao: totalConsolidados,
+  });
+  const blockedPartialSources = coverageForDisplay.filter((item) => item.importacaoParcial);
+  const coverageSummary = blockedPartialSources
+    .map((item) => `${item.source}: ${item.percentual}%`)
+    .join("; ");
+  const coverageBlockReasons = blockedPartialSources.map((item) => {
+    const affectedTitles = absenceBlocked
+      .filter((orphan) => orphan.coverage.source === item.source)
+      .map((orphan) => buildBlockedTitleSummary(orphan.existing, orphan.reason));
+    return {
+      code: "COVERAGE_BELOW_THRESHOLD",
+      source: item.source,
+      totalAtivosAnteriores: item.totalAtivos,
+      totalImportados: item.totalImportados,
+      percentualCobertura: item.percentual,
+      percentualMinimo: item.minimoPercentual,
+      totalBloqueados: affectedTitles.length,
+      titles: affectedTitles,
+      message: `Baixa automática bloqueada em ${item.source}: ${item.totalImportados} de ${item.totalAtivos} títulos (${item.percentual}%; mínimo: ${item.minimoPercentual}%). ${affectedTitles.length} título(s) aguardam revisão.`,
+    };
+  });
+  const uncoveredSourceReasons = uncoveredSourceTitles.length > 0
+    ? [{
+        code: "SOURCE_NOT_COVERED",
+        sources: [...new Set(uncoveredSourceTitles.map((item) => item.source))],
+        totalBloqueados: uncoveredSourceTitles.length,
+        titles: uncoveredSourceTitles,
+        message: `${uncoveredSourceTitles.length} título(s) permanecem ativos porque a fonte não foi incluída na importação atual.`,
+      }]
+    : [];
+  const motivosBloqueio = [...coverageBlockReasons, ...uncoveredSourceReasons];
+  if (motivosBloqueio.length === 0 && absenceBlocked.length > 0) {
+    motivosBloqueio.push({
+      code: "SAFETY_VALIDATION_BLOCK",
+      totalBloqueados: absenceBlocked.length,
+      titles: absenceBlocked.map((orphan) => buildBlockedTitleSummary(orphan.existing, orphan.reason)),
+      message: "A baixa por ausência foi bloqueada pelos alertas de segurança da Pré-validação. Revise a lista de possíveis órfãos.",
+    });
+  }
+  const safetyMessage = motivosBloqueio.map((item) => item.message).join(" ");
 
   return {
     creates,
@@ -417,17 +621,18 @@ export function buildImportApplicationPlan({
     reviewRequired,
     absences,
     absenceBlocked,
+    possibleOrphans,
     canApply: importedRecords.length > 0 && reviewRequired.length === 0,
     summary: {
       totalCreate: creates.length,
       totalUpdate: updates.length,
       totalUnchanged: unchanged.length,
       totalNeedsReview: reviewRequired.length,
-      totalAbsenceCandidates: absenceCandidates.length,
+      totalAbsenceCandidates: possibleOrphans.length,
+      totalPossibleOrphans: possibleOrphans.length,
       totalAbsence: absences.length,
-      totalAbsenceBlocked: canApplyAbsence
-        ? 0
-        : (coveredSources.size > 0 ? absenceCandidates.length : potentialAbsenceCandidates.length),
+      totalAbsenceBlocked: absenceBlocked.length + uncoveredSourceTitles.length,
+      totalUncoveredSource: uncoveredSourceTitles.length,
     },
     snapshot: {
     source: importedRecords[0] ? sourceFromRecord(importedRecords[0]) : "",
@@ -446,14 +651,17 @@ export function buildImportApplicationPlan({
     safety: {
       importacaoParcial,
       podeAplicarBaixaAutomatica: canApplyAbsence,
+      podeAplicarBaixaIndividual: possibleOrphans.some((item) => item.eligibleForManualApproval),
+      baixasIndividuaisAprovadas: absences.filter((item) => item.approvalMode === "manual-partial").length,
+      totalPossiveisOrfaos: possibleOrphans.length,
+      totalFontesNaoCobertas: uncoveredSourceTitles.length,
       totalAtivosOrigem: previousCount,
       totalImportadosOrigem: totalConsolidados,
-      percentualCobertura: Math.round(coverageRatio * 10000) / 100,
-      motivoBloqueio: canApplyAbsence
-        ? ""
-        : importacaoParcial
-          ? `O relatório representa ${Math.round(coverageRatio * 10000) / 100}% da carteira ativa desta origem; a baixa por ausência foi bloqueada.`
-          : "A baixa por ausência foi bloqueada pelos alertas de segurança da Pré-validação.",
+      percentualCobertura: coverage.percentual,
+      minimoCoberturaPercentual: coverage.minimoPercentual,
+      coberturaPorFonte: coverageForDisplay,
+      motivosBloqueio,
+      motivoBloqueio: safetyMessage,
     },
   };
 }

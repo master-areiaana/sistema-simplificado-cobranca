@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   OFFICIAL_IMPORT_COLUMNS,
+  IMPORTACAO_PARCIAL_LIMIAR,
+  MIN_IMPORT_COVERAGE_RATIO,
   buildOfficialTitleKey,
   calculateCharges,
   calculateSaldoRestante,
+  getImportCoverage,
   getStatusBaixaPorAusencia,
+  hasCompleteOfficialTitleKey,
   isImportacaoParcial,
   isTituloElegivelCarteira,
 } from "./domain.js";
@@ -120,6 +124,40 @@ test("não considera importação de 490 títulos sobre 500 anteriores como parc
     isImportacaoParcial({ totalAtivosAnteriores: 500, totalNovaImportacao: 490 }),
     false,
   );
+});
+
+test("documenta e respeita o limite de cobertura de 70%", () => {
+  assert.equal(IMPORTACAO_PARCIAL_LIMIAR, 0.7);
+  assert.equal(MIN_IMPORT_COVERAGE_RATIO, 0.7);
+  assert.equal(isImportacaoParcial({ totalAtivosAnteriores: 100, totalNovaImportacao: 69 }), true);
+  assert.equal(isImportacaoParcial({ totalAtivosAnteriores: 100, totalNovaImportacao: 70 }), false);
+  assert.deepEqual(
+    getImportCoverage({ totalAtivosAnteriores: 100, totalNovaImportacao: 69 }),
+    {
+      totalAtivosAnteriores: 100,
+      totalNovaImportacao: 69,
+      ratio: 0.69,
+      percentual: 69,
+      minimoRatio: 0.7,
+      minimoPercentual: 70,
+      importacaoParcial: true,
+    },
+  );
+});
+
+test("só considera confiável a chave oficial completa", () => {
+  const complete = {
+    source: "RPT_7007_CONS_CAR_EB",
+    client_code: "10",
+    doc_type: "NF",
+    title_number: "123",
+    seq: "1",
+    due_date: "2026-06-30",
+  };
+
+  assert.equal(hasCompleteOfficialTitleKey(complete), true);
+  assert.equal(hasCompleteOfficialTitleKey({ ...complete, due_date: "" }), false);
+  assert.equal(hasCompleteOfficialTitleKey({ ...complete, seq: "" }), false);
 });
 
 test("gera a chave oficial incluindo a origem", () => {

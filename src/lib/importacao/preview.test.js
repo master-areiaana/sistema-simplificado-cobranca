@@ -39,7 +39,9 @@ function finrRows(overrides = {}) {
     issueDate = "01/06/2026",
     dueDate = "30/06/2026",
     totalValue = 1000,
-    partialReceipt = 300,
+    balance = 700,
+    calculatedInterest = 0,
+    totalReceivable = 700,
     delayDays = 0,
     bearer = "CARTEIRA",
   } = overrides;
@@ -54,10 +56,10 @@ function finrRows(overrides = {}) {
       "Operação",
       "Vencto",
       "Vlr. Título",
-      "",
+      "Acréscimo",
       "Receb.Prc.",
-      "",
-      "",
+      "Calculada",
+      "Receber",
       "Atraso",
       "",
       "Portador",
@@ -72,10 +74,10 @@ function finrRows(overrides = {}) {
       issueDate,
       dueDate,
       totalValue,
-      "",
-      partialReceipt,
-      "",
-      "",
+      0,
+      balance,
+      calculatedInterest,
+      totalReceivable,
       delayDays,
       "",
       bearer,
@@ -146,7 +148,7 @@ test("retorna resumo geral com totais e registros que precisam de revisão", () 
     somenteFINR: 0,
     emAmbas: 1,
     comConflito: 1,
-    totalDiagnosticos: 1,
+    totalDiagnosticos: 2,
     totalNeedsReview: 1,
   });
 });
@@ -159,8 +161,9 @@ test("detecta importação parcial com 60 consolidados para 500 ativos anteriore
 
   assert.equal(result.resumo.totalConsolidados, 60);
   assert.equal(result.seguranca.importacaoParcial, true);
+  assert.equal(result.seguranca.bloqueioCobertura, true);
   assert.deepEqual(result.seguranca.alertas, [PARTIAL_IMPORT_ALERT]);
-  assert.deepEqual(result.seguranca.bloqueios, [PARTIAL_IMPORT_ALERT]);
+  assert.deepEqual(result.seguranca.bloqueios, []);
 });
 
 test("não considera parcial com 490 consolidados para 500 ativos anteriores", () => {
@@ -173,14 +176,14 @@ test("não considera parcial com 490 consolidados para 500 ativos anteriores", (
   assert.equal(result.seguranca.importacaoParcial, false);
 });
 
-test("importação parcial não permite baixa automática ou prosseguimento", () => {
+test("importação parcial bloqueia baixa em massa sem bloquear criação e atualização", () => {
   const result = buildImportPreview({
     rptRows: manyRptRows(60),
     totalAtivosAnteriores: 500,
   });
 
   assert.equal(result.seguranca.podeAplicarBaixaAutomatica, false);
-  assert.equal(result.seguranca.podeProsseguir, false);
+  assert.equal(result.seguranca.podeProsseguir, true);
 });
 
 test("importação não parcial permite baixa automática e prosseguimento futuro", () => {

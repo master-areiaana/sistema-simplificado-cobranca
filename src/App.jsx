@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import AssessoriaHub from './pages/AssessoriaHub';
 import CorrecoesGlobais from './components/cobranca/CorrecoesGlobais';
 import { THEME_STORAGE_KEY } from './lib/theme';
+import { DataModeIndicator, DataModeProvider } from './contexts/DataModeContext';
 
 function AssessoriaTabInjector() {
   const location = useLocation();
@@ -165,15 +166,18 @@ function AssessoriaTabInjector() {
 function App() {
   return (
     <QueryClientProvider client={queryClientInstance}>
-      <Router>
-        <CorrecoesGlobais />
-        <AssessoriaTabInjector />
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/assessoria" element={<AssessoriaHub />} />
-          <Route path="*" element={<PageNotFound />} />
-        </Routes>
-      </Router>
+      <DataModeProvider>
+        <DataModeIndicator />
+        <Router>
+          <CorrecoesGlobais />
+          <AssessoriaTabInjector />
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/assessoria" element={<AssessoriaHub />} />
+            <Route path="*" element={<PageNotFound />} />
+          </Routes>
+        </Router>
+      </DataModeProvider>
       <Toaster />
     </QueryClientProvider>
   )

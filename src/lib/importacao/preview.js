@@ -30,7 +30,10 @@ export function buildImportPreview({
     totalNovaImportacao: consolidationSummary.totalConsolidados,
   });
   const alertas = importacaoParcial ? [PARTIAL_IMPORT_ALERT] : [];
-  const bloqueios = importacaoParcial ? [PARTIAL_IMPORT_ALERT] : [];
+  // A cobertura inferior a 70% é um alerta destrutivo, não um erro de leitura:
+  // criar/atualizar continua possível; baixas ficam no relatório de órfãos e
+  // exigem cobertura segura ou aprovação individual explícita.
+  const bloqueios = [];
 
   return {
     rptItems,
@@ -45,7 +48,8 @@ export function buildImportPreview({
     seguranca: {
       importacaoParcial,
       podeAplicarBaixaAutomatica: !importacaoParcial,
-      podeProsseguir: bloqueios.length === 0,
+      bloqueioCobertura: importacaoParcial,
+      podeProsseguir: true,
       bloqueios,
       alertas,
     },

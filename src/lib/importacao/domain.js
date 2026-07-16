@@ -24,6 +24,13 @@ export const OFFICIAL_IMPORT_COLUMNS = Object.freeze([
   "NF Serviço",
 ]);
 
+// Trava 1 — cobertura mínima para baixa automática em massa.
+// Abaixo de 70% o arquivo pode estar filtrado ou incompleto. Isso não esconde
+// candidatos órfãos: eles continuam no plano para revisão/aprovação individual.
+export const IMPORTACAO_PARCIAL_LIMIAR = 0.7;
+// Alias mantido para compatibilidade com consumidores e testes já publicados.
+export const MIN_IMPORT_COVERAGE_RATIO = IMPORTACAO_PARCIAL_LIMIAR;
+
 const TITLE_KEY_FIELDS = [
   ["Código Cliente", "codigoCliente", "clientCode", "client_code", "nrCli"],
   ["Tipo Documento", "tipoDocumento", "docType", "doc_type", "tp"],
@@ -193,6 +200,10 @@ export function buildOfficialTitleKey(item = {}) {
   ].join("|");
 }
 
+export function hasCompleteOfficialTitleKey(item = {}) {
+  return buildOfficialTitleKey(item).split("|").every(Boolean);
+}
+
 export function calculateSaldoRestante({ valorTotal = 0, recebParcial = 0 } = {}) {
   return roundMoney(toNumber(valorTotal) - toNumber(recebParcial));
 }
@@ -264,7 +275,26 @@ export function isImportacaoParcial({
   const novos = Math.max(0, toNumber(totalNovaImportacao));
 
   if (anteriores === 0) return false;
-  return novos < anteriores * 0.7;
+  return novos < anteriores * MIN_IMPORT_COVERAGE_RATIO;
+}
+
+export function getImportCoverage({
+  totalAtivosAnteriores = 0,
+  totalNovaImportacao = 0,
+} = {}) {
+  const anteriores = Math.max(0, toNumber(totalAtivosAnteriores));
+  const novos = Math.max(0, toNumber(totalNovaImportacao));
+  const ratio = anteriores > 0 ? novos / anteriores : 1;
+
+  return {
+    totalAtivosAnteriores: anteriores,
+    totalNovaImportacao: novos,
+    ratio,
+    percentual: Math.round(ratio * 10000) / 100,
+    minimoRatio: MIN_IMPORT_COVERAGE_RATIO,
+    minimoPercentual: MIN_IMPORT_COVERAGE_RATIO * 100,
+    importacaoParcial: anteriores > 0 && ratio < MIN_IMPORT_COVERAGE_RATIO,
+  };
 }
 
 export function getStatusBaixaPorAusencia() {

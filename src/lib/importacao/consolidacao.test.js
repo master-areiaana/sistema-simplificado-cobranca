@@ -148,6 +148,18 @@ test("nome diferente escolhe o mais completo e gera CLIENT_NAME_VARIATION", () =
   assert.ok(diagnosticCodes(result).includes("CLIENT_NAME_VARIATION"));
 });
 
+test("identificadores de documento não substituem um nome de cliente válido", () => {
+  const invalidNames = ["REC", "NF", "NFE", "NFSE", "FAT", "CTE", "DUP", "DUPLICATA", "TITULO", "PARCELA"];
+
+  for (const invalidName of invalidNames) {
+    const result = consolidarFontesImportacao({
+      rptItems: [title({ "Nome Cliente": invalidName })],
+      finrItems: [title({ "Nome Cliente": "Cliente Válido Ltda" })],
+    });
+    assert.equal(result.consolidados[0]["Nome Cliente"], "Cliente Válido Ltda", invalidName);
+  }
+});
+
 test("CPF/CNPJ diferente prioriza FINR, gera CPF_CNPJ_MISMATCH e needs_review", () => {
   const result = consolidarFontesImportacao({
     rptItems: [title({ "CPF/CNPJ": "11.111.111/0001-11" })],

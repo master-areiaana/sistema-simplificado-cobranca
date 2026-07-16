@@ -75,7 +75,65 @@ function cellText(row, idx) { return String((row || [])[idx] ?? "").trim(); }
 function joinedRow(row) { return (row || []).map((c) => String(c ?? "").trim()).filter(Boolean).join(" "); }
 function parseClienteLinha(row) { const raw = cellText(row, 0); const m = raw.match(/^Cliente:\s*([\d.]+)\s*-\s*(.+?)(?:\s*-\s*CPF\/CNPJ:\s*([\d./-]+))?\s*$/i); if (!m) return null; return { nrCli: cleanClientCode(m[1]), nomeCli: m[2], cpfCnpj: m[3] || "" }; }
 function parseTotalCliente(row) { const raw = joinedRow(row); return { telefone: String(raw.match(/(?:Tel\.?|Telefone)\s*:?\s*(.+?)(?:\s+Contato\s*:|$)/i)?.[1] || "").trim(), contato: String(raw.match(/Contato\s*:?\s*(.+?)$/i)?.[1] || "").trim() }; }
-function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) { const tp = cellText(row, 0).toUpperCase(); if (!clienteAtivo || !isValidClientName(clienteAtivo.nomeCli) || !isFinr1253TitleToken(tp)) return null; const nDoc = cellText(row, 1); const seq = cellText(row, 2); const emissao = dateISO(cellText(row, 3)) || ""; const vencimento = dateISO(cellText(row, 4)) || ""; const vOriginal = num(cellText(row, 5)); const vRecebido = num(cellText(row, 6)); return { origem: "FINR1253", nrCli: clienteAtivo.nrCli, nomeCli: clienteAtivo.nomeCli, cpfCnpj: clienteAtivo.cpfCnpj, tp, titulo: nDoc, seq, emissao, vencimento, valorOriginal: vOriginal, valorRecebido: vRecebido, valorEmAberto: Math.max(0, vOriginal - vRecebido) }; }
+function buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal = {}) {
+  const tp = cellText(row, 0).toUpperCase();
+  if (!clienteAtivo || !isValidClientName(clienteAtivo.nomeCli) || !isFinr1253TitleToken(tp)) return null;
+
+  // Layout oficial FINR1253/Topcon:
+  // Tp, Ser, Numero, Seq, NF Servico, Operacao, Vencto, Titulo,
+  // Acrescimo, Receb.Prc. (saldo principal), Calculada (juros), Receber, Atraso, Uteis, Portador.
+  // Receb.Prc. nao e valor pago. O total efetivamente a receber vem na coluna Receber.
+  const serie = cellText(row, 1);
+  const nDoc = cellText(row, 2);
+  const seq = cellText(row, 3);
+  const nfServico = cellText(row, 4);
+  const emissao = dateISO((row || [])[5]) || "";
+  const vencimento = dateISO((row || [])[6]) || "";
+  const valorOriginal = roundMoney(num((row || [])[7]));
+  const acrescimo = roundMoney(num((row || [])[8]));
+  const saldoPrincipal = optionalMoney((row || [])[9]);
+  const jurosCalculados = roundMoney(num((row || [])[10]));
+  const totalReceber = optionalMoney((row || [])[11]);
+  const valorEmAberto = roundMoney(Math.max(0,
+    saldoPrincipal.valid
+      ? saldoPrincipal.value
+      : (totalReceber.valid ? totalReceber.value - acrescimo - jurosCalculados : valorOriginal),
+  ));
+  const valorTotalDebito = roundMoney(Math.max(0,
+    totalReceber.valid ? totalReceber.value : valorEmAberto + acrescimo + jurosCalculados,
+  ));
+  const diasAtraso = Math.max(0, Math.trunc(num((row || [])[12])));
+
+  return {
+    origem: "FINR1253",
+    nrCli: clienteAtivo.nrCli,
+    nomeCli: clienteAtivo.nomeCli,
+    cpfCnpj: clienteAtivo.cpfCnpj,
+    tp,
+    ser: serie,
+    titulo: nDoc,
+    seq,
+    nfServico,
+    emissao,
+    vencimento,
+    valorOriginal,
+    // Nao preencher valorRecebido com Receb.Prc.; essa coluna e o saldo principal no FINR1253.
+    valorRecebido: 0,
+    recebPrc: saldoPrincipal.valid ? roundMoney(saldoPrincipal.value) : 0,
+    saldoErp: valorEmAberto,
+    valorAcrescimo: acrescimo,
+    valorMulta: acrescimo,
+    valorCalculado: jurosCalculados,
+    valorJuros: jurosCalculados,
+    valorEmAberto,
+    valorTotalDebito,
+    diasAtraso,
+    atrasoRelatorio: diasAtraso,
+    portador: cellText(row, 14),
+    telefone: dadosTotal.telefone || "",
+    contato: dadosTotal.contato || "",
+  };
+}
 export function parseRows1253(rows) { if (!Array.isArray(rows) || rows.length === 0) return []; const items = []; let clienteAtivo = null; let bufferTitulos = []; const flushBloco = (dadosTotal = {}) => { for (const row of bufferTitulos) { const item = buildFinr1253ItemFromTitulo(row, clienteAtivo, dadosTotal); if (item) items.push(item); } bufferTitulos = []; }; for (const row of rows) { const raiz = cellText(row, 0); if (!raiz) continue; const isCliente = raiz.toLowerCase().startsWith("cliente:"); if (isCliente) { flushBloco(); clienteAtivo = parseClienteLinha(row); } else if (raiz.toLowerCase().startsWith("total")) { flushBloco(parseTotalCliente(row)); clienteAtivo = null; } else if (clienteAtivo) { bufferTitulos.push(row); } } flushBloco(); return items; }
 const H7007 = {
   nomeCli: ["NOMCLI", "NOME CLIENTE", "RAZAO SOCIAL", "CLIENTE", "SACADO", "NOME SACADO", "DEVEDOR", "NOME", "RAZAO", "NOME DO CLIENTE", "FAVORECIDO"],

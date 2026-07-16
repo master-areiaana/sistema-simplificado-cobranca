@@ -53,7 +53,7 @@ export function getDataModeStatus() {
       mode: 'local',
       configured: false,
       remoteAvailable: false,
-      message: 'Supabase não configurado. Os dados ficam somente neste navegador.',
+      message: 'Supabase não configurado. Dados somente neste navegador',
     };
   }
   if (lastRemoteError) {
@@ -61,7 +61,7 @@ export function getDataModeStatus() {
       mode: 'cache',
       configured: true,
       remoteAvailable: false,
-      message: 'Supabase indisponível. A tela está usando apenas o cache local; gravações remotas estão bloqueadas.',
+      message: 'Supabase indisponível. Gravações remotas bloqueadas',
       error: String(lastRemoteError?.message || lastRemoteError),
     };
   }
@@ -69,7 +69,7 @@ export function getDataModeStatus() {
     mode: 'supabase',
     configured: true,
     remoteAvailable: true,
-    message: 'Dados conectados ao Supabase.',
+    message: 'Modo de dados: Supabase',
   };
 }
 
@@ -396,7 +396,7 @@ async function applyImportPlanRemotely(plan = {}, context = {}) {
         },
       });
       if (error) throw error;
-      return data;
+      return { ...(data || {}), mode: 'supabase' };
     });
   } catch (error) {
     markRemoteFailure(error);

@@ -46,7 +46,10 @@ const FINR1253_ALIASES = {
   issueDate: ["OPERACAO", "DATA OPERACAO"],
   dueDate: ["VENCTO", "VENCIMENTO"],
   totalValue: ["VLR TITULO", "VALOR TITULO", "TITULO", "VALOR"],
-  partialReceipt: ["RECEB PRC", "RECEB PARCIAL"],
+  addition: ["ACRESCIMO"],
+  balance: ["RECEB PRC", "RECEB PARCIAL", "SALDO", "SALDO EM ABERTO"],
+  calculatedInterest: ["CALCULADA", "JUROS CALCULADOS", "JUROS"],
+  totalReceivable: ["RECEBER", "TOTAL A RECEBER"],
   delayDays: ["ATRASO", "DIAS ATRASO", "DIAS DE ATRASO"],
   bearer: ["PORTADOR"],
 };
@@ -60,10 +63,15 @@ const FINR1253_FALLBACK_INDEXES = {
   issueDate: 5,
   dueDate: 6,
   totalValue: 7,
-  partialReceipt: 9,
+  addition: 8,
+  balance: 9,
+  calculatedInterest: 10,
+  totalReceivable: 11,
   delayDays: 12,
   bearer: 14,
 };
+
+const FINR1253_TITLE_TYPES = new Set(["FAT", "REC", "NF", "NFE"]);
 
 function normalizeHeader(value) {
   return String(value ?? "")
@@ -344,19 +352,30 @@ function isFinrHeaderRow(row) {
 }
 
 function isFinrTitleRow(row, headerMap) {
-  return Boolean(
-    cellText(row, headerMap.type) &&
-    cellText(row, headerMap.documentNumber),
-  );
+  const type = cellText(row, headerMap.type).toUpperCase();
+  return FINR1253_TITLE_TYPES.has(type) && Boolean(cellText(row, headerMap.documentNumber));
 }
 
-function buildFinrCanonicalRecord(row, client, clientTotal, headerMap, options) {
+function buildFinrCanonicalRecord(row, client, clientTotal, headerMap) {
   const { documentNumber, sequence } = splitDocumentAndSequence(
     cellText(row, headerMap.documentNumber),
     cellText(row, headerMap.sequence),
   );
+  const valorTotal = normalizeMoney(row?.[headerMap.totalValue]);
+  const acrescimo = normalizeMoney(row?.[headerMap.addition]);
+  const saldoRaw = row?.[headerMap.balance];
+  const jurosCalculados = normalizeMoney(row?.[headerMap.calculatedInterest]);
+  const totalReceberRaw = row?.[headerMap.totalReceivable];
+  const saldoRestante = isValidMoney(saldoRaw)
+    ? normalizeMoney(saldoRaw)
+    : Math.max(0, isValidMoney(totalReceberRaw)
+      ? normalizeMoney(totalReceberRaw) - acrescimo - jurosCalculados
+      : valorTotal);
+  const totalReceber = isValidMoney(totalReceberRaw)
+    ? normalizeMoney(totalReceberRaw)
+    : saldoRestante + acrescimo + jurosCalculados;
 
-  return addCalculatedValues({
+  return createCanonicalRecord({
     "Id da Empresa": "",
     "Tipo Documento": cellText(row, headerMap.type).toUpperCase(),
     "Série": cellText(row, headerMap.series),
@@ -367,16 +386,21 @@ function buildFinrCanonicalRecord(row, client, clientTotal, headerMap, options) 
     "Vendedor": "",
     "Data Emissão": dateToISO(row?.[headerMap.issueDate]),
     "Data Vencimento": dateToISO(row?.[headerMap.dueDate]),
-    "Valor Total (R$)": normalizeMoney(row?.[headerMap.totalValue]),
+    "Valor Total (R$)": valorTotal,
     "Desconto (R$)": 0,
-    "Receb. Parcial (R$)": normalizeMoney(row?.[headerMap.partialReceipt]),
+    // No FINR1253, Receb.Prc. e saldo remanescente, nao valor ja recebido.
+    "Receb. Parcial (R$)": 0,
+    "Saldo Restante (R$)": saldoRestante,
+    "Multa (R$)": acrescimo,
+    "Juros (R$)": jurosCalculados,
+    "Total a Receber (R$)": totalReceber,
     "Dias de Atraso": normalizeInteger(row?.[headerMap.delayDays]),
     "Portador": cellText(row, headerMap.bearer),
     "Telefone": clientTotal.telefone,
     "Contato": clientTotal.contato,
     "CPF/CNPJ": client.cpfCnpj,
     "NF Serviço": cellText(row, headerMap.serviceInvoice),
-  }, options);
+  });
 }
 
 export function parseFINR1253Canonical(rows, options = {}) {
@@ -395,7 +419,6 @@ export function parseFINR1253Canonical(rows, options = {}) {
           client,
           clientTotal,
           title.headerMap,
-          options,
         ), "SOMENTE_FINR", "FINR1253"));
       }
     }

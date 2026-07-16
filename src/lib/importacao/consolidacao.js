@@ -6,6 +6,18 @@ import {
 
 const SOURCE_RPT = "RPT_7007";
 const SOURCE_FINR = "FINR1253";
+const INVALID_CLIENT_NAMES = new Set([
+  "REC",
+  "NF",
+  "NFE",
+  "NFSE",
+  "FAT",
+  "CTE",
+  "DUP",
+  "DUPLICATA",
+  "TITULO",
+  "PARCELA",
+]);
 
 // A consolidação legada compara as duas fontes para gerar diagnósticos. A chave
 // oficial de persistência inclui a origem; aqui ela é removida deliberadamente
@@ -78,7 +90,7 @@ function moneyMatches(left, right) {
 
 function isValidClientName(value) {
   const normalized = normalizeText(value);
-  if (!normalized || /^\d+$/.test(normalized)) return false;
+  if (!normalized || /^\d+$/.test(normalized) || INVALID_CLIENT_NAMES.has(normalized)) return false;
   return normalized.replace(/[^A-Z0-9]/g, "").length >= 3 && /[A-Z]/.test(normalized);
 }
 
@@ -256,6 +268,9 @@ function buildCombinedRecord(rptItems, finrItems, options) {
   return {
     ...record,
     _meta: {
+      // RPT_E_FINR é apenas um diagnóstico de presença nas duas fontes. Ele não
+      // autoriza baixa por ausência sozinho: applyImport exige cobertura segura
+      // de RPT e FINR (ou revisão individual) antes de inativar um legado assim.
       source_status: "RPT_E_FINR",
       sources_found: [SOURCE_RPT, SOURCE_FINR],
       needs_review: diagnostics.some(({ level }) => level === "warning"),

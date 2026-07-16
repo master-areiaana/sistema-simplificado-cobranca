@@ -134,10 +134,51 @@ function SummaryBlock({ title, children, border, surface, muted }) {
   );
 }
 
-function AuditDetails({ plan, parsed, border, surface, text, muted }) {
+function SafetyWarnings({ safety, border }) {
+  const reasons = Array.isArray(safety?.motivosBloqueio) ? safety.motivosBloqueio : [];
+  if (reasons.length === 0) {
+    return safety?.motivoBloqueio
+      ? <div style={{ marginTop: 9, fontSize: 11, color: "#b91c1c", fontWeight: 700 }}>{safety.motivoBloqueio}</div>
+      : null;
+  }
+
+  return (
+    <div role="alert" style={{ marginTop: 9, padding: "8px 10px", border: `1px solid ${border}`, borderLeft: "4px solid #dc2626", borderRadius: 7, background: "#fef2f2", color: "#991b1b", fontSize: 11 }}>
+      <b>Baixa por ausência bloqueada ou limitada</b>
+      {reasons.map((reason, index) => (
+        <div key={`${reason.code || "BLOCK"}-${reason.source || index}`} style={{ marginTop: 6 }}>
+          <div style={{ fontWeight: 700 }}>{reason.message}</div>
+          {Array.isArray(reason.titles) && reason.titles.length > 0 && (
+            <div style={{ marginTop: 4, maxHeight: 110, overflowY: "auto", paddingLeft: 10, borderLeft: "2px solid #fecaca" }}>
+              {reason.titles.map((item, itemIndex) => (
+                <div key={`${item.id || itemIndex}-${item.source || ""}`} style={{ padding: "2px 0" }}>
+                  {item.client_name || "Cliente"} — {item.source || "sem origem"} — título {item.title_number || "sem número"}{item.due_date ? ` — venc. ${item.due_date}` : ""}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AuditDetails({
+  plan,
+  parsed,
+  border,
+  surface,
+  text,
+  muted,
+  approvedOrphanIds,
+  onToggleOrphan,
+  onRebuildOrphans,
+  rebuildingOrphans,
+}) {
   const [open, setOpen] = useState(false);
   if (!plan) return null;
   const blocked = plan.absenceBlocked || [];
+  const orphans = plan.possibleOrphans || [];
   const review = plan.reviewRequired || [];
   const topconClients = plan.snapshot?.source === "FINR1253" ? plan.snapshot?.imported?.clients || 0 : 0;
   const ebClients = plan.snapshot?.source === "RPT_7007_CONS_CAR_EB" ? plan.snapshot?.imported?.clients || 0 : 0;
@@ -175,15 +216,44 @@ function AuditDetails({ plan, parsed, border, surface, text, muted }) {
               </ul>
             </div>
           )}
-          {blocked.length > 0 && (
+          {orphans.length > 0 && (
             <div style={{ marginTop: 9 }}>
-              <b>Baixas bloqueadas ({blocked.length}):</b>
-              <ul style={{ margin: "4px 0 0", paddingLeft: 18, color: muted }}>
-                {blocked.slice(0, 20).map((item, index) => <li key={`${item.id || index}`}>{item.client_name || "Cliente"} — título {item.title_number || "sem número"}</li>)}
-              </ul>
+              <b>Possíveis órfãos ({orphans.length}):</b>
+              <div style={{ marginTop: 5, maxHeight: 260, overflowY: "auto", border: `1px solid ${border}`, borderRadius: 7 }}>
+                {orphans.map((item, index) => {
+                  const selected = approvedOrphanIds?.has(String(item.id));
+                  return (
+                    <label key={`${item.id || index}`} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "7px 8px", borderBottom: index < orphans.length - 1 ? `1px solid ${border}` : "none", cursor: item.eligibleForManualApproval ? "pointer" : "default" }}>
+                      <input
+                        type="checkbox"
+                        checked={item.automatic || selected || false}
+                        disabled={item.automatic || !item.eligibleForManualApproval}
+                        onChange={() => onToggleOrphan?.(item.id)}
+                        style={{ marginTop: 2, accentColor: "#16a34a" }}
+                      />
+                      <span>
+                        <b>{item.client_name || "Cliente"}</b> — {item.source || "sem origem"} — título {item.title_number || "sem número"}{item.due_date ? ` — venc. ${item.due_date}` : ""}
+                        <span style={{ display: "block", marginTop: 2, color: item.automatic ? "#16a34a" : muted }}>
+                          {item.automatic ? "Baixa automática segura por fonte." : item.reason}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {orphans.some((item) => item.eligibleForManualApproval) && (
+                <button
+                  type="button"
+                  onClick={onRebuildOrphans}
+                  disabled={rebuildingOrphans}
+                  style={{ marginTop: 7, border: "none", borderRadius: 6, padding: "6px 9px", background: rebuildingOrphans ? "#9ca3af" : "#f59e0b", color: "#fff", fontSize: 10, fontWeight: 800, cursor: rebuildingOrphans ? "not-allowed" : "pointer" }}
+                >
+                  {rebuildingOrphans ? "Recalculando..." : `Recalcular com ${approvedOrphanIds?.size || 0} baixa(s) aprovada(s)`}
+                </button>
+              )}
             </div>
           )}
-          {review.length === 0 && blocked.length === 0 && <div style={{ marginTop: 8, color: "#16a34a", fontWeight: 700 }}>Nenhuma divergência bloqueante encontrada.</div>}
+          {review.length === 0 && orphans.length === 0 && blocked.length === 0 && <div style={{ marginTop: 8, color: "#16a34a", fontWeight: 700 }}>Nenhuma divergência bloqueante encontrada.</div>}
         </div>
       )}
     </div>
@@ -194,6 +264,9 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
   const fileRef = useRef(null);
   const [state, setState] = useState({ status: "idle", progress: 0, stage: "" });
   const [applying, setApplying] = useState(false);
+  const [rebuildingOrphans, setRebuildingOrphans] = useState(false);
+  const [approvedOrphanIds, setApprovedOrphanIds] = useState(() => new Set());
+  const [orphanApprovalsDirty, setOrphanApprovalsDirty] = useState(false);
 
   const surface = t?.surf || "#ffffff";
   const surface2 = t?.surf2 || "#f8fafc";
@@ -213,6 +286,8 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
     if (!file) return;
 
     setApplying(false);
+    setApprovedOrphanIds(new Set());
+    setOrphanApprovalsDirty(false);
     const startedAt = performance.now();
     try {
       await stage(12, "Lendo arquivo");
@@ -284,12 +359,13 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
     setState((previous) => ({ ...previous, status: "applying", progress: 35, stage: "Revalidando e aplicando em transação", message: "Revalidando a carteira e aplicando o plano em uma única operação segura..." }));
     try {
       const result = await onApplyPlan?.(state.plan, state.preview, state.fileName);
+      const localOnly = result?.mode === "local";
       setState((previous) => ({
         ...previous,
         status: "done",
         progress: 100,
         stage: "Importação concluída",
-        message: `Importação segura aplicada: ${result?.created || 0} novo(s), ${result?.updated || 0} atualizado(s), ${result?.lowered || 0} baixa(s) por ausência.`,
+        message: `${localOnly ? "Importação aplicada somente neste navegador" : "Importação segura aplicada no Supabase"}: ${result?.created || 0} novo(s), ${result?.updated || 0} atualizado(s), ${result?.lowered || 0} baixa(s) por ausência.`,
       }));
     } catch (error) {
       setState((previous) => ({ ...previous, status: "error", progress: 0, stage: "Falha", message: error.message }));
@@ -298,12 +374,52 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
     }
   }
 
+  function toggleOrphanApproval(id) {
+    setApprovedOrphanIds((previous) => {
+      const next = new Set(previous);
+      const key = String(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    // O plano aplicado precisa refletir exatamente o que está marcado na tela.
+    // Enquanto a seleção não for recalculada, o botão de aplicação fica bloqueado.
+    setOrphanApprovalsDirty(true);
+  }
+
+  async function rebuildPlanWithApprovedOrphans() {
+    if (!state.preview || rebuildingOrphans) return;
+    setRebuildingOrphans(true);
+    try {
+      const preview = {
+        ...state.preview,
+        seguranca: {
+          ...(state.preview.seguranca || {}),
+          approvedAbsenceIds: Array.from(approvedOrphanIds),
+        },
+      };
+      const plan = await onPreparePlan?.(preview, state.fileName);
+      setState((previous) => ({
+        ...previous,
+        status: "ready",
+        preview,
+        plan,
+        message: `Plano recalculado com ${approvedOrphanIds.size} possível(is) órfão(s) aprovado(s) individualmente.`,
+      }));
+      setOrphanApprovalsDirty(false);
+    } catch (error) {
+      setState((previous) => ({ ...previous, status: "error", message: `Erro ao recalcular possíveis órfãos: ${error.message}` }));
+    } finally {
+      setRebuildingOrphans(false);
+    }
+  }
+
   const plan = state.plan;
   const current = plan?.snapshot?.current || {};
   const imported = plan?.snapshot?.imported || {};
   const summary = plan?.summary || {};
-  const canApply = state.status === "ready" && plan?.canApply && !applying;
-  const isBusy = state.status === "loading" || state.status === "applying";
+  const canApply = state.status === "ready" && plan?.canApply && !applying && !rebuildingOrphans && !orphanApprovalsDirty;
+  const isBusy = state.status === "loading" || state.status === "applying" || rebuildingOrphans;
 
   return (
     <section className="sc-import-preview" style={{ background: surface, border: `1px solid ${border}`, borderRadius: 10, padding: "9px 10px", marginBottom: 12, color: text, minWidth: 0, boxSizing: "border-box" }}>
@@ -346,15 +462,27 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
             <Stat label="Atualizar" value={summary.totalUpdate || 0} muted={muted} color="#3b82f6" />
             <Stat label="Manter" value={summary.totalUnchanged || 0} muted={muted} color={text} />
             <Stat label="Baixar ausência" value={summary.totalAbsence || 0} muted={muted} color="#ef4444" />
+            <Stat label="Possíveis órfãos" value={summary.totalPossibleOrphans || 0} muted={muted} color="#f59e0b" />
             <Stat label="Bloqueadas" value={summary.totalAbsenceBlocked || 0} muted={muted} color="#f59e0b" />
             <Stat label="Revisar" value={summary.totalNeedsReview || 0} muted={muted} color="#f59e0b" />
           </SummaryBlock>
         </div>
       )}
 
-      {plan?.safety?.motivoBloqueio && <div style={{ marginTop: 9, fontSize: 11, color: "#dc2626", fontWeight: 700 }}>{plan.safety.motivoBloqueio}</div>}
+      <SafetyWarnings safety={plan?.safety} border={border} />
       {plan?.reviewRequired?.length > 0 && <div style={{ marginTop: 9, fontSize: 11, color: "#dc2626", fontWeight: 700 }}>Existem títulos ambíguos para revisar. A aplicação foi bloqueada para evitar duplicidade ou baixa incorreta.</div>}
-      <AuditDetails plan={plan} parsed={state.parsed} border={border} surface={surface2} text={text} muted={muted} />
+      <AuditDetails
+        plan={plan}
+        parsed={state.parsed}
+        border={border}
+        surface={surface2}
+        text={text}
+        muted={muted}
+        approvedOrphanIds={approvedOrphanIds}
+        onToggleOrphan={toggleOrphanApproval}
+        onRebuildOrphans={rebuildPlanWithApprovedOrphans}
+        rebuildingOrphans={rebuildingOrphans}
+      />
     </section>
   );
 }

@@ -963,8 +963,11 @@ export default function Dashboard() {
       plan,
       buildImportApplicationPlan({ preview, existingTitles: currentTitles, importFile }),
     );
-    if (revalidatedPlan.safety?.importacaoParcial && revalidatedPlan.absences.length > 0) {
-      throw new Error("Plano parcial inválido: a baixa automática deve permanecer bloqueada.");
+    if (
+      revalidatedPlan.safety?.importacaoParcial &&
+      revalidatedPlan.absences.some((item) => !["automatic", "manual-partial"].includes(item.approvalMode))
+    ) {
+      throw new Error("Plano parcial inválido: existe baixa sem cobertura segura ou aprovação individual.");
     }
 
     setIsImporting(true);

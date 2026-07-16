@@ -148,8 +148,8 @@ begin
       coalesce(v_payload->>'title_number', ''),
       nullif(v_payload->>'seq', ''),
       nullif(v_payload->>'nf_servico', ''),
-      nullif(v_payload->>'issue_date', ''),
-      nullif(v_payload->>'due_date', ''),
+      nullif(v_payload->>'issue_date', '')::date,
+      nullif(v_payload->>'due_date', '')::date,
       coalesce((v_payload->>'original_value')::numeric, 0),
       coalesce((v_payload->>'received_value')::numeric, 0),
       coalesce((v_payload->>'open_value')::numeric, 0),
@@ -164,8 +164,8 @@ begin
       nullif(v_payload->>'current_motive', ''),
       nullif(v_payload->>'current_contact_type', ''),
       nullif(v_payload->>'client_category', ''),
-      nullif(v_payload->>'promise_date', ''),
-      nullif(v_payload->>'last_contact_date', ''),
+      nullif(v_payload->>'promise_date', '')::date,
+      nullif(v_payload->>'last_contact_date', '')::date,
       nullif(v_payload->>'last_note', ''),
       coalesce((v_payload->>'contact_count')::integer, 0),
       nullif(v_payload->>'protest_requested_by', ''),
@@ -218,8 +218,8 @@ begin
       title_number = case when v_payload ? 'title_number' then coalesce(v_payload->>'title_number', '') else title_number end,
       seq = case when v_payload ? 'seq' then nullif(v_payload->>'seq', '') else seq end,
       nf_servico = case when v_payload ? 'nf_servico' then nullif(v_payload->>'nf_servico', '') else nf_servico end,
-      issue_date = case when v_payload ? 'issue_date' then nullif(v_payload->>'issue_date', '') else issue_date end,
-      due_date = case when v_payload ? 'due_date' then nullif(v_payload->>'due_date', '') else due_date end,
+      issue_date = case when v_payload ? 'issue_date' then nullif(v_payload->>'issue_date', '')::date else issue_date end,
+      due_date = case when v_payload ? 'due_date' then nullif(v_payload->>'due_date', '')::date else due_date end,
       original_value = case when v_payload ? 'original_value' then coalesce((v_payload->>'original_value')::numeric, 0) else original_value end,
       received_value = case when v_payload ? 'received_value' then coalesce((v_payload->>'received_value')::numeric, 0) else received_value end,
       open_value = case when v_payload ? 'open_value' then coalesce((v_payload->>'open_value')::numeric, 0) else open_value end,
@@ -265,7 +265,7 @@ begin
     )
     select
       id::text, client_code, client_name, 'IMPORTACAO', 'BAIXA_AUSENCIA',
-      current_date::text, 'Baixado', 'Não consta na nova carteira importada',
+      current_date, 'Baixado', 'Não consta na nova carteira importada',
       concat('Baixa automática segura do arquivo ', coalesce(p_import_file, 'sem nome')),
       'Importação Consolidada'
     from public.titles where id = v_id;

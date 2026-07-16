@@ -128,7 +128,22 @@ function hasMeaningfulChange(existing, payload) {
 }
 
 function isManagedActiveTitle(item) {
-  return item?.active !== false && MANAGED_SOURCES.has(String(item?.source || ""));
+  const recordOrigin = String(item?.record_origin || "ERP").trim().toUpperCase();
+  return item?.active !== false &&
+    recordOrigin !== "MANUAL" &&
+    MANAGED_SOURCES.has(String(item?.source || ""));
+}
+
+function buildImportedKeyPayload(record, importFile) {
+  const payload = canonicalToTituloPayload(record, null, importFile);
+  return {
+    source: payload.source,
+    client_code: payload.client_code,
+    doc_type: payload.doc_type,
+    title_number: payload.title_number,
+    seq: payload.seq,
+    due_date: payload.due_date,
+  };
 }
 
 function getImportedSourceCoverage(preview, consolidados) {
@@ -539,11 +554,32 @@ export function buildImportApplicationPlan({
       eligibleForManualApproval,
     };
   });
+  const reconciliationRequest = preview?.seguranca?.sourceReconciliation;
+  const reconciliationSource = normalizeImportSource(
+    reconciliationRequest?.source || (importedSources.length === 1 ? importedSources[0] : ""),
+  );
+  const reconciliationCandidates = possibleOrphans.filter((orphan) =>
+    orphan.eligibleForManualApproval &&
+    orphan.coverage.exact &&
+    orphan.coverage.source === reconciliationSource,
+  );
+  const reconciliationActive = reconciliationRequest?.confirmed === true &&
+    importedSources.length === 1 &&
+    importedSources[0] === reconciliationSource &&
+    reconciliationSource !== "RPT_E_FINR" &&
+    reviewRequired.length === 0 &&
+    importedRecords.every(hasCompleteOfficialTitleKey) &&
+    Number(reconciliationRequest?.expectedImportedCount) === importedRecords.length &&
+    Number(reconciliationRequest?.expectedOrphanCount) === reconciliationCandidates.length;
+  const reconciliationCandidateIds = new Set(
+    reconciliationCandidates.map((orphan) => String(orphan.id)),
+  );
   const approvedAbsenceIds = new Set(
     (preview?.seguranca?.approvedAbsenceIds || []).map(String),
   );
   const selectedOrphans = possibleOrphans.filter((orphan) =>
     orphan.automatic ||
+    (reconciliationActive && reconciliationCandidateIds.has(String(orphan.id))) ||
     (orphan.eligibleForManualApproval && approvedAbsenceIds.has(String(orphan.id))),
   );
   const selectedOrphanIds = new Set(selectedOrphans.map((orphan) => String(orphan.id)));
@@ -552,7 +588,11 @@ export function buildImportApplicationPlan({
     id: orphan.id,
     existing: orphan.existing,
     confidence: "exact-key",
-    approvalMode: orphan.automatic ? "automatic" : "manual-partial",
+    approvalMode: orphan.automatic
+      ? "automatic"
+      : reconciliationActive && reconciliationCandidateIds.has(String(orphan.id))
+        ? "source-reconciliation"
+        : "manual-partial",
     payload: getStatusBaixaPorAusencia(),
   }));
   const absenceBlocked = possibleOrphans.filter((orphan) => !selectedOrphanIds.has(String(orphan.id)));
@@ -622,6 +662,15 @@ export function buildImportApplicationPlan({
     absences,
     absenceBlocked,
     possibleOrphans,
+    reconciliation: reconciliationActive
+      ? {
+          mode: "source-reconciliation",
+          source: reconciliationSource,
+          expectedAbsences: reconciliationCandidates.length,
+          expectedImportedCount: importedRecords.length,
+          importedKeys: importedRecords.map((record) => buildImportedKeyPayload(record, importFile)),
+        }
+      : null,
     canApply: importedRecords.length > 0 && reviewRequired.length === 0,
     summary: {
       totalCreate: creates.length,
@@ -653,6 +702,14 @@ export function buildImportApplicationPlan({
       podeAplicarBaixaAutomatica: canApplyAbsence,
       podeAplicarBaixaIndividual: possibleOrphans.some((item) => item.eligibleForManualApproval),
       baixasIndividuaisAprovadas: absences.filter((item) => item.approvalMode === "manual-partial").length,
+      reconciliacaoIntegralAtiva: reconciliationActive,
+      reconciliacaoIntegralDisponivel:
+        importedSources.length === 1 &&
+        importedSources[0] !== "RPT_E_FINR" &&
+        reviewRequired.length === 0 &&
+        reconciliationCandidates.length > 0,
+      reconciliacaoOrigem: reconciliationActive ? reconciliationSource : null,
+      reconciliacaoTotalBaixas: reconciliationActive ? reconciliationCandidates.length : 0,
       totalPossiveisOrfaos: possibleOrphans.length,
       totalFontesNaoCobertas: uncoveredSourceTitles.length,
       totalAtivosOrigem: previousCount,

@@ -173,3 +173,25 @@ test("entidades pequenas continuam no localStorage", async () => {
   assert.equal(logs[0].file_name, "rpt.xlsx");
   assert.equal(localStorage.calls.some((call) => call.key === "sc_local_entity_ImportLog"), true);
 });
+
+test("cache remoto pode ser salvo sem disparar recarga das entidades", async () => {
+  const storage = createLocalEntityStorage({
+    windowObj: { localStorage: makeLocalStorage(), indexedDB: makeFakeIndexedDB() },
+  });
+  let titleNotifications = 0;
+  let eventNotifications = 0;
+  storage.subscribe("Titulo", () => { titleNotifications += 1; });
+  storage.subscribe("ChargeEvent", () => { eventNotifications += 1; });
+
+  await storage.saveMany("Titulo", [{ id: "titulo_cache", client_name: "Cliente cache" }], { notify: false });
+  await storage.saveMany("ChargeEvent", [{ id: "evento_cache", event_type: "COBRANCA" }], { notify: false });
+
+  assert.equal(titleNotifications, 0);
+  assert.equal(eventNotifications, 0);
+
+  await storage.saveMany("Titulo", [{ id: "titulo_manual", client_name: "Cliente manual" }]);
+  await storage.saveMany("ChargeEvent", [{ id: "evento_manual", event_type: "COBRANCA" }]);
+
+  assert.equal(titleNotifications, 1);
+  assert.equal(eventNotifications, 1);
+});

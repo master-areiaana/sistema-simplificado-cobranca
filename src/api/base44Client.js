@@ -78,25 +78,40 @@ export function subscribeDataMode(callback) {
   return () => dataModeSubscribers.delete(callback);
 }
 
-async function runRemote(fn) {
-  const run = async () => {
-    let lastError = null;
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      try {
-        const result = await fn();
-        markRemoteSuccess();
-        return result;
-      } catch (error) {
-        lastError = error;
-        if (!isRateLimitError(error)) throw error;
-        await sleep(1200 + attempt * 600);
-      }
+async function executeRemoteWithRetry(fn) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      const result = await fn();
+      markRemoteSuccess();
+      return result;
+    } catch (error) {
+      lastError = error;
+      if (!isRateLimitError(error)) throw error;
+      await sleep(1200 + attempt * 600);
     }
-    throw lastError;
-  };
+  }
+  throw lastError;
+}
+
+async function runRemote(fn) {
+  const run = () => executeRemoteWithRetry(fn);
   const task = queue.then(run, run);
   queue = task.catch(() => undefined);
   return task;
+}
+
+// Leituras independentes podem ocorrer em paralelo. A fila global continua
+// exclusiva para gravacoes, preservando a ordem de create/update/importacao.
+async function runRemoteRead(fn) {
+  return executeRemoteWithRetry(fn);
+}
+
+function cacheRemoteRowsInBackground(entityName, rows, operation) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  void localStorageAdapter.saveMany(entityName, rows).catch((cacheError) => {
+    console.warn(`[dados] cache ${operation} ${entityName}`, cacheError);
+  });
 }
 
 function sameValue(left, right) { return String(left ?? '').trim() === String(right ?? '').trim(); }
@@ -424,38 +439,36 @@ function makeHybridEntity(entityName) {
 
   const entity = {
     async list(orderBy, limit = 1000) {
-      const fallback = await local.list(orderBy, limit);
-      if (!table) return fallback;
+      if (!table) return local.list(orderBy, limit);
       try {
-        const rows = await runRemote(async () => {
+        const rows = await runRemoteRead(async () => {
           return fetchRemoteRows({ entityName, table, orderBy, limit });
         });
         if (Array.isArray(rows)) {
-          try { await localStorageAdapter.merge(entityName, rows); } catch (cacheError) { console.warn(`[dados] cache list ${entityName}`, cacheError); }
+          cacheRemoteRowsInBackground(entityName, rows, 'list');
           return rows;
         }
       } catch (error) {
         markRemoteFailure(error);
         console.warn(`[dados] ${entityName} usando cache local somente para leitura`, error);
       }
-      return fallback;
+      return local.list(orderBy, limit);
     },
     async filter(criteria = {}, orderBy, limit = 1000) {
-      const fallback = await local.filter(criteria, orderBy, limit);
-      if (!table) return fallback;
+      if (!table) return local.filter(criteria, orderBy, limit);
       try {
-        const rows = await runRemote(async () => {
+        const rows = await runRemoteRead(async () => {
           return fetchRemoteRows({ entityName, table, criteria, orderBy, limit });
         });
         if (Array.isArray(rows)) {
-          try { await localStorageAdapter.merge(entityName, rows); } catch (cacheError) { console.warn(`[dados] cache filter ${entityName}`, cacheError); }
+          cacheRemoteRowsInBackground(entityName, rows, 'filter');
           return rows;
         }
       } catch (error) {
         markRemoteFailure(error);
         console.warn(`[dados] filter ${entityName} usando cache local somente para leitura`, error);
       }
-      return fallback;
+      return local.filter(criteria, orderBy, limit);
     },
     async create(record) {
       if (!table) return local.create(record);

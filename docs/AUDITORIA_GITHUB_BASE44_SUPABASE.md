@@ -219,9 +219,9 @@ A estrutura visual está alinhada ao modelo: tema claro, menu lateral compacto, 
 
 ## Validação automatizada final
 
-- `npm test`: 118 testes aprovados, zero falhas;
+- `npm test`: 119 testes aprovados, zero falhas;
 - `npm run lint`: aprovado sem erros;
 - `npm run build -- --configLoader runner`: aprovado;
-- planejamento de 1.000 títulos em memória: aproximadamente 40 ms no teste automatizado;
+- planejamento de 1.000 títulos em memória: aproximadamente 25 ms no teste automatizado final;
 - carregamento visual local da carteira de teste: aproximadamente 557 ms;
 - build final aberto e conferido novamente na Carteira Geral após a centralização dos KPIs.

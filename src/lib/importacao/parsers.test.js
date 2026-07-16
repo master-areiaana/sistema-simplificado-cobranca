@@ -182,6 +182,76 @@ test("RPT_7007 usa os saldos oficiais dos títulos 6598 e 1627", () => {
   assert.equal(records[1]["Saldo Restante (R$)"], 3339.53);
 });
 
+test("RPT_7007 preserva os totais de regressão da revisão real com 41 títulos", () => {
+  const premixCodes = [67, 70, 71, 73, 88, 728];
+  const premixBalances = [9159.07, ...Array(17).fill(50000), 232780.30];
+  const rows = premixBalances.map((saldo, index) => ({
+    "Tipo Documento": "NFe",
+    "Número Documento": index === 0 ? 6598 : 7000 + index,
+    "Sequência": 1,
+    "Código Cliente": premixCodes[index % premixCodes.length],
+    "Razão Social": "PREMIX CONCRETO LTDA",
+    "Data Vencimento": "30/06/2026",
+    "Valor Total": index === 0 ? 46853.53 : saldo,
+    "Valor Recebido": index === 0 ? 37694 : 0,
+    "Saldo": saldo,
+  }));
+
+  rows.push({
+    "Tipo Documento": "FAT",
+    "Número Documento": 1627,
+    "Sequência": 1,
+    "Código Cliente": 451,
+    "Razão Social": "SUPERTEX CONCRETO LTDA",
+    "Data Vencimento": "30/06/2026",
+    "Valor Total": 149894.76,
+    "Valor Recebido": 146555,
+    "Saldo": 3339.53,
+  });
+  rows.push({
+    "Tipo Documento": "FAT",
+    "Número Documento": 202798,
+    "Sequência": 1,
+    "Código Cliente": 224,
+    "Razão Social": "ARTEFATOS DE CIMENTO RAIMONDI LTDA",
+    "Data Vencimento": "30/06/2026",
+    "Valor Total": 202798.30,
+    "Valor Recebido": 0,
+    "Saldo": 202798.30,
+  });
+
+  for (let index = 0; index < 20; index += 1) {
+    const saldo = index === 19 ? 15121.31 : 15000;
+    rows.push({
+      "Tipo Documento": "FAT",
+      "Número Documento": 8000 + index,
+      "Sequência": 1,
+      "Código Cliente": 900 + index,
+      "Razão Social": `CLIENTE EB ${String((index % 15) + 1).padStart(2, "0")}`,
+      "Data Vencimento": "30/06/2026",
+      "Valor Total": saldo,
+      "Valor Recebido": 0,
+      "Saldo": saldo,
+    });
+  }
+
+  const records = parseRPT7007Canonical(rows);
+  const uniqueClients = new Set(records.map((record) => record["Nome Cliente"].trim().toUpperCase()));
+  const totalOriginal = records.reduce((sum, record) => sum + record["Valor Total (R$)"], 0);
+  const totalReceived = records.reduce((sum, record) => sum + record["Receb. Parcial (R$)"], 0);
+  const totalBalance = records.reduce((sum, record) => sum + record["Saldo Restante (R$)"], 0);
+  const premix = records.filter((record) => record["Nome Cliente"] === "PREMIX CONCRETO LTDA");
+
+  assert.equal(records.length, 41);
+  assert.equal(uniqueClients.size, 18);
+  assert.equal(Number(totalOriginal.toFixed(2)), 1782448.20);
+  assert.equal(Number(totalReceived.toFixed(2)), 184249.00);
+  assert.equal(Number(totalBalance.toFixed(2)), 1598198.51);
+  assert.equal(premix.length, 19);
+  assert.deepEqual([...new Set(premix.map((record) => record["Código Cliente"]))].sort(), ["67", "70", "71", "728", "73", "88"]);
+  assert.equal(Number(premix.reduce((sum, record) => sum + record["Saldo Restante (R$)"], 0).toFixed(2)), 1091939.37);
+});
+
 test("RPT_7007 calcula encargos usando percentuais informados ao parser", () => {
   const [record] = parseRPT7007Canonical([{
     TPTIT: "NF",

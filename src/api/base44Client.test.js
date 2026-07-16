@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { applyImportPlanToRows, getDataModeStatus, normalizeRemoteRow, normalizeRemoteWrite } from "./base44Client.js";
+import {
+  applyImportPlanToRows,
+  applyImportPlanAtomic,
+  buildImportAbsenceRpcPayload,
+  getDataModeStatus,
+  normalizeRemoteRow,
+  normalizeRemoteWrite,
+} from "./base44Client.js";
 
 function title(overrides = {}) {
   return {
@@ -107,4 +114,37 @@ test("adaptador converte titulo_id do app para title_id do Supabase", () => {
   const payload = normalizeRemoteWrite("ChargeEvent", { titulo_id: "titulo-1", event_type: "COBRANCA" });
   assert.equal(payload.title_id, "titulo-1");
   assert.equal("titulo_id" in payload, false);
+});
+
+test("reconciliação integral envia payload compacto em vez de milhares de ids", () => {
+  const payload = buildImportAbsenceRpcPayload({
+    absences: Array.from({ length: 1000 }, (_, index) => ({ id: `titulo-${index}` })),
+    reconciliation: {
+      mode: "source-reconciliation",
+      source: "RPT_7007_CONS_CAR_EB",
+      expectedAbsences: 1000,
+      expectedImportedCount: 1,
+      importedKeys: [{
+        source: "RPT_7007_CONS_CAR_EB",
+        client_code: "10",
+        doc_type: "DM",
+        title_number: "123",
+        seq: "1",
+        due_date: "2026-06-01",
+      }],
+    },
+  });
+
+  assert.equal(payload.length, 1);
+  assert.equal(payload[0].mode, "source-reconciliation");
+  assert.equal(payload[0].expected_absences, 1000);
+  assert.equal(payload[0].imported_keys.length, 1);
+  assert.equal("id" in payload[0], false);
+});
+
+test("reconciliação integral não pode cair para armazenamento local", async () => {
+  await assert.rejects(
+    applyImportPlanAtomic({ canApply: true, reconciliation: { mode: "source-reconciliation" } }),
+    /exige Supabase conectado/,
+  );
 });

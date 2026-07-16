@@ -9,9 +9,10 @@
 -- Requer Postgres 15+ (padrão no Supabase) por causa de NULLS NOT DISTINCT.
 -- =====================================================================
 
--- =========================== TABELA: titulos =========================
-create table if not exists public.titulos (
-  id                       uuid primary key default gen_random_uuid(),
+-- ============================ TABELA: titles =========================
+-- Nome preservado para compatibilidade com o banco Supabase existente.
+create table if not exists public.titles (
+  id                       text primary key default gen_random_uuid()::text,
 
   -- Origem do relatório (imutável após criação)
   source                   text,          -- 'FINR1253' | 'RPT_7007_CONS_CAR_EB'
@@ -32,9 +33,9 @@ create table if not exists public.titulos (
   seq                      text,
   nf_servico               text,
 
-  -- Datas (armazenadas como texto 'YYYY-MM-DD' para casar com o app)
-  issue_date               text,
-  due_date                 text,
+  -- Datas (o cliente envia ISO YYYY-MM-DD)
+  issue_date               date,
+  due_date                 date,
 
   -- Valores
   original_value           numeric default 0,
@@ -42,6 +43,12 @@ create table if not exists public.titulos (
   open_value               numeric default 0,
   erp_balance              numeric default 0,
   partial_payment_detected boolean default false,
+  -- Colunas legadas mantidas sincronizadas para compatibilidade
+  acrescimo                numeric default 0,
+  recebido_parcial         numeric default 0,
+  calculado                numeric default 0,
+  current_value            numeric default 0,
+  atraso_dias_importado    integer default 0,
 
   portador                 text,
   active                   boolean default true,
@@ -52,8 +59,8 @@ create table if not exists public.titulos (
   current_status           text default 'Não Contatado',
   current_motive           text,
   current_contact_type     text,
-  promise_date             text,
-  last_contact_date        text,
+  promise_date             date,
+  last_contact_date        date,
   last_note                text,
   action_to_do             text,
   contact_count            integer default 0,
@@ -62,49 +69,49 @@ create table if not exists public.titulos (
 
   -- Perdas
   loss_status              boolean default false,
-  loss_date                text,
+  loss_date                date,
   loss_reason              text,
 
   updated_by               text,
-  created_date             timestamptz default now(),
-  updated_date             timestamptz default now()
+  created_at               timestamptz default now(),
+  updated_at               timestamptz default now()
 );
 
 -- ***** A CHAVE QUE MATA OS DUPLICADOS *****
 -- Um título é único pela combinação origem + cliente + tipo + número +
 -- sequência + vencimento. NULLS NOT DISTINCT faz campos vazios (null)
 -- contarem como iguais, evitando duplicatas quando seq/vencimento faltam.
-create unique index if not exists titulos_chave_oficial
-  on public.titulos (source, client_code, doc_type, title_number, seq, due_date)
+create unique index if not exists titles_chave_oficial
+  on public.titles (source, client_code, doc_type, title_number, seq, due_date)
   nulls not distinct;
 
 -- Índices de apoio para as telas
-create index if not exists titulos_active_idx        on public.titulos (active);
-create index if not exists titulos_workflow_idx      on public.titulos (workflow_status);
-create index if not exists titulos_client_name_idx   on public.titulos (client_name);
-create index if not exists titulos_updated_date_idx  on public.titulos (updated_date desc);
+create index if not exists titles_active_idx        on public.titles (active);
+create index if not exists titles_workflow_idx      on public.titles (workflow_status);
+create index if not exists titles_client_name_idx   on public.titles (client_name);
+create index if not exists titles_updated_at_idx    on public.titles (updated_at desc);
 
 -- ======================= TABELA: charge_events =======================
 create table if not exists public.charge_events (
   id                    uuid primary key default gen_random_uuid(),
-  titulo_id             text,
+  title_id              text not null references public.titles(id) on delete cascade,
   client_code           text,
   client_name           text,
   event_type            text,
   event_subtype         text,
-  event_date            text,
+  event_date            date,
   status                text,
   motive                text,
   contact_type          text,
-  promise_date          text,
+  promise_date          date,
   note                  text,
   protest_requested_by  text,
   event_user            text,
-  created_date          timestamptz default now(),
-  updated_date          timestamptz default now()
+  created_at            timestamptz default now(),
+  updated_at            timestamptz default now()
 );
-create index if not exists charge_events_titulo_idx on public.charge_events (titulo_id);
-create index if not exists charge_events_date_idx   on public.charge_events (created_date desc);
+create index if not exists charge_events_title_idx on public.charge_events (title_id);
+create index if not exists charge_events_date_idx  on public.charge_events (created_at desc);
 
 -- ========================= TABELA: import_logs =======================
 create table if not exists public.import_logs (
@@ -115,26 +122,25 @@ create table if not exists public.import_logs (
   inserted_count     numeric,
   updated_count      numeric,
   deactivated_count  numeric,
-  created_date       timestamptz default now(),
-  updated_date       timestamptz default now()
+  imported_at        timestamptz default now()
 );
 
--- ============ Trigger: manter updated_date sempre atualizado ==========
-create or replace function public.set_updated_date()
+-- ============ Trigger: manter updated_at sempre atualizado =============
+create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
-  new.updated_date = now();
+  new.updated_at = now();
   return new;
 end;
 $$;
 
-drop trigger if exists trg_titulos_updated on public.titulos;
-create trigger trg_titulos_updated before update on public.titulos
-  for each row execute function public.set_updated_date();
+drop trigger if exists trg_titles_updated_at on public.titles;
+create trigger trg_titles_updated_at before update on public.titles
+  for each row execute function public.set_updated_at();
 
-drop trigger if exists trg_charge_events_updated on public.charge_events;
-create trigger trg_charge_events_updated before update on public.charge_events
-  for each row execute function public.set_updated_date();
+drop trigger if exists trg_charge_events_updated_at on public.charge_events;
+create trigger trg_charge_events_updated_at before update on public.charge_events
+  for each row execute function public.set_updated_at();
 
 -- =====================================================================
 -- PERMISSÕES (RLS)
@@ -148,16 +154,16 @@ create trigger trg_charge_events_updated before update on public.charge_events
 -- é ativar login (Supabase Auth) e trocar as políticas pelo "MODO SEGURO"
 -- comentado no final. Enquanto isso, mantenha a URL do app restrita.
 -- =====================================================================
-alter table public.titulos       enable row level security;
+alter table public.titles        enable row level security;
 alter table public.charge_events enable row level security;
 alter table public.import_logs   enable row level security;
 
 -- MODO ABERTO (padrão) --------------------------------------------------
-drop policy if exists titulos_open       on public.titulos;
+drop policy if exists titles_open        on public.titles;
 drop policy if exists charge_events_open on public.charge_events;
 drop policy if exists import_logs_open   on public.import_logs;
 
-create policy titulos_open       on public.titulos
+create policy titles_open        on public.titles
   for all to anon, authenticated using (true) with check (true);
 create policy charge_events_open on public.charge_events
   for all to anon, authenticated using (true) with check (true);
@@ -167,11 +173,11 @@ create policy import_logs_open   on public.import_logs
 -- MODO SEGURO (quando ativar login Supabase Auth) -----------------------
 -- Descomente e rode para exigir usuário autenticado:
 --
--- drop policy if exists titulos_open       on public.titulos;
+-- drop policy if exists titles_open        on public.titles;
 -- drop policy if exists charge_events_open on public.charge_events;
 -- drop policy if exists import_logs_open   on public.import_logs;
 --
--- create policy titulos_auth       on public.titulos
+-- create policy titles_auth        on public.titles
 --   for all to authenticated using (true) with check (true);
 -- create policy charge_events_auth on public.charge_events
 --   for all to authenticated using (true) with check (true);

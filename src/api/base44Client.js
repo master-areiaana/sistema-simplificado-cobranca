@@ -1,3 +1,4 @@
+import { buildOfficialTitleKey } from '../lib/importacao/domain.js';
 import { supabase, isSupabaseConfigured } from './supabaseClient.js';
 import { createLocalEntityStorage } from './localEntityStorage.js';
 
@@ -5,20 +6,77 @@ export const CAMPOS_MANUAIS = [
   'current_status', 'current_motive', 'current_contact_type', 'promise_date',
   'last_contact_date', 'last_note', 'action_to_do', 'description', 'contact_count',
   'protest_requested_by', 'workflow_status', 'updated_by', 'client_category',
-  ];
+];
 
 const AUTO_IMPACT_STATUSES = new Set(['pago_importacao', 'sem_carteira']);
+const TITLE_CONFLICT_COLUMNS = 'source,client_code,doc_type,title_number,seq,due_date';
 const localStorageAdapter = createLocalEntityStorage();
+const dataModeSubscribers = new Set();
 let queue = Promise.resolve();
+let lastRemoteError = null;
 
 const TABLE_BY_ENTITY = {
-  Titulo: 'titulos',
+  // O projeto Supabase existente usa public.titles. Manter este mapeamento
+  // evita criar uma segunda carteira vazia em public.titulos.
+  Titulo: 'titles',
   ChargeEvent: 'charge_events',
   ImportLog: 'import_logs',
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const isRateLimitError = (error) => String(error?.message || error || '').toLowerCase().includes('rate limit');
+const nowISO = () => new Date().toISOString();
+const newRecordId = () => globalThis.crypto?.randomUUID?.() || `record_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+function notifyDataMode() {
+  const status = getDataModeStatus();
+  for (const callback of dataModeSubscribers) {
+    try { callback(status); } catch { /* noop */ }
+  }
+}
+
+function markRemoteSuccess() {
+  if (!lastRemoteError) return;
+  lastRemoteError = null;
+  notifyDataMode();
+}
+
+function markRemoteFailure(error) {
+  lastRemoteError = error || new Error('Falha de comunicação com o Supabase.');
+  notifyDataMode();
+}
+
+export function getDataModeStatus() {
+  const configured = isSupabaseConfigured();
+  if (!configured) {
+    return {
+      mode: 'local',
+      configured: false,
+      remoteAvailable: false,
+      message: 'Supabase não configurado. Dados somente neste navegador',
+    };
+  }
+  if (lastRemoteError) {
+    return {
+      mode: 'cache',
+      configured: true,
+      remoteAvailable: false,
+      message: 'Supabase indisponível. Gravações remotas bloqueadas',
+      error: String(lastRemoteError?.message || lastRemoteError),
+    };
+  }
+  return {
+    mode: 'supabase',
+    configured: true,
+    remoteAvailable: true,
+    message: 'Modo de dados: Supabase',
+  };
+}
+
+export function subscribeDataMode(callback) {
+  dataModeSubscribers.add(callback);
+  return () => dataModeSubscribers.delete(callback);
+}
 
 async function runRemote(fn) {
   const run = async () => {
@@ -26,6 +84,7 @@ async function runRemote(fn) {
     for (let attempt = 0; attempt < 6; attempt += 1) {
       try {
         const result = await fn();
+        markRemoteSuccess();
         return result;
       } catch (error) {
         lastError = error;
@@ -53,7 +112,7 @@ function sortRows(rows, orderBy = '') {
 }
 
 function isFinancialImportUpdate(fields = {}) {
-  if (String(fields.updated_by || '') !== 'Importação') return false;
+  if (!String(fields.updated_by || '').startsWith('Importação')) return false;
   return fields.active === true || 'source' in fields || 'title_number' in fields || 'original_value' in fields || 'open_value' in fields || 'due_date' in fields;
 }
 
@@ -89,6 +148,34 @@ async function resolveExisting(entityName, id) {
   }
 }
 
+function normalizeBulkUpdateItem(item = {}) {
+  if (item.payload && item.id) return { id: item.id, fields: item.payload };
+  const { id, ...fields } = item;
+  return { id, fields };
+}
+
+async function applyLocalBulkUpdates(entityName, updates = []) {
+  const rows = await localStorageAdapter.read(entityName);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const saved = [];
+  for (const raw of updates) {
+    const { id, fields: rawFields } = normalizeBulkUpdateItem(raw);
+    if (!id) throw new Error(`bulkUpdate ${entityName}: registro sem id.`);
+    let fields = rawFields || {};
+    if (entityName === 'Titulo') {
+      const decision = sanitizeTituloUpdate(fields);
+      if (decision.blocked) throw new Error('Atualização automática bloqueada pela proteção da Carteira Geral.');
+      fields = decision.fields;
+    }
+    const previous = byId.get(id) || { id, created_date: nowISO() };
+    const next = { ...previous, ...fields, id, updated_date: nowISO() };
+    byId.set(id, next);
+    saved.push(next);
+  }
+  await localStorageAdapter.write(entityName, Array.from(byId.values()));
+  return saved;
+}
+
 function makeLocalEntity(entityName) {
   return {
     async list(orderBy, limit = 1000) {
@@ -109,6 +196,7 @@ function makeLocalEntity(entityName) {
       return localStorageAdapter.save(entityName, { ...(fields || {}), id });
     },
     async bulkCreate(records = []) { return localStorageAdapter.saveMany(entityName, records); },
+    async bulkUpdate(updates = []) { return applyLocalBulkUpdates(entityName, updates); },
     subscribe(callback) { return localStorageAdapter.subscribe(entityName, callback); },
   };
 }
@@ -118,122 +206,330 @@ function remoteTable(entityName) {
   return TABLE_BY_ENTITY[entityName] || null;
 }
 
-function applyOrderBy(query, orderBy) {
-  if (!orderBy) return query;
+export function normalizeRemoteRow(entityName, row = {}) {
+  if (entityName === 'Titulo') {
+    const legacyOpenValue = row.current_value ?? row.calculado;
+    return {
+      ...row,
+      received_value: row.received_value ?? row.recebido_parcial ?? 0,
+      open_value: row.open_value ?? legacyOpenValue ?? row.original_value ?? 0,
+      erp_balance: row.erp_balance ?? legacyOpenValue ?? row.original_value ?? 0,
+      workflow_status: row.workflow_status || (row.active === false ? 'baixado_importacao' : 'normal'),
+      created_date: row.created_date ?? row.created_at,
+      updated_date: row.updated_date ?? row.updated_at,
+    };
+  }
+  if (entityName === 'ChargeEvent') {
+    return {
+      ...row,
+      titulo_id: row.titulo_id ?? row.title_id,
+      created_date: row.created_date ?? row.created_at,
+      updated_date: row.updated_date ?? row.updated_at,
+    };
+  }
+  if (entityName === 'ImportLog') {
+    return {
+      ...row,
+      created_date: row.created_date ?? row.imported_at,
+      updated_date: row.updated_date ?? row.imported_at,
+    };
+  }
+  return row;
+}
+
+export function normalizeRemoteWrite(entityName, record = {}) {
+  if (entityName === 'Titulo') {
+    const next = { ...record };
+    if (Object.prototype.hasOwnProperty.call(next, 'open_value')) {
+      next.current_value = next.open_value;
+      next.calculado = next.open_value;
+    }
+    if (Object.prototype.hasOwnProperty.call(next, 'received_value')) {
+      next.recebido_parcial = next.received_value;
+    }
+    return next;
+  }
+  if (entityName === 'ChargeEvent') {
+    const next = { ...record, title_id: record.title_id ?? record.titulo_id };
+    delete next.titulo_id;
+    return next;
+  }
+  return { ...record };
+}
+
+function remoteOrderField(entityName, field) {
+  if (entityName === 'Titulo') {
+    if (field === 'updated_date') return 'updated_at';
+    if (field === 'created_date') return 'created_at';
+  }
+  if (entityName === 'ChargeEvent') {
+    if (field === 'updated_date') return 'updated_at';
+    if (field === 'created_date') return 'created_at';
+  }
+  if (entityName === 'ImportLog' && ['updated_date', 'created_date'].includes(field)) return 'imported_at';
+  return field;
+}
+
+function remoteFilterField(entityName, field) {
+  if (entityName === 'ChargeEvent' && field === 'titulo_id') return 'title_id';
+  return field;
+}
+
+function applyOrderBy(query, orderBy, entityName) {
+  if (!orderBy) return query.order('id', { ascending: true, nullsFirst: false });
   const desc = String(orderBy).startsWith('-');
-  const field = desc ? String(orderBy).slice(1) : String(orderBy);
-  return query.order(field, { ascending: !desc, nullsFirst: false });
+  const requestedField = desc ? String(orderBy).slice(1) : String(orderBy);
+  const field = remoteOrderField(entityName, requestedField);
+  const ordered = query.order(field, { ascending: !desc, nullsFirst: false });
+  return field === 'id' ? ordered : ordered.order('id', { ascending: true, nullsFirst: false });
+}
+
+async function fetchRemoteRows({ entityName, table, criteria = {}, orderBy, limit }) {
+  const requestedLimit = Math.max(0, Number(limit) || 0);
+  if (requestedLimit === 0) return [];
+  const pageSize = Math.min(1000, requestedLimit);
+  const rows = [];
+
+  while (rows.length < requestedLimit) {
+    const from = rows.length;
+    const to = Math.min(from + pageSize, requestedLimit) - 1;
+    let query = supabase.from(table).select('*').range(from, to);
+    for (const [field, expected] of Object.entries(criteria || {})) {
+      if (expected !== undefined) query = query.eq(remoteFilterField(entityName, field), expected);
+    }
+    query = applyOrderBy(query, orderBy, entityName);
+    const { data, error } = await query;
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page.map((row) => normalizeRemoteRow(entityName, row)));
+    if (page.length < pageSize) break;
+  }
+
+  return rows;
+}
+
+function remoteWriteError(action, entityName, error) {
+  markRemoteFailure(error);
+  const detail = String(error?.message || error || 'erro desconhecido');
+  const wrapped = new Error(`Supabase recusou ${action} de ${entityName}: ${detail}. Nenhuma gravação local foi usada como sucesso.`);
+  wrapped.code = error?.code || 'SUPABASE_WRITE_FAILED';
+  wrapped.cause = error;
+  return wrapped;
+}
+
+async function remoteInsertOrUpsert(entityName, table, records, single = false) {
+  const inputRecords = Array.isArray(records) ? records : [records];
+  const recordsWithId = inputRecords.filter(Boolean).map((record) => ({
+    ...normalizeRemoteWrite(entityName, record),
+    id: record?.id || newRecordId(),
+  }));
+  const payload = single ? recordsWithId[0] : recordsWithId;
+  let query = entityName === 'Titulo'
+    ? supabase.from(table).upsert(payload, { onConflict: TITLE_CONFLICT_COLUMNS, ignoreDuplicates: false })
+    : supabase.from(table).insert(payload);
+  query = query.select();
+  if (single) query = query.single();
+  const { data, error } = await query;
+  if (error) throw error;
+  if (Array.isArray(data)) return data.map((row) => normalizeRemoteRow(entityName, row));
+  return normalizeRemoteRow(entityName, data || {});
+}
+
+export function applyImportPlanToRows(rows = [], plan = {}, timestamp = nowISO()) {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const byKey = new Map(rows.map((row) => [buildOfficialTitleKey(row), row.id]));
+
+  for (const item of plan.creates || []) {
+    const payload = item?.payload || {};
+    const key = buildOfficialTitleKey(payload);
+    const existingId = byKey.get(key);
+    const id = existingId || `local_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const previous = byId.get(id) || {};
+    const next = {
+      ...previous,
+      ...payload,
+      id,
+      created_date: previous.created_date || timestamp,
+      updated_date: timestamp,
+    };
+    byId.set(id, next);
+    byKey.set(key, id);
+  }
+
+  for (const item of [...(plan.updates || []), ...(plan.absences || [])]) {
+    const previous = byId.get(item.id);
+    if (!previous) throw new Error(`O título ${item.id} não existe mais no armazenamento local. Gere uma nova prévia.`);
+    const decision = sanitizeTituloUpdate(item.payload || {});
+    if (decision.blocked) throw new Error(`A atualização do título ${item.id} foi bloqueada pela proteção da Carteira Geral.`);
+    byId.set(item.id, { ...previous, ...decision.fields, id: item.id, updated_date: timestamp });
+  }
+
+  return {
+    rows: Array.from(byId.values()),
+    created: Number(plan?.summary?.totalCreate || 0),
+    updated: Number(plan?.summary?.totalUpdate || 0),
+    lowered: Number(plan?.summary?.totalAbsence || 0),
+    mode: 'local',
+  };
+}
+
+async function applyImportPlanLocally(plan = {}) {
+  const rows = await localStorageAdapter.read('Titulo');
+  const result = applyImportPlanToRows(rows, plan);
+  await localStorageAdapter.write('Titulo', result.rows);
+  return result;
+}
+
+async function applyImportPlanRemotely(plan = {}, context = {}) {
+  try {
+    return await runRemote(async () => {
+      const { data, error } = await supabase.rpc('apply_import_plan', {
+        p_import_source: context.source || null,
+        p_import_file: context.importFile || null,
+        p_creates: (plan.creates || []).map((item) => item.payload),
+        p_updates: (plan.updates || []).map((item) => ({ id: item.id, payload: item.payload })),
+        p_absences: (plan.absences || []).map((item) => ({ id: item.id, payload: item.payload })),
+        p_expected_counts: {
+          created: Number(plan?.summary?.totalCreate || 0),
+          updated: Number(plan?.summary?.totalUpdate || 0),
+          lowered: Number(plan?.summary?.totalAbsence || 0),
+        },
+      });
+      if (error) throw error;
+      return { ...(data || {}), mode: 'supabase' };
+    });
+  } catch (error) {
+    markRemoteFailure(error);
+    const missingRpc = ['PGRST202', '42883'].includes(String(error?.code || '')) ||
+      String(error?.message || '').includes('apply_import_plan');
+    const message = missingRpc
+      ? 'A função transacional apply_import_plan ainda não existe no Supabase. Execute a migração indicada em docs/INSTRUCOES_SUPABASE.md antes de importar.'
+      : `A importação foi recusada pelo Supabase e nenhuma etapa foi confirmada: ${error?.message || error}`;
+    const wrapped = new Error(message);
+    wrapped.code = error?.code || 'SUPABASE_IMPORT_FAILED';
+    wrapped.cause = error;
+    throw wrapped;
+  }
+}
+
+export async function applyImportPlanAtomic(plan = {}, context = {}) {
+  if (!plan?.canApply) throw new Error('O plano de importação não está liberado para aplicação.');
+  if (isSupabaseConfigured()) return applyImportPlanRemotely(plan, context);
+  return applyImportPlanLocally(plan);
 }
 
 function makeHybridEntity(entityName) {
   const local = makeLocalEntity(entityName);
   const table = remoteTable(entityName);
 
-return {
-  async list(orderBy, limit = 1000) {
-    const fallback = await local.list(orderBy, limit);
-    if (!table) return fallback;
-    try {
-      const rows = await runRemote(async () => {
-        let query = supabase.from(table).select('*').limit(limit);
-        query = applyOrderBy(query, orderBy);
-        const { data, error } = await query;
-        if (error) throw error;
-        return data;
-      });
-      if (Array.isArray(rows)) {
-        try { await localStorageAdapter.merge(entityName, rows); } catch (cacheError) { console.warn(`[dados] cache list ${entityName}`, cacheError); }
-        return rows;
-      }
-    } catch (error) {
-      console.warn(`[dados] ${entityName} usando cache local (Supabase falhou)`, error);
-    }
-    return fallback;
-  },
-  async filter(criteria = {}, orderBy, limit = 1000) {
-    const fallback = await local.filter(criteria, orderBy, limit);
-    if (!table) return fallback;
-    try {
-      const rows = await runRemote(async () => {
-        let query = supabase.from(table).select('*').limit(limit);
-        for (const [field, expected] of Object.entries(criteria || {})) {
-          if (expected !== undefined) query = query.eq(field, expected);
+  const entity = {
+    async list(orderBy, limit = 1000) {
+      const fallback = await local.list(orderBy, limit);
+      if (!table) return fallback;
+      try {
+        const rows = await runRemote(async () => {
+          return fetchRemoteRows({ entityName, table, orderBy, limit });
+        });
+        if (Array.isArray(rows)) {
+          try { await localStorageAdapter.merge(entityName, rows); } catch (cacheError) { console.warn(`[dados] cache list ${entityName}`, cacheError); }
+          return rows;
         }
-        query = applyOrderBy(query, orderBy);
-        const { data, error } = await query;
-        if (error) throw error;
-        return data;
-      });
-      if (Array.isArray(rows)) {
-        try { await localStorageAdapter.merge(entityName, rows); } catch (cacheError) { console.warn(`[dados] cache filter ${entityName}`, cacheError); }
-        return rows;
+      } catch (error) {
+        markRemoteFailure(error);
+        console.warn(`[dados] ${entityName} usando cache local somente para leitura`, error);
       }
-    } catch (error) {
-      console.warn(`[dados] filter ${entityName} usando cache local (Supabase falhou)`, error);
-    }
-    return fallback;
-  },
-  async create(record) {
-    const localSaved = await local.create(record);
-    if (!table) return localSaved;
-    try {
-      const saved = await runRemote(async () => {
-        const { data, error } = await supabase.from(table).insert(record).select().single();
-        if (error) throw error;
-        return data;
-      });
-      return saved?.id ? localStorageAdapter.save(entityName, saved) : localSaved;
-    } catch (error) {
-      console.warn(`[dados] create ${entityName} usando cache local (Supabase falhou)`, error);
-      return localSaved;
-    }
-  },
-  async update(id, fields) {
-    let nextFields = fields || {};
-    if (entityName === 'Titulo') {
-      const decision = sanitizeTituloUpdate(nextFields);
-      if (decision.blocked) {
-        console.warn('[importação protegida] baixa/sem_carteira automática bloqueada para evitar esvaziar Carteira Geral', { id, fields: nextFields });
-        return resolveExisting(entityName, id);
+      return fallback;
+    },
+    async filter(criteria = {}, orderBy, limit = 1000) {
+      const fallback = await local.filter(criteria, orderBy, limit);
+      if (!table) return fallback;
+      try {
+        const rows = await runRemote(async () => {
+          return fetchRemoteRows({ entityName, table, criteria, orderBy, limit });
+        });
+        if (Array.isArray(rows)) {
+          try { await localStorageAdapter.merge(entityName, rows); } catch (cacheError) { console.warn(`[dados] cache filter ${entityName}`, cacheError); }
+          return rows;
+        }
+      } catch (error) {
+        markRemoteFailure(error);
+        console.warn(`[dados] filter ${entityName} usando cache local somente para leitura`, error);
       }
-      nextFields = decision.fields;
-    }
-    const localSaved = await local.update(id, nextFields);
-    if (!table) return localSaved;
-    try {
-      const saved = await runRemote(async () => {
-        const { data, error } = await supabase.from(table).update(nextFields).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
-      });
-      return saved?.id ? localStorageAdapter.save(entityName, saved) : localSaved;
-    } catch (error) {
-      console.warn(`[dados] update ${entityName} usando cache local (Supabase falhou)`, error);
-      return localSaved;
-    }
-  },
-  async bulkCreate(records = []) {
-    if (!Array.isArray(records) || records.length === 0) return [];
-    if (!table) return local.bulkCreate(records);
-    try {
-      const saved = await runRemote(async () => {
-        const { data, error } = await supabase.from(table).insert(records).select();
-        if (error) throw error;
-        return data;
-      });
-      if (Array.isArray(saved) && saved.length > 0) {
-        await localStorageAdapter.saveMany(entityName, saved);
+      return fallback;
+    },
+    async create(record) {
+      if (!table) return local.create(record);
+      try {
+        const saved = await runRemote(() => remoteInsertOrUpsert(entityName, table, record, true));
+        if (saved?.id) await localStorageAdapter.save(entityName, saved);
         return saved;
+      } catch (error) {
+        throw remoteWriteError('a criação', entityName, error);
       }
-    } catch (error) {
-      console.warn(`[dados] bulkCreate ${entityName} usando cache local (Supabase falhou)`, error);
-    }
-    return local.bulkCreate(records);
-  },
-  subscribe(callback) {
-    return local.subscribe(callback);
-  },
-};
+    },
+    async update(id, fields) {
+      let nextFields = fields || {};
+      if (entityName === 'Titulo') {
+        const decision = sanitizeTituloUpdate(nextFields);
+        if (decision.blocked) {
+          throw new Error('Atualização automática bloqueada para proteger a Carteira Geral.');
+        }
+        nextFields = decision.fields;
+      }
+      if (!table) return local.update(id, nextFields);
+      try {
+        const saved = await runRemote(async () => {
+          const { data, error } = await supabase.from(table).update(normalizeRemoteWrite(entityName, nextFields)).eq('id', id).select().single();
+          if (error) throw error;
+          return normalizeRemoteRow(entityName, data || {});
+        });
+        if (saved?.id) await localStorageAdapter.save(entityName, saved);
+        return saved;
+      } catch (error) {
+        throw remoteWriteError('a atualização', entityName, error);
+      }
+    },
+    async bulkCreate(records = []) {
+      if (!Array.isArray(records) || records.length === 0) return [];
+      if (!table) return local.bulkCreate(records);
+      try {
+        const saved = await runRemote(() => remoteInsertOrUpsert(entityName, table, records, false));
+        if (Array.isArray(saved) && saved.length > 0) await localStorageAdapter.saveMany(entityName, saved);
+        return saved || [];
+      } catch (error) {
+        throw remoteWriteError('a criação em lote', entityName, error);
+      }
+    },
+    async bulkUpdate(updates = []) {
+      if (!Array.isArray(updates) || updates.length === 0) return [];
+      if (!table) return local.bulkUpdate(updates);
+      try {
+        const saved = await runRemote(async () => Promise.all(updates.map(async (raw) => {
+          const { id, fields: rawFields } = normalizeBulkUpdateItem(raw);
+          if (!id) throw new Error(`bulkUpdate ${entityName}: registro sem id.`);
+          let fields = rawFields || {};
+          if (entityName === 'Titulo') {
+            const decision = sanitizeTituloUpdate(fields);
+            if (decision.blocked) throw new Error('Atualização bloqueada pela proteção da Carteira Geral.');
+            fields = decision.fields;
+          }
+          const { data, error } = await supabase.from(table).update(normalizeRemoteWrite(entityName, fields)).eq('id', id).select().single();
+          if (error) throw error;
+          return normalizeRemoteRow(entityName, data || {});
+        })));
+        if (saved.length > 0) await localStorageAdapter.saveMany(entityName, saved);
+        return saved;
+      } catch (error) {
+        throw remoteWriteError('a atualização em lote', entityName, error);
+      }
+    },
+    subscribe(callback) {
+      return local.subscribe(callback);
+    },
+  };
+
+  if (entityName === 'Titulo') entity.applyImportPlan = applyImportPlanAtomic;
+  return entity;
 }
 
 export const base44 = {
@@ -241,7 +537,7 @@ export const base44 = {
     async me() { throw new Error('Login Base44 não disponível nesta versão (sistema usa Supabase).'); },
   },
   functions: {
-    async invoke() { throw new Error('Funções de backend da Base44 não estão disponíveis (sistema usa Supabase apenas para dados).'); },
+    async invoke() { throw new Error('Funções de backend da Base44 não estão disponíveis (sistema usa Supabase).'); },
   },
   entities: {
     Titulo: makeHybridEntity('Titulo'),

@@ -148,6 +148,18 @@ test("nome diferente escolhe o mais completo e gera CLIENT_NAME_VARIATION", () =
   assert.ok(diagnosticCodes(result).includes("CLIENT_NAME_VARIATION"));
 });
 
+test("identificadores de documento não substituem um nome de cliente válido", () => {
+  const invalidNames = ["REC", "NF", "NFE", "NFSE", "FAT", "CTE", "DUP", "DUPLICATA", "TITULO", "PARCELA"];
+
+  for (const invalidName of invalidNames) {
+    const result = consolidarFontesImportacao({
+      rptItems: [title({ "Nome Cliente": invalidName })],
+      finrItems: [title({ "Nome Cliente": "Cliente Válido Ltda" })],
+    });
+    assert.equal(result.consolidados[0]["Nome Cliente"], "Cliente Válido Ltda", invalidName);
+  }
+});
+
 test("CPF/CNPJ diferente prioriza FINR, gera CPF_CNPJ_MISMATCH e needs_review", () => {
   const result = consolidarFontesImportacao({
     rptItems: [title({ "CPF/CNPJ": "11.111.111/0001-11" })],
@@ -210,13 +222,13 @@ test("duplicidade na FINR gera DUPLICATE_KEY_IN_FINR sem perder linhas originais
   assert.equal(record._meta.needs_review, true);
 });
 
-test("recalcula saldo, multa, juros e total após consolidação", () => {
+test("preserva saldo oficial e recalcula somente multa, juros e total após consolidação", () => {
   const result = consolidarFontesImportacao({
     rptItems: [title({
       "Valor Total (R$)": 1000,
       "Receb. Parcial (R$)": 300,
       "Dias de Atraso": 10,
-      "Saldo Restante (R$)": 9999,
+      "Saldo Restante (R$)": 699.77,
       "Multa (R$)": 9999,
       "Juros (R$)": 9999,
       "Total a Receber (R$)": 9999,
@@ -229,23 +241,21 @@ test("recalcula saldo, multa, juros e total após consolidação", () => {
   });
   const [record] = result.consolidados;
 
-  assert.equal(record["Saldo Restante (R$)"], 700);
+  assert.equal(record["Saldo Restante (R$)"], 699.77);
   assert.equal(record["Multa (R$)"], 14);
   assert.equal(record["Juros (R$)"], 2.33);
-  assert.equal(record["Total a Receber (R$)"], 716.33);
+  assert.equal(record["Total a Receber (R$)"], 716.10);
 });
 
-test("buildOfficialTitleKey continua funcionando no registro consolidado", () => {
+test("buildOfficialTitleKey identifica a origem do registro consolidado", () => {
   const source = title();
   const result = consolidarFontesImportacao({
     rptItems: [source],
     finrItems: [title()],
   });
 
-  assert.equal(
-    buildOfficialTitleKey(result.consolidados[0]),
-    buildOfficialTitleKey(source),
-  );
+  assert.equal(buildOfficialTitleKey(result.consolidados[0]), "RPT_E_FINR|10|NF|100|1|2026-06-30");
+  assert.equal(buildOfficialTitleKey(source), "|10|NF|100|1|2026-06-30");
 });
 
 test("mantém as 23 colunas oficiais separadas dos metadados", () => {

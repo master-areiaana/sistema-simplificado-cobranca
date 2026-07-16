@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   OFFICIAL_IMPORT_COLUMNS,
+  IMPORTACAO_PARCIAL_LIMIAR,
+  MIN_IMPORT_COVERAGE_RATIO,
   buildOfficialTitleKey,
   calculateCharges,
   calculateSaldoRestante,
+  getImportCoverage,
   getStatusBaixaPorAusencia,
+  hasCompleteOfficialTitleKey,
   isImportacaoParcial,
   isTituloElegivelCarteira,
 } from "./domain.js";
@@ -122,7 +126,41 @@ test("não considera importação de 490 títulos sobre 500 anteriores como parc
   );
 });
 
-test("gera a chave oficial sem incluir a origem", () => {
+test("documenta e respeita o limite de cobertura de 70%", () => {
+  assert.equal(IMPORTACAO_PARCIAL_LIMIAR, 0.7);
+  assert.equal(MIN_IMPORT_COVERAGE_RATIO, 0.7);
+  assert.equal(isImportacaoParcial({ totalAtivosAnteriores: 100, totalNovaImportacao: 69 }), true);
+  assert.equal(isImportacaoParcial({ totalAtivosAnteriores: 100, totalNovaImportacao: 70 }), false);
+  assert.deepEqual(
+    getImportCoverage({ totalAtivosAnteriores: 100, totalNovaImportacao: 69 }),
+    {
+      totalAtivosAnteriores: 100,
+      totalNovaImportacao: 69,
+      ratio: 0.69,
+      percentual: 69,
+      minimoRatio: 0.7,
+      minimoPercentual: 70,
+      importacaoParcial: true,
+    },
+  );
+});
+
+test("só considera confiável a chave oficial completa", () => {
+  const complete = {
+    source: "RPT_7007_CONS_CAR_EB",
+    client_code: "10",
+    doc_type: "NF",
+    title_number: "123",
+    seq: "1",
+    due_date: "2026-06-30",
+  };
+
+  assert.equal(hasCompleteOfficialTitleKey(complete), true);
+  assert.equal(hasCompleteOfficialTitleKey({ ...complete, due_date: "" }), false);
+  assert.equal(hasCompleteOfficialTitleKey({ ...complete, seq: "" }), false);
+});
+
+test("gera a chave oficial incluindo a origem", () => {
   assert.equal(
     buildOfficialTitleKey({
       "Código Cliente": "123",
@@ -132,7 +170,36 @@ test("gera a chave oficial sem incluir a origem", () => {
       "Data Vencimento": "2026-06-30",
       origem: "FINR1253",
     }),
-    "123|NF|456|01|2026-06-30",
+    "FINR1253|123|NF|456|01|2026-06-30",
+  );
+});
+
+test("calcula encargos sobre o saldo oficial sem recalcular pelo recebimento", () => {
+  const result = calculateCharges({
+    valorTotal: 46853.53,
+    recebParcial: 37694,
+    saldoRestante: 9159.07,
+    diasAtraso: 0,
+  });
+
+  assert.equal(result.valorTotal, 46853.53);
+  assert.equal(result.recebParcial, 37694);
+  assert.equal(result.saldoRestante, 9159.07);
+  assert.equal(result.totalAReceber, 9159.07);
+});
+
+test("não junta o mesmo título de EB e Topcon", () => {
+  const base = {
+    client_code: "123",
+    doc_type: "NF",
+    title_number: "456",
+    seq: "1",
+    due_date: "2026-06-30",
+  };
+
+  assert.notEqual(
+    buildOfficialTitleKey({ ...base, source: "FINR1253" }),
+    buildOfficialTitleKey({ ...base, source: "RPT_7007_CONS_CAR_EB" }),
   );
 });
 

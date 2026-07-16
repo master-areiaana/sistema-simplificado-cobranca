@@ -9,9 +9,38 @@ import {
   parseFINR1253Canonical,
   parseRPT7007Canonical,
 } from "./parsers.js";
+import {
+  REAL_EB_FINANCIAL_ROWS,
+  REAL_FINR_FINANCIAL_ROWS,
+} from "./realImportFinancialFixtures.js";
 
 function assertCanonicalColumns(record) {
   assert.deepEqual(Object.keys(record), OFFICIAL_IMPORT_COLUMNS);
+}
+
+function realEbRows() {
+  return REAL_EB_FINANCIAL_ROWS.map(([total, received, balance], index) => ({
+    "Tipo Documento": "FAT",
+    "Número Documento": 200000 + index,
+    "Sequência": 1,
+    "Código Cliente": 300000 + index,
+    "Razão Social": `CLIENTE EB ANONIMIZADO ${index + 1}`,
+    "Data Vencimento": "30/06/2026",
+    "Valor Total": total,
+    "Valor Recebido": received,
+    Saldo: balance,
+  }));
+}
+
+function realFinrRows() {
+  return [
+    ["Tp", "Ser", "Número", "Seq", "NF Serviço", "Operação", "Vencto", "Título", "Acréscimo", "Receb.Prc.", "Calculada", "Receber", "Atraso", "Úteis", "Portador"],
+    ["Cliente: 1 - CLIENTE FINR ANONIMIZADO LTDA - CPF/CNPJ: 00.000.000/0001-00"],
+    ...REAL_FINR_FINANCIAL_ROWS.map(([original, acrescimo, saldo, juros, receber], index) => [
+      "FAT", "152", 100000 + index, "1", "", 46042, 46077,
+      original, acrescimo, saldo, juros, receber, 1, "", "CARTEIRA",
+    ]),
+  ];
 }
 
 test("RPT_7007 produz registro com exatamente as 23 colunas oficiais", () => {
@@ -35,6 +64,8 @@ test("RPT_7007 produz registro com exatamente as 23 colunas oficiais", () => {
   }]);
 
   assertCanonicalColumns(record);
+  assert.equal(record._meta.source_status, "SOMENTE_RPT");
+  assert.equal(record._meta.origem_detectada, "RPT_7007_CONS_CAR_EB");
   assert.equal(record["Número Documento"], "000123");
   assert.equal(record["Sequência"], "02");
   assert.equal(record["Valor Total (R$)"], 1000);
@@ -91,7 +122,7 @@ test("RPT_7007 mapeia os nomes oficiais da fonte para o modelo canônico", () =>
   assert.equal(record["Saldo Restante (R$)"], 800);
 });
 
-test("RPT_7007 não usa a coluna Saldo como Valor Total ou Recebimento Parcial", () => {
+test("RPT_7007 prioriza a coluna Saldo sem alterar Valor Total ou Valor Recebido", () => {
   const [record] = parseRPT7007Canonical([{
     "Tipo Documento": "NF",
     "Número Documento": "551",
@@ -99,15 +130,16 @@ test("RPT_7007 não usa a coluna Saldo como Valor Total ou Recebimento Parcial",
     "Nome Cliente": "Cliente com Saldo Auxiliar",
     "Valor Total": 1000,
     "Valor Recebido": 300,
-    "Saldo": 9999,
+    "Saldo": 699.77,
   }]);
 
   assert.equal(record["Valor Total (R$)"], 1000);
   assert.equal(record["Receb. Parcial (R$)"], 300);
-  assert.equal(record["Saldo Restante (R$)"], 700);
+  assert.equal(record["Saldo Restante (R$)"], 699.77);
+  assert.equal(record["Total a Receber (R$)"], 699.77);
 });
 
-test("RPT_7007 não infere recebimento parcial quando somente Saldo está disponível", () => {
+test("RPT_7007 usa Saldo oficial mesmo quando Valor Recebido não está disponível", () => {
   const [record] = parseRPT7007Canonical([{
     "Tipo Documento": "NF",
     "Número Documento": "552",
@@ -119,7 +151,76 @@ test("RPT_7007 não infere recebimento parcial quando somente Saldo está dispon
 
   assert.equal(record["Valor Total (R$)"], 1000);
   assert.equal(record["Receb. Parcial (R$)"], 0);
-  assert.equal(record["Saldo Restante (R$)"], 1000);
+  assert.equal(record["Saldo Restante (R$)"], 650);
+});
+
+test("RPT_7007 usa Valor Total menos Valor Recebido quando Saldo está vazio", () => {
+  const [record] = parseRPT7007Canonical([{
+    "Tipo Documento": "NF",
+    "Número Documento": "553",
+    "Código Cliente": "18",
+    "Nome Cliente": "Cliente com fallback",
+    "Valor Total": 1000,
+    "Valor Recebido": 300,
+    "Saldo": "",
+  }]);
+
+  assert.equal(record["Saldo Restante (R$)"], 700);
+});
+
+test("RPT_7007 preserva saldo oficial de um centavo", () => {
+  const [record] = parseRPT7007Canonical([{
+    "Tipo Documento": "NF",
+    "Número Documento": "554",
+    "Código Cliente": "19",
+    "Nome Cliente": "Cliente saldo mínimo",
+    "Valor Total": 10,
+    "Valor Recebido": 9.99,
+    "Saldo em Aberto": 0.01,
+  }]);
+
+  assert.equal(record["Saldo Restante (R$)"], 0.01);
+  assert.equal(record["Total a Receber (R$)"], 0.01);
+});
+
+test("RPT_7007 usa os saldos oficiais dos títulos 6598 e 1627", () => {
+  const records = parseRPT7007Canonical([
+    {
+      "Tipo Documento": "NFe",
+      "Número Documento": 6598,
+      "Sequência": 1,
+      "Código Cliente": 67,
+      "Razão Social": "PREMIX CONCRETO LTDA",
+      "Valor Total": 46853.53,
+      "Valor Recebido": 37694,
+      "Saldo": 9159.07,
+    },
+    {
+      "Tipo Documento": "FAT",
+      "Número Documento": 1627,
+      "Sequência": 1,
+      "Código Cliente": 451,
+      "Razão Social": "SUPERTEX CONCRETO LTDA",
+      "Valor Total": 149894.76,
+      "Valor Recebido": 146555,
+      "Saldo": 3339.53,
+    },
+  ]);
+
+  assert.equal(records[0]["Saldo Restante (R$)"], 9159.07);
+  assert.equal(records[1]["Saldo Restante (R$)"], 3339.53);
+});
+
+test("RPT_7007 preserva os totais financeiros do arquivo real com 41 títulos", () => {
+  const records = parseRPT7007Canonical(realEbRows());
+  const totalOriginal = records.reduce((sum, record) => sum + record["Valor Total (R$)"], 0);
+  const totalReceived = records.reduce((sum, record) => sum + record["Receb. Parcial (R$)"], 0);
+  const totalBalance = records.reduce((sum, record) => sum + record["Saldo Restante (R$)"], 0);
+
+  assert.equal(records.length, 41);
+  assert.equal(Number(totalOriginal.toFixed(2)), 1782448.20);
+  assert.equal(Number(totalReceived.toFixed(2)), 184249.00);
+  assert.equal(Number(totalBalance.toFixed(2)), 1598198.51);
 });
 
 test("RPT_7007 calcula encargos usando percentuais informados ao parser", () => {
@@ -161,30 +262,41 @@ test("RPT_7007 aceita datas sem zero à esquerda", () => {
 test("FINR1253 produz registro canônico preservando cliente, contato e valores", () => {
   const rows = [
     ["Relatório FINR1253"],
-    ["Tp", "Ser", "Número", "Seq", "NF Serviço", "Operação", "Vencto", "Vlr. Título", "Acréscimo", "Receb.Prc.", "Calculada", "Receber", "Atraso", "Úteis", "Portador"],
-    ["Cliente: 000123 - Cliente Financeiro Ltda - CPF/CNPJ: 12.345.678/0001-99"],
-    ["FAT", "A", "000987/03", "", "NF-77", "01/06/2026", "15/06/2026", "1.000,00", 0, "300,00", 900, "9.999,00", 10, 8, "CARTEIRA"],
+    ["Tp", "Ser", "Número", "Seq", "NF Serviço", "Operação", "Vencto", "Título", "Acréscimo", "Receb.Prc.", "Calculada", "Receber", "Atraso", "Úteis", "Portador"],
+    ["Cliente: 004234 - SANTANA EMPREENDIMENTOS IMOBILIARIOS LTD - CPF/CNPJ: 11.256.564/0001-06"],
+    ["FAT", "152", 9831, "2", 120, 46042, 46077, 147900.75, 0, 147900.75, 33381.2, 181281.95, 121, "", "COB ITAU 34222-7"],
     ["Total Cliente", "", "", "", "", "", "", "", "", "", "", "", "", "", "Tel.: (11) 3333-4444 Contato: Ana"],
   ];
 
   const [record] = parseFINR1253Canonical(rows);
 
   assertCanonicalColumns(record);
-  assert.equal(record["Código Cliente"], "000123");
-  assert.equal(record["Nome Cliente"], "Cliente Financeiro Ltda");
-  assert.equal(record["CPF/CNPJ"], "12.345.678/0001-99");
-  assert.equal(record["Número Documento"], "000987");
-  assert.equal(record["Sequência"], "03");
-  assert.equal(record["NF Serviço"], "NF-77");
-  assert.equal(record["Data Emissão"], "2026-06-01");
-  assert.equal(record["Data Vencimento"], "2026-06-15");
-  assert.equal(record["Valor Total (R$)"], 1000);
-  assert.equal(record["Receb. Parcial (R$)"], 300);
-  assert.equal(record["Saldo Restante (R$)"], 700);
-  assert.equal(record["Juros (R$)"], 0);
-  assert.equal(record["Total a Receber (R$)"], 700);
+  assert.equal(record._meta.source_status, "SOMENTE_FINR");
+  assert.equal(record._meta.origem_detectada, "FINR1253");
+  assert.equal(record["Código Cliente"], "004234");
+  assert.equal(record["Nome Cliente"], "SANTANA EMPREENDIMENTOS IMOBILIARIOS LTD");
+  assert.equal(record["CPF/CNPJ"], "11.256.564/0001-06");
+  assert.equal(record["Número Documento"], "9831");
+  assert.equal(record["Sequência"], "2");
+  assert.equal(record["NF Serviço"], "120");
+  assert.equal(record["Data Emissão"], "2026-01-20");
+  assert.equal(record["Data Vencimento"], "2026-02-24");
+  assert.equal(record["Valor Total (R$)"], 147900.75);
+  assert.equal(record["Receb. Parcial (R$)"], 0);
+  assert.equal(record["Saldo Restante (R$)"], 147900.75);
+  assert.equal(record["Juros (R$)"], 33381.2);
+  assert.equal(record["Total a Receber (R$)"], 181281.95);
   assert.equal(record["Telefone"], "(11) 3333-4444");
   assert.equal(record["Contato"], "Ana");
+});
+
+test("FINR1253 preserva 199 títulos e o saldo total do arquivo real", () => {
+  const records = parseFINR1253Canonical(realFinrRows());
+
+  assert.equal(records.length, 199);
+  assert.equal(Number(records.reduce((sum, record) => sum + record["Saldo Restante (R$)"], 0).toFixed(2)), 3196048.18);
+  assert.equal(Number(records.reduce((sum, record) => sum + record["Total a Receber (R$)"], 0).toFixed(2)), 3631726.05);
+  assert.equal(records.filter((record) => record["Saldo Restante (R$)"] === 0).length, 0);
 });
 
 test("FINR1253 aceita datas sem zero à esquerda", () => {
@@ -211,21 +323,22 @@ test("FINR1253 mantém títulos de clientes consecutivos sem linha de total", ()
   assert.equal(records.length, 2);
   assert.equal(records[0]["Código Cliente"], "1");
   assert.equal(records[1]["Código Cliente"], "2");
-  assert.equal(records[1]["Saldo Restante (R$)"], 150);
+  assert.equal(records[1]["Saldo Restante (R$)"], 50);
+  assert.equal(records[1]["Total a Receber (R$)"], 150);
 });
 
 test("FINR1253 mantém título com valor e saldo restante zerados", () => {
   const rows = [
     ["Tp", "Ser", "Número", "Seq", "NF Serviço", "Operação", "Vencto", "Vlr. Título", "", "Receb. Parcial", "Juros Calculado", "Total a Receber", "Dias Atraso", "", "Portador"],
     ["Cliente: 3 - Cliente Zero Ltda - CPF/CNPJ: 33.333.333/0001-33"],
-    ["OUT", "C", "300", "1", "", "01/06/2026", "02/06/2026", 0, "", 0, 800, 900, 0, "", "P3"],
+    ["FAT", "C", "300", "1", "", "01/06/2026", "02/06/2026", 0, "", 0, 0, 0, 0, "", "P3"],
     ["Total Cliente", "", "", "", "", "", "", "", "", "", "", "", "", "", "Telefone: 3333-0000 Contato: Financeiro"],
   ];
 
   const records = parseFINR1253Canonical(rows);
 
   assert.equal(records.length, 1);
-  assert.equal(records[0]["Tipo Documento"], "OUT");
+  assert.equal(records[0]["Tipo Documento"], "FAT");
   assert.equal(records[0]["Valor Total (R$)"], 0);
   assert.equal(records[0]["Saldo Restante (R$)"], 0);
   assert.equal(records[0]["Juros (R$)"], 0);
@@ -250,6 +363,6 @@ test("chave oficial funciona nos registros canônicos gerados pelos dois parsers
     ["REC", "A", "800", "2", "", "01/06/2026", "20/06/2026", 200, "", 0, "", "", 0, "", "P1"],
   ]);
 
-  assert.equal(buildOfficialTitleKey(rpt), "10|NF|700|1|2026-06-10");
-  assert.equal(buildOfficialTitleKey(finr), "20|REC|800|2|2026-06-20");
+  assert.equal(buildOfficialTitleKey({ ...rpt, source: "RPT_7007_CONS_CAR_EB" }), "RPT_7007_CONS_CAR_EB|10|NF|700|1|2026-06-10");
+  assert.equal(buildOfficialTitleKey({ ...finr, source: "FINR1253" }), "FINR1253|20|REC|800|2|2026-06-20");
 });

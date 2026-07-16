@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { fmtM, fmtD, hojeISO } from "@/lib/cobranca";
-import { Btn, Inp, Sl, Lbl } from "./UI";
+import { Btn, Lbl } from "./UI";
 import ModalAprovacaoDesconto from "./ModalAprovacaoDesconto";
 
 const LIMITE_DESCONTO_APROVACAO = 15; // % acima disso requer aprovação do gestor

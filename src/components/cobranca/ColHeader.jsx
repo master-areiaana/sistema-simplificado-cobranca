@@ -82,6 +82,10 @@ export default function ColHeader({ label, field, data = [], filters = {}, setFi
   }
 
   const act = sortCfg?.key === sortKey;
+  const numericSort = new Set(["qtd", "atraso", "vOrig", "multa", "juros", "total"]);
+  const dateSort = new Set(["venc", "contato", "prom"]);
+  const sortAscLabel = numericSort.has(field) ? "Menor para maior" : dateSort.has(field) ? "Mais antigo primeiro" : "A → Z";
+  const sortDescLabel = numericSort.has(field) ? "Maior para menor" : dateSort.has(field) ? "Mais recente primeiro" : "Z → A";
   const thStyle = {
     background: t.th,
     padding: 0,
@@ -141,8 +145,14 @@ export default function ColHeader({ label, field, data = [], filters = {}, setFi
 
       {open && (
         <div onMouseDown={stop} onClick={stop} style={{ position: "absolute", top: "100%", left: 0, zIndex: 700, background: t.drop, border: `1px solid ${t.p}`, borderRadius: 6, boxShadow: "0 6px 24px rgba(0,0,0,.25)", minWidth: 240, maxWidth: 340 }}>
+          {sortKey && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: "8px 10px", borderBottom: `1px solid ${t.bor}` }}>
+              <button onClick={() => { onSort?.(sortKey, "asc"); setOpen(false); }} style={{ background: act && sortCfg.dir === "asc" ? t.p : t.th, color: act && sortCfg.dir === "asc" ? "#fff" : t.txt, border: `1px solid ${t.bor}`, borderRadius: 4, padding: "5px 6px", fontSize: 10, cursor: "pointer", fontWeight: 700 }}>{sortAscLabel}</button>
+              <button onClick={() => { onSort?.(sortKey, "desc"); setOpen(false); }} style={{ background: act && sortCfg.dir === "desc" ? t.p : t.th, color: act && sortCfg.dir === "desc" ? "#fff" : t.txt, border: `1px solid ${t.bor}`, borderRadius: 4, padding: "5px 6px", fontSize: 10, cursor: "pointer", fontWeight: 700 }}>{sortDescLabel}</button>
+            </div>
+          )}
           <div style={{ padding: "8px 10px", borderBottom: `1px solid ${t.bor}` }}>
-            <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Pesquisar..." style={{ width: "100%", background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 4, padding: "5px 8px", fontSize: 12, color: t.txt, outline: "none", boxSizing: "border-box" }} />
+            <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar..." style={{ width: "100%", background: t.inp, border: `1px solid ${t.bor}`, borderRadius: 4, padding: "5px 8px", fontSize: 12, color: t.txt, outline: "none", boxSizing: "border-box" }} />
           </div>
           <div style={{ display: "flex", gap: 6, padding: "6px 10px", borderBottom: `1px solid ${t.bor}` }}>
             <button onClick={selectAll} style={{ flex: 1, background: t.th, border: `1px solid ${t.bor}`, borderRadius: 4, padding: "4px 0", fontSize: 11, cursor: "pointer", color: t.txt, fontWeight: 600 }}>Selecionar tudo</button>

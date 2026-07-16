@@ -38,7 +38,7 @@ export default function AssessoriaCentralLite() {
     setLoading(true);
     try {
       const [titulos, evts] = await Promise.all([
-        base44.entities.Titulo.filter({ active: true }, "client_name", 3000),
+        base44.entities.Titulo.filter({ active: true }, "client_name", 50000),
         base44.entities.ChargeEvent.list("-created_date", 3000)
       ]);
       const emAssessoria = (titulos || []).map(dbToItem).filter(x => x.encaminhar === "assessoria");

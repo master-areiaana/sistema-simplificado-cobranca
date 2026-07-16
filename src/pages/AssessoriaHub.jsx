@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Assessoria from "./Assessoria";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 const PORTAL_CREDOR_URL = "https://portal-recuperacob.cobcloud.com.br/login";
 
 function readThemeMode() {
-  try { return localStorage.getItem("sc_theme") || "dark"; } catch { return "dark"; }
+  try { return localStorage.getItem(THEME_STORAGE_KEY) || "light"; } catch { return "light"; }
 }
 
 function getTheme(mode) {
@@ -100,7 +101,7 @@ function syncAssessoriaTheme(root, t) {
   }
 }
 
-export default function AssessoriaHub() {
+export default function AssessoriaHub({ embedded = false }) {
   const [modo, setModo] = useState("transferencia");
   const [themeMode, setThemeMode] = useState(() => readThemeMode());
   const t = useMemo(() => getTheme(themeMode), [themeMode]);
@@ -123,11 +124,11 @@ export default function AssessoriaHub() {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: embedded ? "auto" : "100vh",
         background: t.bg,
         color: t.txt,
         fontFamily: "Segoe UI, system-ui, sans-serif",
-        padding: "12px 10px 18px",
+        padding: embedded ? 0 : "12px 10px 18px",
         boxSizing: "border-box",
         "--ass-bg": t.bg,
         "--ass-surf": t.surf,

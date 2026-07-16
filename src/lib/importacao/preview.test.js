@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildImportPreview } from "./preview.js";
+import { buildImportApplicationPlan } from "./applyImport.js";
 
 const PARTIAL_IMPORT_ALERT =
   "Planilha parcial detectada — baixa automática não aplicada.";
@@ -38,7 +39,9 @@ function finrRows(overrides = {}) {
     issueDate = "01/06/2026",
     dueDate = "30/06/2026",
     totalValue = 1000,
-    partialReceipt = 300,
+    balance = 700,
+    calculatedInterest = 0,
+    totalReceivable = 700,
     delayDays = 0,
     bearer = "CARTEIRA",
   } = overrides;
@@ -53,10 +56,10 @@ function finrRows(overrides = {}) {
       "Operação",
       "Vencto",
       "Vlr. Título",
-      "",
+      "Acréscimo",
       "Receb.Prc.",
-      "",
-      "",
+      "Calculada",
+      "Receber",
       "Atraso",
       "",
       "Portador",
@@ -71,10 +74,10 @@ function finrRows(overrides = {}) {
       issueDate,
       dueDate,
       totalValue,
-      "",
-      partialReceipt,
-      "",
-      "",
+      0,
+      balance,
+      calculatedInterest,
+      totalReceivable,
       delayDays,
       "",
       bearer,
@@ -145,7 +148,7 @@ test("retorna resumo geral com totais e registros que precisam de revisão", () 
     somenteFINR: 0,
     emAmbas: 1,
     comConflito: 1,
-    totalDiagnosticos: 1,
+    totalDiagnosticos: 2,
     totalNeedsReview: 1,
   });
 });
@@ -158,8 +161,9 @@ test("detecta importação parcial com 60 consolidados para 500 ativos anteriore
 
   assert.equal(result.resumo.totalConsolidados, 60);
   assert.equal(result.seguranca.importacaoParcial, true);
+  assert.equal(result.seguranca.bloqueioCobertura, true);
   assert.deepEqual(result.seguranca.alertas, [PARTIAL_IMPORT_ALERT]);
-  assert.deepEqual(result.seguranca.bloqueios, [PARTIAL_IMPORT_ALERT]);
+  assert.deepEqual(result.seguranca.bloqueios, []);
 });
 
 test("não considera parcial com 490 consolidados para 500 ativos anteriores", () => {
@@ -172,14 +176,14 @@ test("não considera parcial com 490 consolidados para 500 ativos anteriores", (
   assert.equal(result.seguranca.importacaoParcial, false);
 });
 
-test("importação parcial não permite baixa automática ou prosseguimento", () => {
+test("importação parcial bloqueia baixa em massa sem bloquear criação e atualização", () => {
   const result = buildImportPreview({
     rptRows: manyRptRows(60),
     totalAtivosAnteriores: 500,
   });
 
   assert.equal(result.seguranca.podeAplicarBaixaAutomatica, false);
-  assert.equal(result.seguranca.podeProsseguir, false);
+  assert.equal(result.seguranca.podeProsseguir, true);
 });
 
 test("importação não parcial permite baixa automática e prosseguimento futuro", () => {
@@ -236,4 +240,33 @@ test("repassa multaPercent e jurosPercent para o cálculo financeiro", () => {
   assert.equal(record["Multa (R$)"], 14);
   assert.equal(record["Juros (R$)"], 2.33);
   assert.equal(record["Total a Receber (R$)"], 716.33);
+});
+
+test("prévia RPT preserva origem EB ao criar e reimportar o mesmo título", () => {
+  const preview = buildImportPreview({
+    rptRows: [rptRow()],
+    totalAtivosAnteriores: 0,
+  });
+  const firstPlan = buildImportApplicationPlan({
+    preview,
+    existingTitles: [],
+    importFile: "rpt_7007.xlsx",
+  });
+
+  assert.equal(firstPlan.summary.totalCreate, 1);
+  assert.equal(firstPlan.creates[0].payload.source, "RPT_7007_CONS_CAR_EB");
+
+  const existingTitle = {
+    id: "eb-1",
+    ...firstPlan.creates[0].payload,
+  };
+  const secondPlan = buildImportApplicationPlan({
+    preview,
+    existingTitles: [existingTitle],
+    importFile: "rpt_7007.xlsx",
+  });
+
+  assert.equal(secondPlan.summary.totalCreate, 0);
+  assert.equal(secondPlan.summary.totalUnchanged, 1);
+  assert.equal(secondPlan.absences.length, 0);
 });

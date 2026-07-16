@@ -28,6 +28,7 @@ const RPT_7007_ALIASES = {
   "Valor Total (R$)": ["VLRTIT", "VLR TIT", "VAL TITULO", "VALOR TITULO", "VALOR TOTAL", "VAL ORIG", "VALOR ORIGINAL", "VLR ORIG", "VALOR", "TOTAL", "VLR TOTAL", "VALOR FACE", "VALOR NOMINAL"],
   "Desconto (R$)": ["DESCONTO", "VLR DESCONTO", "VALOR DESCONTO"],
   "Receb. Parcial (R$)": ["RECEB PARCIAL", "RECEB PRC", "VALOR RECEBIDO", "VLR RECEBIDO", "VAL RECEBIDO", "RECEBIDO", "VLRREC", "VALREC", "VL REC", "VL RECEBIDO", "RECEBIMENTOS", "VALOR PAGO", "VLR PAGO"],
+  "Saldo Restante (R$)": ["SALDO", "SALDO RESTANTE", "SALDO EM ABERTO", "VALOR EM ABERTO", "VL SALDO", "VL EM ABERTO"],
   "Dias de Atraso": ["DIAS ATRASO", "DIAS DE ATRASO", "ATRASO"],
   "Portador": ["PORTAD", "PORTADOR", "BANCO", "CARTEIRA", "COBRANCA", "BANCO COBRADOR"],
   "Telefone": ["TELEFONE", "FONE", "TEL", "CELULAR"],
@@ -45,7 +46,10 @@ const FINR1253_ALIASES = {
   issueDate: ["OPERACAO", "DATA OPERACAO"],
   dueDate: ["VENCTO", "VENCIMENTO"],
   totalValue: ["VLR TITULO", "VALOR TITULO", "TITULO", "VALOR"],
-  partialReceipt: ["RECEB PRC", "RECEB PARCIAL"],
+  addition: ["ACRESCIMO"],
+  balance: ["RECEB PRC", "RECEB PARCIAL", "SALDO", "SALDO EM ABERTO"],
+  calculatedInterest: ["CALCULADA", "JUROS CALCULADOS", "JUROS"],
+  totalReceivable: ["RECEBER", "TOTAL A RECEBER"],
   delayDays: ["ATRASO", "DIAS ATRASO", "DIAS DE ATRASO"],
   bearer: ["PORTADOR"],
 };
@@ -59,10 +63,15 @@ const FINR1253_FALLBACK_INDEXES = {
   issueDate: 5,
   dueDate: 6,
   totalValue: 7,
-  partialReceipt: 9,
+  addition: 8,
+  balance: 9,
+  calculatedInterest: 10,
+  totalReceivable: 11,
   delayDays: 12,
   bearer: 14,
 };
+
+const FINR1253_TITLE_TYPES = new Set(["FAT", "REC", "NF", "NFE"]);
 
 function normalizeHeader(value) {
   return String(value ?? "")
@@ -86,6 +95,16 @@ function normalizeMoney(value) {
     : text;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isValidMoney(value) {
+  if (typeof value === "number") return Number.isFinite(value);
+  const text = String(value ?? "").trim().replace(/[R$\s]/g, "");
+  if (!text) return false;
+  const normalized = text.includes(",")
+    ? text.replace(/\./g, "").replace(",", ".")
+    : text;
+  return Number.isFinite(Number(normalized));
 }
 
 function normalizeInteger(value) {
@@ -130,10 +149,24 @@ function createCanonicalRecord(values = {}) {
   );
 }
 
+function attachSourceMetadata(record, sourceStatus, detectedSource) {
+  Object.defineProperty(record, "_meta", {
+    value: {
+      source_status: sourceStatus,
+      origem_detectada: detectedSource,
+    },
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+  return record;
+}
+
 function addCalculatedValues(values, options = {}) {
   const charges = calculateCharges({
     valorTotal: values["Valor Total (R$)"],
     recebParcial: values["Receb. Parcial (R$)"],
+    saldoRestante: values["Saldo Restante (R$)"],
     diasAtraso: values["Dias de Atraso"],
     multaPercent: options.multaPercent,
     jurosPercent: options.jurosPercent,
@@ -222,8 +255,10 @@ export function parseRPT7007Canonical(rows, options = {}) {
       );
       const valorTotal = normalizeMoney(readMapped(row, headerMap, "Valor Total (R$)"));
       const recebParcial = normalizeMoney(readMapped(row, headerMap, "Receb. Parcial (R$)"));
+      const saldoRaw = readMapped(row, headerMap, "Saldo Restante (R$)");
+      const temSaldoOficial = isValidMoney(saldoRaw);
 
-      return addCalculatedValues({
+      return attachSourceMetadata(addCalculatedValues({
         "Id da Empresa": text(readMapped(row, headerMap, "Id da Empresa")),
         "Tipo Documento": text(readMapped(row, headerMap, "Tipo Documento")).toUpperCase(),
         "Série": text(readMapped(row, headerMap, "Série")),
@@ -237,13 +272,14 @@ export function parseRPT7007Canonical(rows, options = {}) {
         "Valor Total (R$)": valorTotal,
         "Desconto (R$)": normalizeMoney(readMapped(row, headerMap, "Desconto (R$)")),
         "Receb. Parcial (R$)": recebParcial,
+        "Saldo Restante (R$)": temSaldoOficial ? normalizeMoney(saldoRaw) : undefined,
         "Dias de Atraso": normalizeInteger(readMapped(row, headerMap, "Dias de Atraso")),
         "Portador": text(readMapped(row, headerMap, "Portador")),
         "Telefone": text(readMapped(row, headerMap, "Telefone")),
         "Contato": text(readMapped(row, headerMap, "Contato")),
         "CPF/CNPJ": text(readMapped(row, headerMap, "CPF/CNPJ")),
         "NF Serviço": text(readMapped(row, headerMap, "NF Serviço")),
-      }, options);
+      }, options), "SOMENTE_RPT", "RPT_7007_CONS_CAR_EB");
     });
 }
 
@@ -316,19 +352,30 @@ function isFinrHeaderRow(row) {
 }
 
 function isFinrTitleRow(row, headerMap) {
-  return Boolean(
-    cellText(row, headerMap.type) &&
-    cellText(row, headerMap.documentNumber),
-  );
+  const type = cellText(row, headerMap.type).toUpperCase();
+  return FINR1253_TITLE_TYPES.has(type) && Boolean(cellText(row, headerMap.documentNumber));
 }
 
-function buildFinrCanonicalRecord(row, client, clientTotal, headerMap, options) {
+function buildFinrCanonicalRecord(row, client, clientTotal, headerMap) {
   const { documentNumber, sequence } = splitDocumentAndSequence(
     cellText(row, headerMap.documentNumber),
     cellText(row, headerMap.sequence),
   );
+  const valorTotal = normalizeMoney(row?.[headerMap.totalValue]);
+  const acrescimo = normalizeMoney(row?.[headerMap.addition]);
+  const saldoRaw = row?.[headerMap.balance];
+  const jurosCalculados = normalizeMoney(row?.[headerMap.calculatedInterest]);
+  const totalReceberRaw = row?.[headerMap.totalReceivable];
+  const saldoRestante = isValidMoney(saldoRaw)
+    ? normalizeMoney(saldoRaw)
+    : Math.max(0, isValidMoney(totalReceberRaw)
+      ? normalizeMoney(totalReceberRaw) - acrescimo - jurosCalculados
+      : valorTotal);
+  const totalReceber = isValidMoney(totalReceberRaw)
+    ? normalizeMoney(totalReceberRaw)
+    : saldoRestante + acrescimo + jurosCalculados;
 
-  return addCalculatedValues({
+  return createCanonicalRecord({
     "Id da Empresa": "",
     "Tipo Documento": cellText(row, headerMap.type).toUpperCase(),
     "Série": cellText(row, headerMap.series),
@@ -339,16 +386,21 @@ function buildFinrCanonicalRecord(row, client, clientTotal, headerMap, options) 
     "Vendedor": "",
     "Data Emissão": dateToISO(row?.[headerMap.issueDate]),
     "Data Vencimento": dateToISO(row?.[headerMap.dueDate]),
-    "Valor Total (R$)": normalizeMoney(row?.[headerMap.totalValue]),
+    "Valor Total (R$)": valorTotal,
     "Desconto (R$)": 0,
-    "Receb. Parcial (R$)": normalizeMoney(row?.[headerMap.partialReceipt]),
+    // No FINR1253, Receb.Prc. e saldo remanescente, nao valor ja recebido.
+    "Receb. Parcial (R$)": 0,
+    "Saldo Restante (R$)": saldoRestante,
+    "Multa (R$)": acrescimo,
+    "Juros (R$)": jurosCalculados,
+    "Total a Receber (R$)": totalReceber,
     "Dias de Atraso": normalizeInteger(row?.[headerMap.delayDays]),
     "Portador": cellText(row, headerMap.bearer),
     "Telefone": clientTotal.telefone,
     "Contato": clientTotal.contato,
     "CPF/CNPJ": client.cpfCnpj,
     "NF Serviço": cellText(row, headerMap.serviceInvoice),
-  }, options);
+  });
 }
 
 export function parseFINR1253Canonical(rows, options = {}) {
@@ -362,13 +414,12 @@ export function parseFINR1253Canonical(rows, options = {}) {
   const flush = (clientTotal = {}) => {
     if (client) {
       for (const title of titleRows) {
-        records.push(buildFinrCanonicalRecord(
+        records.push(attachSourceMetadata(buildFinrCanonicalRecord(
           title.row,
           client,
           clientTotal,
           title.headerMap,
-          options,
-        ));
+        ), "SOMENTE_FINR", "FINR1253"));
       }
     }
     titleRows = [];

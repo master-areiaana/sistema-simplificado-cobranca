@@ -24,6 +24,13 @@ export const OFFICIAL_IMPORT_COLUMNS = Object.freeze([
   "NF Serviço",
 ]);
 
+// Trava 1 — cobertura mínima para baixa automática em massa.
+// Abaixo de 70% o arquivo pode estar filtrado ou incompleto. Isso não esconde
+// candidatos órfãos: eles continuam no plano para revisão/aprovação individual.
+export const IMPORTACAO_PARCIAL_LIMIAR = 0.7;
+// Alias mantido para compatibilidade com consumidores e testes já publicados.
+export const MIN_IMPORT_COVERAGE_RATIO = IMPORTACAO_PARCIAL_LIMIAR;
+
 const TITLE_KEY_FIELDS = [
   ["Código Cliente", "codigoCliente", "clientCode", "client_code", "nrCli"],
   ["Tipo Documento", "tipoDocumento", "docType", "doc_type", "tp"],
@@ -31,6 +38,8 @@ const TITLE_KEY_FIELDS = [
   ["Sequência", "sequencia", "seq"],
   ["Data Vencimento", "dataVencimento", "dueDate", "due_date", "vencimento"],
 ];
+
+const SOURCE_KEY_FIELDS = ["source", "origem", "origem_detectada"];
 
 const CHARGE_BLOCKING_STATUS = [
   "PAGO",
@@ -139,6 +148,22 @@ function readFirst(item, fields) {
   return "";
 }
 
+export function normalizeImportSource(value) {
+  const source = normalizeKeyPart(value);
+  if (source === "RPT_7007" || source === "RPT_7007_CONS_CAR_EB" || source === "SOMENTE_RPT") {
+    return "RPT_7007_CONS_CAR_EB";
+  }
+  if (source === "FINR1253" || source === "SOMENTE_FINR") return "FINR1253";
+  return source;
+}
+
+function readSource(item) {
+  const direct = readFirst(item, SOURCE_KEY_FIELDS);
+  if (direct) return normalizeImportSource(direct);
+  const metadata = item?._meta || {};
+  return normalizeImportSource(metadata.origem_detectada || metadata.source_status || "");
+}
+
 function hasBlockingStatus(status, blockingStatuses) {
   const normalized = normalizeText(status);
   return blockingStatuses.some((blocked) => normalized.includes(blocked));
@@ -166,12 +191,17 @@ export function buildOfficialTitleKey(item = {}) {
   const { title, sequence } = readNormalizedTitleAndSequence(item);
 
   return [
+    readSource(item),
     normalizeKeyPart(readFirst(item, TITLE_KEY_FIELDS[0])),
     normalizeKeyPart(readFirst(item, TITLE_KEY_FIELDS[1])),
     title,
     sequence,
     normalizeDateKeyPart(readFirst(item, TITLE_KEY_FIELDS[4])),
   ].join("|");
+}
+
+export function hasCompleteOfficialTitleKey(item = {}) {
+  return buildOfficialTitleKey(item).split("|").every(Boolean);
 }
 
 export function calculateSaldoRestante({ valorTotal = 0, recebParcial = 0 } = {}) {
@@ -181,35 +211,41 @@ export function calculateSaldoRestante({ valorTotal = 0, recebParcial = 0 } = {}
 export function calculateCharges({
   valorTotal = 0,
   recebParcial = 0,
+  saldoRestante,
   diasAtraso = 0,
   multaPercent = 0,
   jurosPercent = 0,
   status = "",
   active = true,
 } = {}) {
-  const saldoCalculado = calculateSaldoRestante({ valorTotal, recebParcial });
-  const saldoRestante = Math.max(0, saldoCalculado);
+  const temSaldoExplicito = saldoRestante !== undefined &&
+    saldoRestante !== null &&
+    !(typeof saldoRestante === "string" && saldoRestante.trim() === "");
+  const saldoCalculado = temSaldoExplicito
+    ? roundMoney(saldoRestante)
+    : calculateSaldoRestante({ valorTotal, recebParcial });
+  const saldoEmAberto = Math.max(0, saldoCalculado);
   const dias = Math.max(0, toNumber(diasAtraso));
   const naoCalculaEncargos =
     active === false ||
-    saldoRestante <= 0 ||
+    saldoEmAberto <= 0 ||
     dias <= 0 ||
     hasBlockingStatus(status, CHARGE_BLOCKING_STATUS);
 
   const multa = naoCalculaEncargos
     ? 0
-    : roundMoney(saldoRestante * (toNumber(multaPercent) / 100));
+    : roundMoney(saldoEmAberto * (toNumber(multaPercent) / 100));
   const juros = naoCalculaEncargos
     ? 0
-    : roundMoney(saldoRestante * (toNumber(jurosPercent) / 100) / 30 * dias);
+    : roundMoney(saldoEmAberto * (toNumber(jurosPercent) / 100) / 30 * dias);
 
   return {
     valorTotal: roundMoney(valorTotal),
     recebParcial: roundMoney(recebParcial),
-    saldoRestante,
+    saldoRestante: saldoEmAberto,
     multa,
     juros,
-    totalAReceber: roundMoney(saldoRestante + multa + juros),
+    totalAReceber: roundMoney(saldoEmAberto + multa + juros),
     diasAtraso: dias,
   };
 }
@@ -239,7 +275,26 @@ export function isImportacaoParcial({
   const novos = Math.max(0, toNumber(totalNovaImportacao));
 
   if (anteriores === 0) return false;
-  return novos < anteriores * 0.7;
+  return novos < anteriores * MIN_IMPORT_COVERAGE_RATIO;
+}
+
+export function getImportCoverage({
+  totalAtivosAnteriores = 0,
+  totalNovaImportacao = 0,
+} = {}) {
+  const anteriores = Math.max(0, toNumber(totalAtivosAnteriores));
+  const novos = Math.max(0, toNumber(totalNovaImportacao));
+  const ratio = anteriores > 0 ? novos / anteriores : 1;
+
+  return {
+    totalAtivosAnteriores: anteriores,
+    totalNovaImportacao: novos,
+    ratio,
+    percentual: Math.round(ratio * 10000) / 100,
+    minimoRatio: MIN_IMPORT_COVERAGE_RATIO,
+    minimoPercentual: MIN_IMPORT_COVERAGE_RATIO * 100,
+    importacaoParcial: anteriores > 0 && ratio < MIN_IMPORT_COVERAGE_RATIO,
+  };
 }
 
 export function getStatusBaixaPorAusencia() {

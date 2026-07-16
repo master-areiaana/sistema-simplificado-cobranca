@@ -12,5 +12,10 @@ export const LIGHT = {
   shad: "0 1px 4px rgba(0,0,0,.08)", card: "#fff", drop: "#fff"
 };
 
+// Chave versionada: instalações que guardaram o antigo tema escuro passam a
+// abrir no visual claro usado como referência no Base44. A escolha feita no
+// botão de tema continua sendo lembrada depois da primeira abertura.
+export const THEME_STORAGE_KEY = "sc_theme_base44_v1";
+
 export const loadL = (k, fb) => { try { return localStorage.getItem(k) || fb; } catch { return fb; } };
 export const saveL = (k, v) => { try { localStorage.setItem(k, v); } catch {} };

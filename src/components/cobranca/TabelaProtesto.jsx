@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import ColHeader from "./ColHeader";
 import { Btn, ObsCell, Badge } from "./UI";
-import { fmtM, fmtD } from "@/lib/cobranca";
+import { fmtM } from "@/lib/cobranca";
 
 const tdS = (ex = {}) => ({ padding: "7px 10px", borderBottom: "1px solid #0002", fontSize: 11, ...ex });
 

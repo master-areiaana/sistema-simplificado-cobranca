@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fmtD, fmtM, promAlerta, prioCor, promessaClassif } from "@/lib/cobranca";
+import { fmtD, promAlerta, prioCor, promessaClassif } from "@/lib/cobranca";
 
 const KPI_OCULTOS = new Set([
   "COBRADO",
@@ -67,22 +67,48 @@ export function KPI({ label, value, sub, color, t, onClick, active }) {
       onClick={onClick}
       style={{
         order: KPI_ORDEM[labelNorm] || 99,
-        borderLeft: `4px solid ${color} !important`,
-        background: `${t.card} !important`,
+        border: `1px solid ${t.bor}`,
+        borderTop: `3px solid ${color}`,
+        background: t.card,
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 700, color: t.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: t.muted, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6, whiteSpace: "nowrap", textAlign: "center" }}>
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 900, color: color, marginBottom: 4, lineHeight: 1 }}>
+      <div className="kpi-value" style={{ fontSize: "clamp(19px, 2vw, 24px)", fontWeight: 900, color: color, marginBottom: 4, lineHeight: 1, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center" }}>
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: 11, color: t.muted, fontWeight: 500, lineHeight: 1.2 }}>
+        <div style={{ fontSize: 11, color: t.muted, fontWeight: 500, lineHeight: 1.2, whiteSpace: "nowrap", textAlign: "center" }}>
           {sub}
         </div>
       )}
     </div>
+  );
+}
+
+export function SideNavItem({ active, icon, label, badge = 0, badgeColor = "#ef4444", onClick, t }) {
+  return (
+    <button
+      type="button"
+      className={`sc-nav-item${active ? " is-active" : ""}`}
+      aria-current={active ? "page" : undefined}
+      title={label}
+      onClick={onClick}
+      style={{
+        "--sc-nav-active": t.p,
+        "--sc-nav-text": t.txt,
+        "--sc-nav-border": t.bor,
+      }}
+    >
+      <span className="sc-nav-icon" aria-hidden="true">{icon}</span>
+      <span className="sc-nav-label">{label}</span>
+      {badge > 0 && (
+        <span className="sc-nav-badge" style={{ background: badgeColor }}>
+          {badge}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -118,9 +144,9 @@ export function PromessaClassifBadge({ qtd }) {
 
 export function TabBtn({ active, children, badge, badgeColor = "#ef4444", onClick, t }) {
   return (
-    <button onClick={onClick} style={{ position: "relative", background: active ? t.p : "transparent", color: active ? "#fff" : t.txt, border: "none", borderBottom: `3px solid ${active ? t.p : "transparent"}`, borderRadius: 0, padding: "10px 16px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, lineHeight: 1.3, transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <button onClick={onClick} style={{ position: "relative", background: active ? t.p : "transparent", color: active ? "#fff" : t.txt, border: "none", borderBottom: `3px solid ${active ? t.p : "transparent"}`, borderRadius: 0, padding: badge > 0 ? "10px 30px 10px 16px" : "10px 16px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, lineHeight: 1.3, transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center", overflow: "visible" }}>
       {children}
-      {badge > 0 && <span style={{ position: "absolute", top: -8, right: 4, background: badgeColor, color: "#fff", borderRadius: "50%", minWidth: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, padding: "0 4px", boxShadow: "0 2px 6px rgba(0,0,0,.3)", border: "2px solid " + t.bg, zIndex: 1 }}>{badge}</span>}
+      {badge > 0 && <span style={{ position: "absolute", top: 2, right: 4, background: badgeColor, color: "#fff", borderRadius: "999px", minWidth: 19, height: 19, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 900, padding: "0 4px", boxShadow: "0 2px 6px rgba(0,0,0,.3)", border: "2px solid " + (active ? t.p : t.bg), zIndex: 50, boxSizing: "border-box" }}>{badge}</span>}
     </button>
   );
 }

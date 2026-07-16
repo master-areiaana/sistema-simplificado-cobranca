@@ -244,6 +244,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
   const [buscaLocal, setBuscaLocal] = useState("");
   const [ratesByTitle, setRatesByTitle] = useState(() => loadStoredRates());
   const [filters, setFilters] = useState({});
+  const [sortCfg, setSortCfg] = useState({ key: "nomeCli", dir: "asc" });
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const visibleCols = COLS_DEF.filter(c => c.fixed || !hiddenCols?.has?.(c.key));
   const colCount = visibleCols.length;
@@ -308,7 +309,47 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     return true;
   }
 
-  const carteiraGeral = useMemo(() => carteiraBase.filter(applySelectionFilters), [carteiraBase, filters, ratesByTitle]);
+  function columnSortValue(g, key) {
+    const calc = groupCalc(g);
+    const cliente = getDisplayClient(g);
+    const values = {
+      nrCli: cliente.nrCli || g.nrCli || "",
+      nomeCli: cliente.nomeCli || "",
+      qtd: Number(g.qtdTitulos || 0),
+      venc: g.primeiroVencimento || "",
+      atraso: Number(g.maiorAtraso || 0),
+      vOrig: Number(calc.base || 0),
+      multa: Number(calc.multa || 0),
+      juros: Number(calc.juros || 0),
+      total: Number(calc.total || 0),
+      status: g.statusConsolidado || "",
+      enc: g.encaminharConsolidado || "",
+      origem: [...new Set(g.titulos.map((item) => getOrigemLabel(item.origem)))].join(" "),
+      cat: [...new Set(g.titulos.map((item) => item.clientCategory).filter(Boolean))].join(" "),
+      contato: g.ultimoContato || "",
+      prom: g.dataPromessa || "",
+      obs: g.obsConsolidada || "",
+    };
+    return values[key] ?? "";
+  }
+
+  function changeSort(key, direction) {
+    setSortCfg((current) => ({
+      key,
+      dir: direction || (current.key === key && current.dir === "asc" ? "desc" : "asc"),
+    }));
+  }
+
+  const carteiraGeral = useMemo(() => {
+    const rows = carteiraBase.filter(applySelectionFilters);
+    const direction = sortCfg.dir === "desc" ? -1 : 1;
+    return [...rows].sort((left, right) => {
+      const a = columnSortValue(left, sortCfg.key);
+      const b = columnSortValue(right, sortCfg.key);
+      if (typeof a === "number" || typeof b === "number") return (Number(a) - Number(b)) * direction;
+      return String(a).localeCompare(String(b), "pt-BR", { numeric: true, sensitivity: "base" }) * direction;
+    });
+  }, [carteiraBase, filters, ratesByTitle, sortCfg]);
   const carteiraTotals = useMemo(() => carteiraGeral.reduce((acc, g) => {
     const calc = groupCalc(g);
     acc.base += calc.base;
@@ -411,7 +452,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
     if (c.key === "check") return <th key={c.key} style={thS(t)}><input type="checkbox" checked={selected.size === carteiraGeral.length && carteiraGeral.length > 0} onChange={toggleAll} /></th>;
     if (c.key === "expand") return <th key={c.key} style={thS(t)} />;
     if (c.key === "acoes") return <th key={c.key} style={{ ...thS(t), textAlign: "right", position: "sticky", top: 0, zIndex: 50 }}><div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}><span>AÇÕES</span><ColumnMenuButton /></div></th>;
-    return <ColHeader key={c.key} label={c.label} field={c.key} data={colData(c.key)} filters={filters} setFilters={setFilters} t={t} width={c.width} />;
+    return <ColHeader key={c.key} label={c.label} field={c.key} data={colData(c.key)} filters={filters} setFilters={setFilters} t={t} width={c.width} sortKey={c.key} sortCfg={sortCfg} onSort={changeSort} />;
   }
 
   function renderCell(key, g) {
@@ -447,7 +488,7 @@ export default function TabelaCarteira({ sortedCart, baseCart, fCart, setFCart, 
         {Object.keys(ratesByTitle).length > 0 && <button onClick={clearRates} style={{ background: "transparent", border: `1px solid ${t.bor}`, borderRadius: 4, padding: "4px 8px", color: t.txt, cursor: "pointer", fontWeight: 700, fontSize: 10 }}>Zerar multa/juros</button>}
       </div>
 
-      <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "auto", width: "100%" }}>
+      <div style={{ borderRadius: 10, border: `1px solid ${t.bor}`, boxShadow: t.shad, maxHeight: "65vh", overflowY: "auto", overflowX: "auto", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", overscrollBehaviorX: "contain" }}>
         <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", tableLayout: "auto" }}>
           <thead><tr>{visibleCols.map(headerCell)}</tr></thead>
           <tbody>

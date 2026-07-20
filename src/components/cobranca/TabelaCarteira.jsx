@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ColHeader from "./ColHeader";
 import { Btn, PromBadge, ObsCell, Badge } from "./UI";
-import { fmtM, fmtD, prioCor, getTituloKey, manualObservationText } from "@/lib/cobranca";
+import { calcularEncargosCarteira, fmtM, fmtD, prioCor, getTituloKey, manualObservationText } from "@/lib/cobranca";
 
 const RATES_STORAGE_KEY = "sc_carteira_multa_juros_por_titulo";
 
@@ -206,14 +206,7 @@ function matchesSearch(g, busca = "") {
 }
 
 function calculateChargeValues(item, rates = {}) {
-  const base = toNumber(item?.valorOriginal ?? item?.original_value ?? 0);
-  const diasAtraso = Math.max(0, toNumber(item?.diasAtraso ?? item?.dias_atraso ?? 0));
-  const multaPercent = clampPercent(rates.multa);
-  const jurosPercentDia = clampPercent(rates.juros);
-  const vencido = diasAtraso > 0;
-  const multa = vencido ? base * (multaPercent / 100) : 0;
-  const juros = vencido ? base * (jurosPercentDia / 100) * diasAtraso : 0;
-  return { base, multa, juros, total: base + multa + juros, multaPercent, jurosPercentDia, diasAtraso };
+  return calcularEncargosCarteira(item, rates);
 }
 
 function sumGroupCharges(g, ratesByTitle = {}) {

@@ -30,6 +30,26 @@ const FINR1253_TITLE_TOKENS = new Set(["FAT", "REC", "NF", "NFE"]);
 export function fmtD(d) { if (!d) return "—"; const dt = new Date(`${d}T00:00:00`); return Number.isNaN(dt.getTime()) ? "—" : dt.toLocaleDateString("pt-BR"); }
 export function fmtM(v) { return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 export function num(v) { if (typeof v === "number") return Number.isFinite(v) ? v : 0; const raw = String(v ?? "").trim().replace(/[R$\s]/g, ""); if (!raw) return 0; const normalized = raw.replace(/\./g, "").replace(/,/, "."); return Number.parseFloat(normalized) || 0; }
+function hasFinancialValue(value) { return value !== undefined && value !== null && String(value).trim() !== ""; }
+export function saldoAbertoTitulo(item = {}) {
+  const saldosOficiais = [item.valorEmAberto, item.open_value, item.saldoErp, item.erp_balance];
+  for (const saldo of saldosOficiais) {
+    if (hasFinancialValue(saldo)) return Math.max(0, num(saldo));
+  }
+  const original = num(item.valorOriginal ?? item.original_value ?? 0);
+  const recebido = num(item.valorRecebido ?? item.received_value ?? 0);
+  return Math.max(0, original - recebido);
+}
+export function calcularEncargosCarteira(item = {}, rates = {}) {
+  const base = saldoAbertoTitulo(item);
+  const diasAtraso = Math.max(0, num(item.diasAtraso ?? item.dias_atraso ?? 0));
+  const multaPercent = Math.max(0, Math.min(999, num(rates.multa)));
+  const jurosPercentDia = Math.max(0, Math.min(999, num(rates.juros)));
+  const vencido = diasAtraso > 0;
+  const multa = vencido ? base * (multaPercent / 100) : 0;
+  const juros = vencido ? base * (jurosPercentDia / 100) * diasAtraso : 0;
+  return { base, multa, juros, total: base + multa + juros, multaPercent, jurosPercentDia, diasAtraso };
+}
 function optionalMoney(v) { if (typeof v === "number") return { valid: Number.isFinite(v), value: Number.isFinite(v) ? v : 0 }; const raw = String(v ?? "").trim().replace(/[R$\s]/g, ""); if (!raw) return { valid: false, value: 0 }; const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw; const parsed = Number(normalized); return { valid: Number.isFinite(parsed), value: Number.isFinite(parsed) ? parsed : 0 }; }
 function roundMoney(v) { return Math.round((Number(v || 0) + Number.EPSILON) * 100) / 100; }
 export function dateISO(v) { if (v == null || v === "") return ""; if (typeof v === "number") { const dt = new Date(Date.UTC(1899, 11, 30) + Math.round(v * 86400000)); if (Number.isNaN(dt.getTime())) return ""; return dt.toISOString().slice(0, 10); } const raw = String(v).trim(); const pts = raw.split(/[-/]/); if (pts.length === 3) { const iso = pts[0].length === 4 ? `${pts[0]}-${pts[1].padStart(2, "0")}-${pts[2].padStart(2, "0")}` : `${pts[2]}-${pts[1].padStart(2, "0")}-${pts[0].padStart(2, "0")}`; return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : ""; } return ""; }

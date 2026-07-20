@@ -150,11 +150,16 @@ function SafetyWarnings({ safety, border }) {
           <div style={{ fontWeight: 700 }}>{reason.message}</div>
           {Array.isArray(reason.titles) && reason.titles.length > 0 && (
             <div style={{ marginTop: 4, maxHeight: 110, overflowY: "auto", paddingLeft: 10, borderLeft: "2px solid #fecaca" }}>
-              {reason.titles.map((item, itemIndex) => (
+              {reason.titles.slice(0, 40).map((item, itemIndex) => (
                 <div key={`${item.id || itemIndex}-${item.source || ""}`} style={{ padding: "2px 0" }}>
                   {item.client_name || "Cliente"} — {item.source || "sem origem"} — título {item.title_number || "sem número"}{item.due_date ? ` — venc. ${item.due_date}` : ""}
                 </div>
               ))}
+              {reason.titles.length > 40 && (
+                <div style={{ padding: "4px 0", fontWeight: 800 }}>
+                  … e mais {reason.titles.length - 40} título(s). A lista completa continua no plano, sem sobrecarregar a tela.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -220,7 +225,7 @@ function AuditDetails({
             <div style={{ marginTop: 9 }}>
               <b>Possíveis órfãos ({orphans.length}):</b>
               <div style={{ marginTop: 5, maxHeight: 260, overflowY: "auto", border: `1px solid ${border}`, borderRadius: 7 }}>
-                {orphans.map((item, index) => {
+                {orphans.slice(0, 200).map((item, index) => {
                   const selected = approvedOrphanIds?.has(String(item.id));
                   return (
                     <label key={`${item.id || index}`} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "7px 8px", borderBottom: index < orphans.length - 1 ? `1px solid ${border}` : "none", cursor: item.eligibleForManualApproval ? "pointer" : "default" }}>
@@ -240,6 +245,11 @@ function AuditDetails({
                     </label>
                   );
                 })}
+                {orphans.length > 200 && (
+                  <div style={{ padding: 9, color: muted, fontWeight: 700 }}>
+                    Exibindo 200 de {orphans.length} possíveis órfãos. Use a reconciliação integral para tratar a origem completa com auditoria.
+                  </div>
+                )}
               </div>
               {orphans.some((item) => item.eligibleForManualApproval) && (
                 <button
@@ -265,6 +275,7 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
   const [state, setState] = useState({ status: "idle", progress: 0, stage: "" });
   const [applying, setApplying] = useState(false);
   const [rebuildingOrphans, setRebuildingOrphans] = useState(false);
+  const [rebuildingReconciliation, setRebuildingReconciliation] = useState(false);
   const [approvedOrphanIds, setApprovedOrphanIds] = useState(() => new Set());
   const [orphanApprovalsDirty, setOrphanApprovalsDirty] = useState(false);
 
@@ -414,12 +425,67 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
     }
   }
 
+  async function rebuildPlanWithSourceReconciliation() {
+    const currentPlan = state.plan;
+    if (!state.preview || !currentPlan || rebuildingReconciliation) return;
+    const source = currentPlan.snapshot?.source;
+    const candidates = (currentPlan.possibleOrphans || []).filter((item) =>
+      item.eligibleForManualApproval &&
+      item.coverage?.exact &&
+      item.coverage?.source === source,
+    );
+    if (!source || candidates.length === 0) return;
+
+    const confirmed = window.confirm(
+      `RECONCILIAÇÃO INTEGRAL DA ORIGEM ${SOURCE_LABEL[source] || source}\n\n` +
+      `O relatório atual tem ${currentPlan.snapshot?.imported?.titles || 0} título(s). ` +
+      `${candidates.length} título(s) ativos da mesma origem não constam nele e serão baixados, ` +
+      `com histórico de auditoria e dentro de uma única transação do Supabase.\n\n` +
+      `Use somente se o relatório selecionado for a carteira COMPLETA desta origem. Deseja preparar esse plano?`,
+    );
+    if (!confirmed) return;
+
+    setRebuildingReconciliation(true);
+    try {
+      const preview = {
+        ...state.preview,
+        seguranca: {
+          ...(state.preview.seguranca || {}),
+          approvedAbsenceIds: [],
+          sourceReconciliation: {
+            confirmed: true,
+            source,
+            expectedImportedCount: Number(currentPlan.snapshot?.imported?.titles || 0),
+            expectedOrphanCount: candidates.length,
+          },
+        },
+      };
+      const plan = await onPreparePlan?.(preview, state.fileName);
+      if (!plan?.reconciliation) {
+        throw new Error("A carteira mudou ou há chaves ambíguas. Valide o arquivo novamente antes de reconciliar.");
+      }
+      setApprovedOrphanIds(new Set());
+      setOrphanApprovalsDirty(false);
+      setState((previous) => ({
+        ...previous,
+        status: "ready",
+        preview,
+        plan,
+        message: `Reconciliação integral preparada: ${plan.summary?.totalAbsence || 0} baixa(s) auditáveis da origem ${SOURCE_LABEL[source] || source}. Revise e clique em aplicar.`,
+      }));
+    } catch (error) {
+      setState((previous) => ({ ...previous, status: "error", message: `Erro ao preparar a reconciliação: ${error.message}` }));
+    } finally {
+      setRebuildingReconciliation(false);
+    }
+  }
+
   const plan = state.plan;
   const current = plan?.snapshot?.current || {};
   const imported = plan?.snapshot?.imported || {};
   const summary = plan?.summary || {};
-  const canApply = state.status === "ready" && plan?.canApply && !applying && !rebuildingOrphans && !orphanApprovalsDirty;
-  const isBusy = state.status === "loading" || state.status === "applying" || rebuildingOrphans;
+  const canApply = state.status === "ready" && plan?.canApply && !applying && !rebuildingOrphans && !rebuildingReconciliation && !orphanApprovalsDirty;
+  const isBusy = state.status === "loading" || state.status === "applying" || rebuildingOrphans || rebuildingReconciliation;
 
   return (
     <section className="sc-import-preview" style={{ background: surface, border: `1px solid ${border}`, borderRadius: 10, padding: "9px 10px", marginBottom: 12, color: text, minWidth: 0, boxSizing: "border-box" }}>
@@ -430,7 +496,9 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" onClick={() => fileRef.current?.click()} disabled={isBusy} style={{ background: isBusy ? "#9ca3af" : primary, color: "#fff", border: "none", borderRadius: 7, padding: "7px 11px", fontSize: 11, fontWeight: 800, cursor: isBusy ? "not-allowed" : "pointer" }}>Validar planilha</button>
-          <button type="button" onClick={aplicarPlano} disabled={!canApply} style={{ background: canApply ? "#16a34a" : "#9ca3af", color: "#fff", border: "none", borderRadius: 7, padding: "7px 11px", fontSize: 11, fontWeight: 800, cursor: canApply ? "pointer" : "not-allowed" }}>Aplicar importação segura</button>
+          <button type="button" onClick={aplicarPlano} disabled={!canApply} style={{ background: canApply ? "#16a34a" : "#9ca3af", color: "#fff", border: "none", borderRadius: 7, padding: "7px 11px", fontSize: 11, fontWeight: 800, cursor: canApply ? "pointer" : "not-allowed" }}>
+            {plan?.reconciliation ? `Aplicar reconciliação (${plan.summary?.totalAbsence || 0} baixas)` : "Aplicar importação segura"}
+          </button>
         </div>
       </div>
 
@@ -470,6 +538,22 @@ export default function ImportPreviewPanel({ onPreparePlan, onApplyPlan, t }) {
       )}
 
       <SafetyWarnings safety={plan?.safety} border={border} />
+      {plan?.safety?.reconciliacaoIntegralDisponivel && !plan?.reconciliation && (
+        <div style={{ marginTop: 8, padding: 9, border: "1px solid #f59e0b", borderRadius: 7, background: "#fffbeb", color: "#92400e", fontSize: 11 }}>
+          <b>A carteira desta origem está muito maior que o relatório.</b> A trava normal de 70% continuará protegendo importações comuns.
+          Se este arquivo for a carteira completa do ERP, prepare uma reconciliação integral: somente títulos da mesma origem, com chave oficial completa e única, poderão ser baixados; registros manuais e outras origens ficam protegidos.
+          <div>
+            <button type="button" onClick={rebuildPlanWithSourceReconciliation} disabled={rebuildingReconciliation} style={{ marginTop: 7, border: "none", borderRadius: 6, padding: "7px 10px", background: rebuildingReconciliation ? "#9ca3af" : "#d97706", color: "#fff", fontSize: 10, fontWeight: 900, cursor: rebuildingReconciliation ? "not-allowed" : "pointer" }}>
+              {rebuildingReconciliation ? "Recalculando com segurança…" : `Preparar reconciliação integral (${plan.possibleOrphans?.filter((item) => item.eligibleForManualApproval && item.coverage?.exact && item.coverage?.source === plan.snapshot?.source).length || 0} possíveis baixas)`}
+            </button>
+          </div>
+        </div>
+      )}
+      {plan?.reconciliation && (
+        <div role="alert" style={{ marginTop: 8, padding: 9, border: "2px solid #d97706", borderRadius: 7, background: "#fffbeb", color: "#78350f", fontSize: 11, fontWeight: 700 }}>
+          Reconciliação integral confirmada para {SOURCE_LABEL[plan.reconciliation.source] || plan.reconciliation.source}: {plan.reconciliation.expectedAbsences} título(s) ausentes serão baixados atomicamente e registrados na auditoria. Outras origens e registros manuais não serão alterados.
+        </div>
+      )}
       {plan?.reviewRequired?.length > 0 && <div style={{ marginTop: 9, fontSize: 11, color: "#dc2626", fontWeight: 700 }}>Existem títulos ambíguos para revisar. A aplicação foi bloqueada para evitar duplicidade ou baixa incorreta.</div>}
       <AuditDetails
         plan={plan}

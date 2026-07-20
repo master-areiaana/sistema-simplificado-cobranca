@@ -503,6 +503,87 @@ test("título baixado por importação reaparece sem perder campos manuais", () 
   assert.equal("last_note" in plan.updates[0].payload, false);
 });
 
+test("reconciliação integral exige confirmação e seleciona apenas órfãos exatos da origem", () => {
+  const imported = canonical({
+    "Número Documento": "9999",
+    _meta: { source_status: "SOMENTE_RPT", origem_detectada: "RPT_7007_CONS_CAR_EB" },
+  });
+  const basePreview = {
+    ...preview([imported]),
+    rptItems: [imported],
+    finrItems: [],
+  };
+  const existingTitles = Array.from({ length: 10 }, (_, index) => existing({
+    id: `rpt-${index}`,
+    source: "RPT_7007_CONS_CAR_EB",
+    title_number: String(1000 + index),
+  }));
+  const blocked = buildImportApplicationPlan({ preview: basePreview, existingTitles });
+
+  assert.equal(blocked.safety.importacaoParcial, true);
+  assert.equal(blocked.absences.length, 0);
+  assert.equal(blocked.safety.reconciliacaoIntegralDisponivel, true);
+
+  const confirmedPreview = {
+    ...basePreview,
+    seguranca: {
+      ...basePreview.seguranca,
+      sourceReconciliation: {
+        confirmed: true,
+        source: "RPT_7007_CONS_CAR_EB",
+        expectedImportedCount: 1,
+        expectedOrphanCount: 10,
+      },
+    },
+  };
+  const reconciled = buildImportApplicationPlan({
+    preview: confirmedPreview,
+    existingTitles,
+    importFile: "rpt.xlsx",
+  });
+
+  assert.equal(reconciled.reconciliation.mode, "source-reconciliation");
+  assert.equal(reconciled.reconciliation.importedKeys.length, 1);
+  assert.equal(reconciled.absences.length, 10);
+  assert.equal(reconciled.absences.every((item) => item.approvalMode === "source-reconciliation"), true);
+});
+
+test("reconciliação integral nunca inclui registro criado manualmente", () => {
+  const imported = canonical({
+    "Número Documento": "9999",
+    _meta: { source_status: "SOMENTE_RPT", origem_detectada: "RPT_7007_CONS_CAR_EB" },
+  });
+  const base = preview([imported]);
+  const sourcePreview = {
+    ...base,
+    rptItems: [imported],
+    finrItems: [],
+    seguranca: {
+      ...base.seguranca,
+      sourceReconciliation: {
+        confirmed: true,
+        source: "RPT_7007_CONS_CAR_EB",
+        expectedImportedCount: 1,
+        expectedOrphanCount: 9,
+      },
+    },
+  };
+  const existingTitles = [
+    existing({ id: "manual", source: "RPT_7007_CONS_CAR_EB", record_origin: "Manual" }),
+    ...Array.from({ length: 9 }, (_, index) => existing({
+      id: `erp-${index}`,
+      source: "RPT_7007_CONS_CAR_EB",
+      title_number: String(2000 + index),
+      record_origin: "ERP",
+    })),
+  ];
+  const plan = buildImportApplicationPlan({ preview: sourcePreview, existingTitles });
+
+  assert.equal(plan.reconciliation.expectedAbsences, 9);
+  assert.equal(plan.absences.some((item) => item.id === "manual"), false);
+  assert.equal(plan.snapshot.current.titles, 9);
+});
+
 test("não altera os arrays recebidos", () => {
   const sourcePreview = preview([canonical()]);
   const sourceExisting = [existing()];

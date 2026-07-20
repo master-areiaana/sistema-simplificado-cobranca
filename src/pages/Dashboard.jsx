@@ -969,7 +969,9 @@ export default function Dashboard() {
     );
     if (
       revalidatedPlan.safety?.importacaoParcial &&
-      revalidatedPlan.absences.some((item) => !["automatic", "manual-partial"].includes(item.approvalMode))
+      revalidatedPlan.absences.some((item) =>
+        !["automatic", "manual-partial", "source-reconciliation"].includes(item.approvalMode),
+      )
     ) {
       throw new Error("Plano parcial inválido: existe baixa sem cobertura segura ou aprovação individual.");
     }
